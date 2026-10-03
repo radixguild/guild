@@ -100,14 +100,22 @@ describe('README documents guild-agent', () => {
   });
   test('the README names the loss bound, the key file the kit reads, and that no command makes or prints a key', () => {
     expect(readme).toContain('generates, derives, prints or stores a key');
-    expect(readme).toMatch(/one live bond/);
+    // The loss bound (ruling 2026-10-03): the account, the bond on every live claim (the loop caps
+    // claims per cycle, not live ones), and anything settled but not yet collected.
+    const words = readme.replace(/\s+/g, ' ');
+    expect(words).toContain('everything its account holds (the float and anything not yet swept), the bond on every live claim');
+    expect(words).toContain('anything settled to it but not yet collected');
+    expect(words).not.toMatch(/one live (claim )?bond/);
     expect(readme).toContain('GUILD_AGENT_KEY_FILE');
     expect(readme).toContain('key-never-made.test.ts');
   });
   test('the README says plainly what is off and which halves are not live yet (honest-copy standard)', () => {
     const flat = readme.replace(/\n> /g, ' ').replace(/\n/g, ' ');
     expect(flat).toContain('off for the beta');
-    expect(flat).toContain('the earning loop (`run`) follows in the next release');
+    // guild-agent run needs pairing and is not scheduled (ruling 2026-10-03): no release is promised.
+    expect(flat).toContain('`guild-agent run` is not scheduled');
+    expect(flat).toContain('the earning loop today is `guild-worker run --loop`');
+    expect(flat).not.toMatch(/next (kit )?release/);
     expect(flat).toContain('until a deploy has run, the URL answers 404');
   });
   test('the two undocumented-until-now env vars are documented with their default-deny / no-credentials defaults', () => {
@@ -219,11 +227,13 @@ describe('guild-agent dispatch', () => {
     expect(out.join('\n')).toContain('/nowhere/stop');
   });
 
-  test('run is not in this release: exit 2 with the operator alternative', async () => {
+  test('run is not scheduled: exit 2, naming the loop that exists (guild-worker run --loop)', async () => {
     const { RUN_SHIPPED } = await import('./kit-release.js');
     const { d, err } = deps();
     expect(await main(['run'], d)).toBe(2);
-    expect(err.join('\n')).toContain('guild-worker run');
+    expect(err.join('\n')).toContain('guild-agent run is not scheduled');
+    expect(err.join('\n')).toContain('guild-worker run --loop');
+    expect(err.join('\n')).not.toMatch(/next (kit )?release/);
     expect(RUN_SHIPPED).toBe(false);
   });
 });

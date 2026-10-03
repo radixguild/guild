@@ -153,9 +153,10 @@ usage: guild-poster <command> [flags]
   release-timeout <dbTaskId>      finalize a task whose review window lapsed
                               (public on-chain; pays exactly what approve does).
 
-  withdraw <onChainTaskId>    collect the poster's settled entitlement
-                              (insurance refund, or reward+insurance on a
-                              cancel). Takes the ON-CHAIN id, NOT the DB id —
+  withdraw <onChainTaskId>    collect the poster's settled entitlement (the
+                              insurance, a refunded reward, or the poster's
+                              share of the worker's claim bond after a
+                              dispute). Takes the ON-CHAIN id, NOT the DB id —
                               see this file's "Two id spaces" doc comment.
 
   project list                list Guild projects — id, slug, name, and each

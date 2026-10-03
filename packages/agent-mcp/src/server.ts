@@ -20,7 +20,7 @@ import {
 import { buildTools, type ToolDeps } from './tools';
 
 export const SERVER_NAME = 'guild-mcp';
-export const SERVER_VERSION = '0.3.1';
+export const SERVER_VERSION = '0.3.2';
 
 /** Register every read-only tool on a fresh McpServer (deps injected → testable). */
 export function createServer(deps: ToolDeps): McpServer {

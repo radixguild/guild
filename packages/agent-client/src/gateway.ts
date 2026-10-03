@@ -274,14 +274,18 @@ async function readComponentFieldNames(
 
 // ── Dispute auto-resolve ruling (settlement routing) ─────────────────────────
 
-/** The component's configured ruling for a lapsed, un-arbitrated dispute. */
+/** The component's configured default for a dispute nobody rules (pinned onto each task when a dispute is raised). */
 export type AutoResolveDefault = 'FavorDisputeRaiser' | 'SplitEvenly' | 'ReturnToPoster';
 
 /**
  * Read `dispute_auto_resolve_default` from the escrow component's state.
  *
- * This is the ruling `auto_resolve_dispute` will actually apply — under PULL to
- * the REWARD only (the insurance premium always returns to the poster). The
+ * `raise_dispute` pins this value onto the task, and `auto_resolve_dispute`
+ * applies the PINNED value — so for a dispute already raised, a later change to
+ * this field does not move it (the task carries its own pinned copy).
+ * The ruling governs the reward and, the same way, the claim bond (lib.rs
+ * `credit_split_for_parties`); the insurance premium always returns to the
+ * poster on this path. The
  * finalize manifest no longer routes anything, so nothing SIGNS off this value
  * any more; it remains the honest way to REPORT or predict a settlement before
  * triggering it. Returns null when it can't be read; callers deriving
@@ -377,7 +381,8 @@ async function resolveTasksKvStore(
  * the state against config.escrowComponent both confirms the task is still
  * claimable AND pins the claim to the right component — without it a stale or
  * cross-component id could send a claim that reverts on the blueprint's
- * `must be Open` assert and burn the claim bond. A standing --loop bonds real
+ * `must be Open` assert — a reverted claim moves no bond, but its network fee
+ * is spent (escrow lib.rs `claim_task`). A standing --loop bonds real
  * XRD unattended, so it treats unknown (null) as "don't bond this cycle" and
  * retries next cycle (the task stays claimable). Faithful port of guild-app
  * readEscrowTaskState.
@@ -757,7 +762,11 @@ export async function readOnChainWorkBriefHash(
 export interface WorkerEntitlement {
   /** Reward lane owed to the worker, exact decimal string. */
   reward: string;
-  /** Claim-bond lane owed to the worker (non-empty after a poster cancel). */
+  /**
+   * Claim-bond lane owed to the worker: non-zero after an approval, the
+   * review-timeout release or a poster's cancel-after-claim (the whole bond),
+   * or a dispute's settlement (the worker's share), until collected.
+   */
   bond: string;
   /** The account `withdraw_worker` will deposit into — pinned at claim_task. */
   workerAccount: string | null;

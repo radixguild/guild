@@ -430,7 +430,7 @@ describe("the governance-era claim family fires on what shipped and clears what 
     // The default IS SplitEvenly and it IS a 50/50 — of the reward. Saying so
     // must stay legal, or the rule would ban the correction it exists to force.
     expect(violation("The default ruling is SplitEvenly (a 50/50 split), re-verified against the live component via the Gateway.", rule)).toBeNull();
-    expect(violation("After the 72h window, this settles the task with the component's configured default ruling — SplitEvenly (50/50) — and takes no arbiter fee.", rule)).toBeNull();
+    expect(violation("After the 72h window, this settles the task with the default ruling pinned when the dispute was raised — SplitEvenly (50/50) on the live component — and takes no arbiter fee.", rule)).toBeNull();
     expect(violation("the default ruling is a fixed 50/50 SplitEvenly with no arbiter fee", rule)).toBeNull();
     // The replacement copy on every site this PR touches.
     expect(violation("the escrow splits the reward evenly between both parties and returns the insurance whole to the poster", rule)).toBeNull();

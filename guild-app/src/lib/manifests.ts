@@ -806,9 +806,10 @@ CALL_METHOD
 
 /**
  * Public, time-gated cleanup. After a claim's deadline + grace passes, anyone
- * may expire it. DB-4 (sitting 2026-08-06): the forfeited bond SPLITS — the
- * method RETURNS a bucket with a min(1 XRD, bond) bounty for the caller (the
- * keeper is watch-only; someone must be paid to call this), remainder to the
+ * may expire it, while it is still Claimed. DB-4 (sitting 2026-08-06): the
+ * forfeited bond SPLITS — the method RETURNS a bucket with the caller's bounty,
+ * `expire_bounty_pct` of the bond (0.1 live), rounded down (the keeper is
+ * watch-only; someone must be paid to call this), remainder to the
  * operator vault, and NEVER a poster credit (that shape was farmable). No auth
  * and no funds from the caller — but the caller now receives, so the manifest
  * deposits the returned bucket to the caller's own account.

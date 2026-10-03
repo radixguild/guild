@@ -1,19 +1,21 @@
 // kit-release.ts — what this build of the kit can and cannot do, in ONE place,
 // so the answers the CLIs print can never disagree (tests pin them to each other).
 //
-// K2 (docs/design/bring-your-agent.md §5) ships `run` and `sweep` on top of
-// PR #760's owner sweep. Flip RUN_SHIPPED there, and the message follows.
+// `guild-agent run` (K2 in docs/design/bring-your-agent.md §5) needs pairing, which is off for
+// the beta and deleted after it, so it is not scheduled (ruling 2026-10-03); the earning loop
+// today is `guild-worker run --loop`. RUN_SHIPPED stays false until a build ships `run`, and
+// the message follows the flag.
 //
 // Pairing is off for the beta and the kit never makes a key (ruling 2026-10-03):
 // agents are badge-first — bring your own key, mint a badge, act as that badge.
 
 export const RUN_SHIPPED = false;
 
-/** What `guild-agent run` answers while the loop is not in this build. */
+/** What `guild-agent run` answers while the loop is not in this build (it is not scheduled). */
 export function runNotShippedMessage(): string {
   return (
-    'guild-agent run arrives with the next kit release (it sits on the owner-sweep change, PR #760).\n' +
-    'Operators: guild-worker run --live --on-chain --loop --auto-withdraw'
+    'guild-agent run is not scheduled: it needs pairing, which is off for the beta.\n' +
+    'The earning loop today is guild-worker run --loop: guild-worker run --live --on-chain --loop --auto-withdraw'
   );
 }
 

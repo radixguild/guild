@@ -86,11 +86,11 @@ const EPOCH_VALIDITY_WINDOW = 10;
  * PUBLIC and returned its buckets to the caller's worktop, so any third party
  * could drain the pot). PULL fixes that root cause — settlement is credited
  * internally and the caller receives nothing, chain-proven on the rehearsal
- * component 2026-08-15. What remains is the campaign ruling that live disputes
- * stay MOCK-ONLY until P3-3 ships the dispute surface (DB-5), plus the accepted
- * `SplitEvenly` outcome a real counterparty would be held to. So this is now an
- * interlock against acting ahead of a decision, not against a drain — a smaller
- * claim, and the honest one.
+ * component 2026-08-15. What remains is the ruling that live disputes against a
+ * production component are fused off in this kit — GUILD_ALLOW_LIVE_DISPUTE=1,
+ * set deliberately, signs one — plus the accepted `SplitEvenly` outcome a real
+ * counterparty would be held to. So this is now an interlock against acting
+ * ahead of a decision, not against a drain — a smaller claim, and the honest one.
  *
  * **Why NOT the poster-harness's component-independent form** (refuse any
  * `component_rdx1…`): disputes are supposed to be exercised against throwaway
@@ -110,9 +110,9 @@ function assertLiveDisputeAllowed(verb: string, config: GuildClientConfig): void
   if (isProduction) {
     throw new Error(
       `Refusing to sign ${verb} against a PRODUCTION escrow component ` +
-        `(${config.escrowComponent}) — live disputes stay MOCK-ONLY until P3-3 ships the ` +
-        'dispute surface (DB-5). Exercise disputes on the mock VM or a throwaway component, ' +
-        'or set GUILD_ALLOW_LIVE_DISPUTE=1 deliberately.'
+        `(${config.escrowComponent}) — live disputes against a production component are fused ` +
+        'off in this kit: exercise disputes on the mock VM or a throwaway component, ' +
+        'or set GUILD_ALLOW_LIVE_DISPUTE=1 deliberately to sign one.'
     );
   }
 }
@@ -648,9 +648,10 @@ export async function submitTaskOnChain(
 
 /**
  * Public, time-gated claim expiry. After a claim's deadline plus grace passes,
- * ANY funded key may expire it: the caller is paid a min(1 XRD, bond) bounty
- * out of the forfeited claim_bond, the remainder goes to the operator vault,
- * and the task returns to Open. No badge/receipt/proof needed.
+ * ANY funded key may expire it while it is still Claimed: the caller is paid a
+ * bounty of `expire_bounty_pct` (0.1 live) of the forfeited claim_bond, the
+ * remainder goes to the operator vault, and the task returns to Open. No
+ * badge/receipt/proof needed.
  * UNTESTED-UNTIL-PILOT. Returns { intentHash, status }.
  *
  * Signature mirrors the other legs for the harness/gate1 --live wiring:
@@ -714,9 +715,10 @@ export async function raiseDisputeOnChain(
 /**
  * Public keeper finalize of a Disputed task after the 72h window — PULL form.
  * Callable by ANY funded fleet key (auto_resolve_dispute is PUBLIC on chain).
- * The manifest is a bare trigger: the component applies its own configured
- * default ruling and credits both entitlements internally, so this supplies no
- * accounts, no amounts, and no ruling — the caller cannot route a payout, and
+ * The manifest is a bare trigger: the component applies the default ruling
+ * pinned on the task when the dispute was raised (the reward and the claim bond
+ * split the same way) and credits both entitlements internally, so this
+ * supplies no accounts, no amounts, and no ruling — the caller cannot route a payout, and
  * there is nothing to read from chain before signing. (The push era took a
  * SETTLEMENT-FACTS argument and derived routing from the component's default,
  * because the caller received both buckets; that surface died with the push
@@ -937,8 +939,10 @@ export async function releaseAfterReviewTimeoutOnChain(
 }
 
 /**
- * Collect the poster's settled entitlement (insurance refund on approve/
- * cancel/cancel-after-claim; reward + insurance on a plain cancel). Presents
+ * Collect the poster's settled entitlement (the insurance back after an
+ * approval or the review-timeout release; reward + insurance on either cancel;
+ * the poster's share of the reward, the insurance and the worker's claim bond
+ * after a dispute). Presents
  * the Task Receipt as a proof, deriving its local id from `onChainTaskId`
  * (mirrors `withdrawPosterManifest`'s own doc: the id is DERIVED, never a
  * parameter, so a caller cannot present one task's receipt against another).

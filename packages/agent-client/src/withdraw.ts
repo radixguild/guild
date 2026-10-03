@@ -92,7 +92,14 @@ export function explainRefusal(reason: WithdrawRefusal, taskId: number): string 
     case 'no-entitlement-fields':
       return `The configured escrow component does not record entitlements, so it is a pre-PULL deployment. Under that escrow settlement pushed funds to you directly and there is genuinely nothing to collect. Check GUILD_ESCROW_COMPONENT.`;
     case 'nothing-owed':
-      return `Task ${taskId} owes you nothing: both the reward and claim-bond lanes read zero. Either you already collected, or the task has not settled yet (the poster must approve first).`;
+      // Every way both worker lanes read zero (escrow lib.rs): collected (withdraw_worker,
+      // or anyone's push_entitlement — both pay the pinned account); not settled yet
+      // (approve_and_release, release_after_review_timeout,
+      // cancel_task_by_poster_after_claim, resolve_dispute, auto_resolve_dispute); or
+      // nothing due — expire_claim forfeits the bond, and a RefundPoster ruling (an
+      // arbiter's, or a pinned default that yields it) gives the worker no share of
+      // reward or bond. Until kit 0.7.2 this named only approval.
+      return `Task ${taskId} owes you nothing: both the reward and claim-bond lanes read zero. Either it was already collected (your withdraw, or the public push_entitlement anyone may call, pays it into the account pinned at claim), the task has not settled yet (it settles when the poster approves, when anyone triggers the release after the review window, when the poster cancels after your claim, or when a dispute is settled, whether an arbiter rules or the 72-hour default applies), or nothing is due to you: an expired claim forfeits its bond, and a dispute settled as a full refund to the poster credits the worker nothing.`;
     case 'claimer-badge-unknown':
       return `The escrow does not record which badge claimed task ${taskId}, so a collection proof cannot be built. Nothing is lost — the entitlement is still held for you. This needs an operator.`;
     case 'not-the-payee':

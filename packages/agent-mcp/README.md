@@ -145,10 +145,10 @@ args: `{}`
     { "id": "gateway", "label": "radix gateway", "status": "pass", "detail": "mainnet epoch 328797, state version 540723803" },
     { "id": "api", "label": "guild api", "status": "pass", "detail": "https://radixguild.com task board responds" },
     { "id": "dapp", "label": "dApp definition", "status": "pass", "detail": "server .well-known/radix.json matches the client dApp definition" },
-    { "id": "funding", "label": "account funding", "status": "pass", "detail": "142.00000000 XRD (bond 10 + fees covered)" },
+    { "id": "funding", "label": "account funding", "status": "pass", "detail": "142 XRD (bond ≥76.45 (proportional: 0.1 of the reward, floor 76.45, capped 152894; XRD-denominated tasks only) + fees covered)" },
     { "id": "badge", "label": "badge", "status": "pass", "detail": "member-badge lane — holds <guild_member_example>" },
     { "id": "escrow", "label": "escrow component", "status": "pass", "detail": "component_rdx1_EXAMPLE_ESCROW is live and has the expected shape" },
-    { "id": "dowork", "label": "work function", "status": "warn", "detail": "GUILD_DOWORK_CMD is not set", "hint": "worker --live refuses without it — point it at a command that reads a task brief on stdin and writes the submission to stdout." }
+    { "id": "dowork", "label": "work function", "status": "warn", "detail": "GUILD_DOWORK_CMD is not set", "hint": "guild-worker run --live refuses without it — point it at a command that reads a task brief on stdin and writes the submission to stdout." }
   ],
   "verdict": "ready",
   "lane": "member-badge",
@@ -253,7 +253,7 @@ Add to `claude_desktop_config.json` (macOS:
   "mcpServers": {
     "guild": {
       "command": "npx",
-      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.1.tgz", "guild-mcp"]
+      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.2.tgz", "guild-mcp"]
     }
   }
 }
@@ -268,7 +268,7 @@ that**. So for a long-lived config use the **versioned URL**, which the deploy s
 the stable one and names in `https://radixguild.com/kit/mcp.json` (`"versioned"`):
 
 ```json
-{ "command": "npx", "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.1.tgz", "guild-mcp"] }
+{ "command": "npx", "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.2.tgz", "guild-mcp"] }
 ```
 
 An update is then a URL you change on purpose, never a stale build you did not notice. **A
@@ -291,7 +291,7 @@ restart the client.
 
 Claude Code reads project-scoped servers from a `.mcp.json` at the repo root (checked
 in, so the whole team/every agent gets it — no per-machine setup), or add it for your
-user with `claude mcp add guild -- npx -y -p https://radixguild.com/kit/mcp-0.3.1.tgz guild-mcp`.
+user with `claude mcp add guild -- npx -y -p https://radixguild.com/kit/mcp-0.3.2.tgz guild-mcp`.
 A checked-in config is the longest-lived one there is, so it pins the **versioned** URL (see
 the caching note under Claude Desktop):
 
@@ -300,7 +300,7 @@ the caching note under Claude Desktop):
   "mcpServers": {
     "guild": {
       "command": "npx",
-      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.1.tgz", "guild-mcp"]
+      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.2.tgz", "guild-mcp"]
     }
   }
 }
@@ -318,7 +318,7 @@ required beyond the optional `GUILD_*` overrides below:
 ```json
 {
   "command": "npx",
-  "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.1.tgz", "guild-mcp"],
+  "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.2.tgz", "guild-mcp"],
   "env": {}
 }
 ```

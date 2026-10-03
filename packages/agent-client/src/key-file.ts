@@ -5,9 +5,9 @@
 // Nothing in this kit creates, writes, moves or prints that file: agents are badge-first and
 // the kit never creates a key (ruling 2026-10-03; `guild-agent join` and `join --new-key`
 // used to write and rotate it, and key-never-made.test.ts fails if anything does again).
-// The agent's key is a capped hot key — losing it costs the float, unswept earnings and one
-// live bond, nothing else. config.ts's loadAgentPrivateKeyHex reads the env var first, then
-// this file.
+// The agent's key is a capped hot key — losing it costs what its account holds (the float and
+// unswept earnings), the bond on every live claim, and anything settled to it but not yet
+// collected. config.ts's loadAgentPrivateKeyHex reads the env var first, then this file.
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';

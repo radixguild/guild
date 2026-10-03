@@ -19,8 +19,9 @@
 // Neither function here decides WHETHER to dispute or resolve — that stays a
 // judgement made outside this module (a human, or an agent's own doWork).
 // This only builds the manifest and, on --live, signs it. The production fuse
-// (tx.ts's assertLiveDisputeAllowed: live disputes stay MOCK-ONLY until P3-3's
-// dispute surface, unless GUILD_ALLOW_LIVE_DISPUTE=1 is set on purpose) is NOT
+// (tx.ts's assertLiveDisputeAllowed: live disputes against a production component
+// are fused off in this kit — set GUILD_ALLOW_LIVE_DISPUTE=1 deliberately to sign
+// one) is NOT
 // reimplemented here — it fires from inside raiseDisputeOnChain /
 // autoResolveDisputeOnChain themselves when --live calls them. This module
 // only checks the same public config the fuse checks, to WARN about it during
@@ -47,8 +48,8 @@ function productionFuseWarning(config: GuildClientConfig): string | undefined {
   if (!isProductionComponent(config.escrowComponent)) return undefined;
   return (
     `${config.escrowComponent} is a PRODUCTION escrow component — --live will refuse to ` +
-    'sign (live disputes stay MOCK-ONLY until the dispute surface ships) unless ' +
-    'GUILD_ALLOW_LIVE_DISPUTE=1 is set deliberately.'
+    'sign: live disputes against a production component are fused off in this kit — set ' +
+    'GUILD_ALLOW_LIVE_DISPUTE=1 deliberately to sign one.'
   );
 }
 
@@ -260,8 +261,9 @@ export interface ResolveDisputeOptions {
   /** False (default) previews the manifest and signs nothing. */
   live: boolean;
   /** Only needed to SIGN. auto_resolve_dispute is a bare, accountless trigger
-   *  — the component applies its own default ruling and credits both
-   *  entitlements internally, so a dry-run preview needs no identity at all. */
+   *  — the component applies the default ruling pinned when the dispute was
+   *  raised and credits both entitlements internally, so a dry-run preview
+   *  needs no identity at all. */
   identity: AgentIdentity | null;
   config?: GuildClientConfig;
   log?: (line: string) => void;

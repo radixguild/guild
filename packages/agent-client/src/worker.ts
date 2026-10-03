@@ -564,9 +564,10 @@ export async function runWorkerCycle(options: WorkerOptions): Promise<WorkerCycl
 
     // Claim PIN: only bond on a task verifiably `Open` on the CONFIGURED escrow
     // component. Pins the claim to the right component (on-chain ids collide
-    // across escrow cutovers) and avoids burning the bond on a task that would
-    // revert the blueprint's `must be Open` assert. Unknown (null) ⇒ don't bond
-    // this cycle — the task stays claimable and is retried next cycle.
+    // across escrow cutovers) and avoids paying the network fee for a claim that
+    // would revert on the blueprint's `must be Open` assert (a reverted claim
+    // moves no bond). Unknown (null) ⇒ don't bond this cycle — the task stays
+    // claimable and is retried next cycle.
     const onChainState = await readTaskState(
       onChainTaskId,
       api.config.escrowComponent,
@@ -838,8 +839,9 @@ export async function runWorkerCycle(options: WorkerOptions): Promise<WorkerCycl
         report.disputedTaskIds.push(task.id);
         log.warn(
           `guild-worker: task #${task.id} is DISPUTED on chain. ` +
-            `A human decides this: the window runs out into the component's default ruling, ` +
-            `and this agent will not raise or resolve a dispute on its own. ` +
+            `An arbiter may rule; if nobody does within the dispute window, anyone can then settle it ` +
+            `by the default ruling pinned when it was raised. Either way the reward and your claim bond ` +
+            `are split the same way, and this agent will not raise or resolve a dispute on its own. ` +
             `Details: ${api.config.apiBaseUrl}/tasks/${task.id}`
         );
       } else if (!statesAgree(task.status, state)) {

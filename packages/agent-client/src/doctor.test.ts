@@ -501,7 +501,7 @@ describe('api + dapp checks', () => {
 });
 
 describe('escrow + dowork checks', () => {
-  test('unreadable escrow component fails with the bond-burn warning', async () => {
+  test('unreadable escrow component fails, naming the env var — and never says a wrong component costs a bond', async () => {
     const report = await runDoctor({
       config: CONFIG,
       env: HEALTHY_ENV,
@@ -509,6 +509,10 @@ describe('escrow + dowork checks', () => {
     });
     expect(byId(report, 'escrow').status).toBe('fail');
     expect(byId(report, 'escrow').hint).toContain('GUILD_ESCROW_COMPONENT');
+    expect(byId(report, 'escrow').hint).toContain('live escrow component');
+    // Until kit 0.7.2 the hint said a stale component "burns claim bonds". A claim
+    // that reverts moves no bond (escrow lib.rs claim_task); only its fee is spent.
+    expect(byId(report, 'escrow').hint).not.toMatch(/burn|bond/i);
   });
 
   test('missing GUILD_DOWORK_CMD warns but does not block', async () => {

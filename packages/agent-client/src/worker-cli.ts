@@ -129,8 +129,10 @@ export function createCommandDoWork(cmd: string): DoWork {
  * than falling back to a default.
  *
  * Throwing is deliberate, because this cap is money. Every claim locks a bond
- * (GUILD_ESCROW_CLAIM_BOND_XRD, 10 XRD by default), and the only thing bounding
- * that exposure is `claimsThisCycle >= maxClaimsPerCycle` in worker.ts. The old
+ * (sized per task from the chain — on the live escrow, 10% of the reward with
+ * a 76.45 XRD floor; GUILD_ESCROW_CLAIM_BOND_XRD is never used to sign one),
+ * and the only thing bounding that exposure is
+ * `claimsThisCycle >= maxClaimsPerCycle` in worker.ts. The old
  * `env ? Number(env) : undefined` form let `Number('abc')` through as NaN — and
  * every `>=` comparison against NaN is false, so a single typo silently REMOVED
  * the cap and let one cycle claim every open task, bonding each one. A worker

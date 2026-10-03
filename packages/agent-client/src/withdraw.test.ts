@@ -158,6 +158,30 @@ describe('explainRefusal', () => {
     expect(msg).not.toContain('already collected');
   });
 
+  test('nothing-owed names every way both lanes read zero — not only "the poster must approve first"', () => {
+    // escrow lib.rs: collected (withdraw_worker, or anyone's push_entitlement —
+    // both pay the pinned account); not settled yet (approve_and_release,
+    // release_after_review_timeout, cancel_task_by_poster_after_claim, or a dispute
+    // settled by resolve_dispute / auto_resolve_dispute); or nothing due —
+    // expire_claim forfeits the bond, and a RefundPoster ruling gives the worker
+    // no share of reward or bond. Until kit 0.7.2 this named only approval.
+    const msg = explainRefusal('nothing-owed', 9);
+    for (const fact of [
+      'Task 9 owes you nothing',
+      'already collected',
+      'your withdraw, or the public push_entitlement anyone may call, pays it into the account pinned at claim',
+      'when the poster approves',
+      'when anyone triggers the release after the review window',
+      'when the poster cancels after your claim',
+      'when a dispute is settled, whether an arbiter rules or the 72-hour default applies',
+      'an expired claim forfeits its bond',
+      'a dispute settled as a full refund to the poster credits the worker nothing',
+    ]) {
+      expect(msg).toContain(fact);
+    }
+    expect(msg).not.toContain('must approve first');
+  });
+
   test('claimer-badge-unknown reassures that nothing is lost', () => {
     expect(explainRefusal('claimer-badge-unknown', 1)).toContain('Nothing is lost');
   });

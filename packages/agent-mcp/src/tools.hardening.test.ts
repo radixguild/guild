@@ -192,19 +192,21 @@ describe('guarded() error boundary: a non-GuildApiError dep throw is caught, not
 
 // ── 2. task_chain_state claimability semantics ───────────────────────────────
 
-describe('task_chain_state: non-Open chain states are never claimable and warn of a bond burn', () => {
+describe('task_chain_state: non-Open chain states are never claimable, and a claim would only cost its fee', () => {
   // The sibling only exercises 'Claimed'. Every OTHER known non-Open state must
-  // read identically: not claimable, note mentions the burn.
+  // read identically: not claimable; a claim would revert, move no bond and
+  // still cost the network fee (escrow lib.rs claim_task — never "burn the bond").
   const NON_OPEN: string[] = ['Submitted', 'Disputed', 'Released', 'Refunded'];
 
   for (const chain of NON_OPEN) {
-    test(`chain='${chain}' on an 'open' DB task → claimable:false, note mentions 'burn' + divergence`, async () => {
+    test(`chain='${chain}' on an 'open' DB task → claimable:false, note says no bond moves + divergence`, async () => {
       const { deps } = fakeDeps({ readTaskState: async () => chain as never });
       const res = await invokeTool(tool(deps, 'task_chain_state'), { id: 5 });
       const out = jsonOf(res) as ChainStateOut;
       expect(out.chainState).toBe(chain);
       expect(out.claimable).toBe(false);
-      expect(out.note).toContain('burn');
+      expect(out.note).toContain('moves no bond and still costs the network fee');
+      expect(out.note).not.toMatch(/burn/i);
       // FAKE_TASK.status is 'open' → the DB↔chain divergence clause fires.
       expect(out.note).toContain('divergence');
     });
@@ -224,7 +226,8 @@ describe('task_chain_state: non-Open chain states are never claimable and warn o
     expect(out.dbStatus).toBe('assigned');
     expect(out.chainState).toBe('Claimed');
     expect(out.claimable).toBe(false);
-    expect(out.note).toContain('burn'); // still a non-Open burn warning
+    expect(out.note).toContain('moves no bond'); // still the non-Open warning
+    expect(out.note).not.toMatch(/burn/i);
     expect(out.note).not.toContain('divergence'); // but NOT flagged as board divergence
   });
 

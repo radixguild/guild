@@ -727,9 +727,9 @@ export interface EscrowAutoResolveParams {
 /**
  * Public, time-gated keeper call: settle a Disputed task after the auto-resolve
  * window — PULL ONLY. `auto_resolve_dispute` returns `()`: the component
- * applies its own configured default ruling and credits both entitlements
- * internally, so the manifest is a single bare call. No party accounts, no
- * amounts, no chain pre-reads: there is nothing the caller could route, so
+ * applies the default ruling pinned when the dispute was raised and credits both
+ * entitlements internally, so the manifest is a single bare call. No party
+ * accounts, no amounts, no chain pre-reads: there is nothing the caller could route, so
  * there is nothing to verify before routing. (The push era needed all of that
  * — TaskCreatedEvent amounts, the raiser, the component's default — because
  * the caller routed both buckets and routing that disagreed with the default
@@ -902,13 +902,14 @@ export interface EscrowExpireClaimParams {
 
 /**
  * Public, time-gated cleanup call: forfeit an overdue claim. Once a claim's
- * submit deadline passes, `expire_claim` is callable by ANYONE — not just the
+ * submit deadline plus its grace (`expire_grace_secs`) passes, while the task is
+ * still unsubmitted, `expire_claim` is callable by ANYONE — not just the
  * poster or worker (operator ruling 2026-08-29, docs/PROJECT-STATE.md). It
  * resets the task to Open (assignee cleared) and splits the forfeited claim
- * bond: a small bounty (min(1 XRD, bond)) to the caller, the remainder to the
- * operator vault, never a poster credit (DB-4). The manifest deposits that
- * returned bucket straight into the caller's own account — see
- * expireClaimManifest.
+ * bond: a bounty of `expire_bounty_pct` of the bond (0.1 live), rounded down,
+ * to the caller, the remainder to the operator vault, never a poster credit
+ * (DB-4). The manifest deposits that returned bucket straight into the
+ * caller's own account — see expireClaimManifest.
  *
  * ⚠️ This had NO product surface until 2026-08-29 — `expireClaimManifest` was
  * reachable only from scripts, so the one lifecycle recovery the blueprint made

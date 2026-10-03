@@ -382,7 +382,7 @@ export const SETTLEMENT_COPY = {
     push:
       "After the 72h window, this settles the task with the component's configured default ruling — SplitEvenly (50/50) — and takes no arbiter fee. It is PUBLIC and carries no auth: anyone can call it, and like every settlement path it returns the funds to the caller's manifest (BUG-7), not by direct deposit.",
     pull:
-      "After the 72h window, this settles the task with the component's configured default ruling — SplitEvenly (50/50) — and takes no arbiter fee. It is PUBLIC and carries no auth, so anyone can trigger it once the window passes; what they cannot do is take the money. Settlement credits the poster and the worker inside the component, payable only to the accounts pinned at claim and funding time, and each collects with their own signed transaction.",
+      "After the 72h window, this settles the task with the default ruling pinned when the dispute was raised — SplitEvenly (50/50) on the live component — and takes no arbiter fee. It is PUBLIC and carries no auth, so anyone can trigger it once the window passes; what they cannot do is take the money. Settlement credits the poster and the worker inside the component, payable only to the accounts pinned at claim and funding time, and each collects with their own signed transaction.",
   },
   // Renamed 2026-08-27 from disputesDormantMechanism at the P3-3/DB-5 flip:
   // the pull form still describes why the surface WAS dormant (that is the

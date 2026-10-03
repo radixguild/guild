@@ -403,7 +403,9 @@ CALL_METHOD
  *
  * The bond is now held to settlement and credited to the PINNED worker account
  * (E1/E2) — an agent that expected a bond bucket on its worktop at submit will
- * find nothing, and that is correct. It arrives with the reward at collection.
+ * find nothing, and that is correct. Settlement credits it with the reward: in
+ * full on approval or the review-timeout release, or split the same way as the
+ * reward if a dispute is raised; the worker collects both together.
  *
  * ✅ Wave B is the live component (cutover 2026-09-13), so this 4-arg form is
  * the one mainnet accepts; a pre-Wave-B component takes 3 args and rejects it.
@@ -532,9 +534,9 @@ CALL_METHOD
 
 /**
  * Poster approves a Submitted task — PULL form. Presents the Task Receipt as a
- * PROOF; `approve_and_release` returns `()`, crediting reward→worker and
- * insurance→poster as entitlements. No worker account and no reward amount:
- * the blueprint routes both from state pinned on the task, which is the whole
+ * PROOF; `approve_and_release` returns `()`, crediting reward + claim bond →
+ * worker and insurance → poster as entitlements. No worker account and no
+ * reward amount: the blueprint routes both from state pinned on the task, which is the whole
  * point of pull — the caller cannot choose. The worker collects via
  * `withdrawWorkerManifest`; this client's poster side collects its own
  * insurance refund via `withdrawPosterManifest`.
@@ -722,8 +724,9 @@ CALL_METHOD
 
 /**
  * Public, time-gated keeper call — PULL form. After the auto-resolve window,
- * anyone may settle a Disputed task with the component's configured default
- * ruling (no arbiter fee). `auto_resolve_dispute` returns `()`: the blueprint
+ * anyone may settle a Disputed task with the default ruling pinned on it when
+ * the dispute was raised (no arbiter fee; the reward and the claim bond split
+ * the same way). `auto_resolve_dispute` returns `()`: the blueprint
  * credits both entitlements internally, so a stranger calling this performs
  * the accounting and receives nothing — which is what makes a PUBLIC method
  * safe here. One instruction, no accounts, no amounts, and no deposit leg:
@@ -750,7 +753,8 @@ export function autoResolveDisputeManifest(
  * Mirrors guild-app autoResolveRuling.
  *
  * REPORTING ONLY under pull: the manifest no longer routes by this — the
- * component applies its own default and credits entitlements internally.
+ * component applies the default pinned on the task when the dispute was raised
+ * and credits entitlements internally.
  */
 export function autoResolveRuling(
   autoDefault: 'FavorDisputeRaiser' | 'SplitEvenly' | 'ReturnToPoster',
@@ -845,9 +849,11 @@ CALL_METHOD
 
 /**
  * Public, time-gated cleanup. After a claim's deadline + grace passes, ANYONE
- * may expire the claim. DB-4 (sitting 2026-08-06): the forfeited bond SPLITS —
- * the method RETURNS a bucket with a min(1 XRD, bond) bounty for the caller,
- * remainder to the operator vault, never a poster credit. No auth, no proof,
+ * may expire the claim, while it is still Claimed. DB-4 (sitting 2026-08-06):
+ * the forfeited bond SPLITS — the method RETURNS a bucket with the caller's
+ * bounty, `expire_bounty_pct` of the bond (0.1 live; proportional since the
+ * 2026-08-29 ruling, rounded down), the remainder to the operator vault, never
+ * a poster credit. No auth, no proof,
  * no funds from the caller — but the caller receives, so the manifest deposits
  * the returned bucket to the caller's own account. Byte-for-byte mirror of
  * guild-app expireClaimManifest.
