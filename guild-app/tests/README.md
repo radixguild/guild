@@ -4,8 +4,8 @@ Comprehensive automated test suite for the Guild task marketplace.
 
 The legacy bot-store mirror suites (SQLite `bounties` helpers, agent-lane
 guardrails, swarm/fuzz harnesses) were deleted in R1 bot unification
-(`docs/R1-BOT-UNIFICATION-2026-07-04.md`): app Postgres is the single task
-store and the mirrored bot code no longer exists.
+(`docs/R1-BOT-UNIFICATION-2026-07-04.md`, kept in the private operations repository): app
+Postgres is the single task store and the mirrored bot code no longer exists.
 
 ## Prerequisites
 
@@ -54,8 +54,6 @@ tests/
 │   └── task-pagination.pg.test.ts   # M7: listTasks keyset walked against real Postgres
 ├── support/
 │   └── mock-ledger.ts               # in-memory Radix ledger + manifest VM + mock RDT
-├── agent/
-│   └── sdk-unit.test.ts             # Agent SDK client (mocked fetch)
 ├── e2e/
 │   ├── playwright.config.ts         # Playwright config (desktop + mobile)
 │   └── *.spec.ts                    # Browser tests for all user flows
@@ -63,6 +61,9 @@ tests/
 │   └── server-only.ts               # Vitest stub for Next's server-only module
 └── README.md
 ```
+
+The agent SDK's own tests live with it, in `packages/agent-client/src/` (they moved there
+when the SDK was extracted into that package).
 
 ## What Each Suite Tests
 

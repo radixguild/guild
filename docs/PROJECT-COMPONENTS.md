@@ -69,7 +69,7 @@ The seven design maxims ([GUILD-VISION-2026.md:238](./GUILD-VISION-2026.md)) —
 
 **Problem it solves.** A human-friendly surface for the cooperative's day-to-day work. Without it, every interaction is a hand-written transaction manifest. With it, members can browse work, post bounties, and ship without leaving the browser.
 
-⛔ **Corrected 2026-08-15 — the status sentence here was FALSE.** It read: *"Current status: ~10% functional — the UI exists but the on-chain wires don't connect yet. DPSK is fixing this as Sprint 1.5; ~85% functional after S1.5 + M-Deploy."* The wires connect. **radixguild.com is live and the human-to-human money path is mainnet-proven end-to-end** — connect (verified dApp, Dev Mode OFF) → mint → post → fund → claim → submit → approve → release, chain-verified with value conserved, DB `paid` matching chain `Released`, drift 0. Sprint 1.5 and M-Deploy are long done. Honest residue, so this doesn't over-correct in the other direction: the **dispute UI is compiled OFF** in production and gated off by `scripts/launch-check.sh`. ⚠️ *Corrected 2026-08-23:* this sentence used to also say "BUG-7 is open (settlement returns funds via the caller's manifest…)" and "the PULL redesign has not cut over" — both were true 2026-08-15 and are not now. **The PULL cutover happened 2026-08-17** (`component_rdx1cz468e…`); settlement no longer routes through the caller at all, and BUG-7's mechanism is closed structurally (see `AUDITOR-GUIDE.md` §6). ⚠️ *Corrected again 2026-08-29:* "the dispute UI is compiled OFF in production and gated off by `scripts/launch-check.sh`" is now FALSE in both halves. **Disputes shipped LIVE 2026-08-29** (PR #465) and the gate was **INVERTED** — a disputes-OFF build now fails the deploy. There is no dispute-UI residue left to report.
+⛔ **Corrected 2026-08-15 — the status sentence here was FALSE.** It read: *"Current status: ~10% functional — the UI exists but the on-chain wires don't connect yet. DPSK is fixing this as Sprint 1.5; ~85% functional after S1.5 + M-Deploy."* The wires connect. **radixguild.com is live and the human-to-human money path is mainnet-proven end-to-end** — connect (verified dApp, Dev Mode OFF) → mint → post → fund → claim → submit → approve → release, chain-verified with value conserved, DB `paid` matching chain `Released`, drift 0. Sprint 1.5 and M-Deploy are long done. Honest residue, so this doesn't over-correct in the other direction: the **dispute UI is compiled OFF** in production and gated off by `scripts/launch-check.sh` (the deploy gate, kept in the private operations repository). ⚠️ *Corrected 2026-08-23:* this sentence used to also say "BUG-7 is open (settlement returns funds via the caller's manifest…)" and "the PULL redesign has not cut over" — both were true 2026-08-15 and are not now. **The PULL cutover happened 2026-08-17** (`component_rdx1cz468e…`); settlement no longer routes through the caller at all, and BUG-7's mechanism is closed structurally (see `AUDITOR-GUIDE.md` §6). ⚠️ *Corrected again 2026-08-29:* "the dispute UI is compiled OFF in production and gated off by `scripts/launch-check.sh`" is now FALSE in both halves. **Disputes shipped LIVE 2026-08-29** (PR #465) and the gate was **INVERTED** — a disputes-OFF build now fails the deploy. There is no dispute-UI residue left to report.
 
 ### 2. Telegram bot — `bot/`
 
@@ -148,7 +148,8 @@ on the member badge; the dedicated GAGENT badge is deployed with supply 0). The 
 — unwired" cell is the one that is still broadly right, and for a *different* reason than this
 table gives: the UI is deliberately compiled OFF pending the PULL cutover. Read the columns to the
 right as the 2026-06 plan, not as a forecast — the sprint frame they name was superseded by the
-gate model and then by `EXTERNAL-V1-FRAMEWORK.md`. ⚠️ *(Corrected 2026-10-02: the dispute
+gate model and then by `EXTERNAL-V1-FRAMEWORK.md` (kept in the private operations repository).
+⚠️ *(Corrected 2026-10-02: the dispute
 lifecycle is wired now too — disputes have run in the app since 2026-08-29 — and the GAGENT
 badge's on-chain supply has been 1 since 2026-09-14.)*
 
@@ -185,8 +186,8 @@ A member's full cooperative experience uses both. Onboarding starts in the bot (
 | Understand dispute resolution model | [architecture/dispute-resolution.md](./architecture/dispute-resolution.md) |
 | Pick up where the sprint plan left off | [decisions/ADR-001-architectural-foundations.md](./decisions/ADR-001-architectural-foundations.md) |
 | Understand why the dashboard was once "10% functional" *(historical — it is live and mainnet-proven now; see the correction in §Built today)* | [decisions/ADR-002-escrow-deploy-and-integration-gates.md](./decisions/ADR-002-escrow-deploy-and-integration-gates.md) |
-| Deploy the escrow blueprint | ESCROW-DEPLOY-RUNBOOK.md |
-| Find on-chain addresses | INFRASTRUCTURE.md and HANDOVER.md |
+| Deploy the escrow blueprint | ESCROW-DEPLOY-RUNBOOK.md (kept in the private operations repository) |
+| Find on-chain addresses | [`guild-app/src/lib/config.ts`](../guild-app/src/lib/config.ts) — the defaults the live site uses (the operator's INFRASTRUCTURE.md and HANDOVER.md are kept in the private operations repository) |
 | Onboard a new contributor | [CONTRIBUTING.md](../CONTRIBUTING.md) (still the canonical onboarding surface) |
 | Build an agent | [packages/agent-client/README.md](../packages/agent-client/README.md) |
 | Resume Archon's contributions | Archon commits via PR labeled `archon`. Workflow rationale lives in the operator's private notes, not in this repo. |

@@ -10,10 +10,12 @@
 > minted, and the Badge-Manager mint flow described in §"Minting Flow" is not wired to any
 > criteria detector. `TASK-TERMS-DESIGN.md` §4.1 lists achievement badges as explicitly
 > **out of scope**. For what actually exists, read
-> [`BADGE-SCHEMAS.md`](BADGE-SCHEMAS.md) and `ASSET-REGISTRY.md`.
+> [`BADGE-SCHEMAS.md`](BADGE-SCHEMAS.md) and `ASSET-REGISTRY.md` (kept in the private operations
+> repository).
 >
 > Two claims here would be wrong if built as written: the live **Guild Arbiter Badge** is a
-> distinct supply-1 resource (`ESCROW-ADDRESSES.md:64`), not an earned "arbitrate 5 disputes"
+> distinct supply-1 resource (recorded in `ESCROW-ADDRESSES.md`, in the same repository), not an
+> earned "arbitrate 5 disputes"
 > role badge; and §"Integration with Reputation" — "badges may unlock governance privileges
 > or bounty access" — must not be shipped as fact, since the member badge is a public mint
 > that gates nothing and is transferable. The shipped gate is the ledger-derived

@@ -15,8 +15,8 @@ source of the live mainnet BadgeManager.
 | BadgeManager (live — Guild Member badge) | `component_rdx1czexylvvm0q4uhwpjaqmlznj9sd3y2jnmmah6qug9lm9sfm3tyrtva` |
 
 For the badge NFT resource, sibling managers (arbiter / role), and everything else, the ground
-truth is `docs/ASSET-REGISTRY.md` (+ `.json`) — always re-verify
-against the Gateway rather than trusting any README table, including this one.
+truth is `docs/ASSET-REGISTRY.md` (+ `.json`), kept in the private operations repository —
+always re-verify against the Gateway rather than trusting any README table, including this one.
 
 > ⚠️ An earlier version of this README documented a **stale, superseded deployment**
 > (package `…ph03wnq…`, manager `…cqu2vky…`, the `rad_dao_player` era). Those addresses are
@@ -54,7 +54,8 @@ scrypto test
 ```
 
 Requires Scrypto 1.3.1 toolchain. ⚠️ **Build on Linux (CI or VPS)** — Scrypto WASM builds fail
-on this project's Macs (bulk-memory issue, see the repo `CLAUDE.md` §Scrypto).
+on this project's Macs (bulk-memory issue; the operator's `CLAUDE.md` §Scrypto, kept in the
+private operations repository, has the details).
 
 ## Architecture
 
