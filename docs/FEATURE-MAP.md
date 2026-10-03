@@ -1,4 +1,7 @@
 <!-- status: live
+     verified: 2026-10-03 (SCOPED: the two lint lines ONLY — §A's "Green e2e CI" row and §F's
+     open-findings row — against `bun run lint` in guild-app, which exits 0 with no problems, and
+     test.yml's `lint (guild-app)` job, which runs it on every PR. Nothing else re-checked.)
      verified: 2026-10-02 (SCOPED: §E's post-fold note and its /game, trust-score, BadgeManager,
      bot-store, PR auto-verify, "rich bot services" and :3002 rows ONLY, against this
      repository's bot/, badge-manager/ and guild-app trees, the operator's records, the
@@ -50,7 +53,7 @@ That doc is a June-2026 overhaul tracker; the governing plan is now
 - **Postgres+Drizzle canonical store** — tier vocab member→elder, cruft swept (P2)
 - **Telegram governance bot** — kept, de-emphasized; community surfaces (/groups /feedback /docs /guide /about) off primary nav
 - **API hardening** — withAuth+zod, per-user rate limits, structured logging, one-time ROLA nonces
-- **Green e2e CI** (#145); lint frozen 13-problem baseline · **Operator surfaces** — /admin, /deploy-escrow, runbooks, run-guild-app skill
+- **Green e2e CI** (#145); ~~lint frozen 13-problem baseline~~ ⚠️ *Corrected 2026-10-03:* the lint baseline is clear — `bun run lint` in `guild-app/` exits 0 with no problems, and the `lint (guild-app)` CI job runs it on every PR · **Operator surfaces** — /admin, /deploy-escrow, runbooks, run-guild-app skill
 
 ## B. In-flight / explicitly next
 
@@ -145,7 +148,7 @@ That doc is a June-2026 overhaul tracker; the governing plan is now
 - /admin + /deploy-escrow ungated (nav-only) · /guide duplicates /docs
 - P4 dual stores (bot SQLite ∥ app Postgres; profile reads two stores)
 - Multi-replica: in-memory nonces + per-instance rate limits; ROLA origin build-time constant
-- xUSDC/xUSDT unregistered on live component · lint frozen-red 13 · submissions "attachments coming soon" stub
+- xUSDC/xUSDT unregistered on live component · ~~lint frozen-red 13~~ (clear since — see §A's lint note, 2026-10-03) · submissions "attachments coming soon" stub
 - CV2 reads only — writes have never been enabled (ABI unverified, audit CRITICAL-1) and CV2 is PARKED 2026-07-31 pending the guild-saas-dao · escrow owner badge = single-badge SPOF (no AccessController)
 
 ## ⚠️ Cross-doc contradictions (resolve before open-up)
