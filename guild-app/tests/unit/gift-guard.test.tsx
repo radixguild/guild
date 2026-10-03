@@ -156,7 +156,7 @@ describe("gift guard — forbidden destinations", () => {
   const HOT_SERVER = "account_rdx128lggt503h7m2dhzqnrkkqv4zklxcjmdggr8xxtqy8e47p7fkmd8cx";
   const ORPHANED_DAPP_DEF = "account_rdx128y6j78mt0aqv6372evz28hrxp8mn06ccddkr7xppc88hyvynvjdwr";
 
-  it("rejects the EXPOSED hot server account → rail stays OFF", async () => {
+  it("rejects the hot server account → rail stays OFF", async () => {
     const gift = await loadGift({ xrd: HOT_SERVER });
     expect(gift.giftDestination("xrd")).toBeNull();
     expect(gift.isGiftRailLive("xrd")).toBe(false);

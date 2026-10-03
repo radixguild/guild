@@ -71,8 +71,9 @@ type Validation = { ok: true; value: string } | { ok: false; reason: string };
  */
 export const FORBIDDEN_XRD_DESTINATIONS: Record<string, string> = {
   "account_rdx128lggt503h7m2dhzqnrkkqv4zklxcjmdggr8xxtqy8e47p7fkmd8cx":
-    "is the ecosystem's hot server account (EXPOSED, unrotated key, no seed phrase) — " +
-    "gifts sent there land in an internet-facing wallet nobody holds a seed for",
+    "is the ecosystem's hot server account: its key is held on an internet-facing server, " +
+    "has not been rotated and has no seed phrase, so a gift sent there would sit in a " +
+    "wallet nobody holds a seed for",
   "account_rdx128y6j78mt0aqv6372evz28hrxp8mn06ccddkr7xppc88hyvynvjdwr":
     "is the orphaned old dApp definition — NO key exists anywhere, so anything sent " +
     "to it is permanently unrecoverable",
