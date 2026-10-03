@@ -525,7 +525,8 @@ export async function approveAndRelease({ onChainTaskId, workerAccount, rewardXr
 // Recovery: ONLY valid while the task is still Open (pre-claim) and the poster
 // still holds the Task Receipt #taskId#. Once the worker has bonded a claim,
 // cancel is rejected on-chain — recover via expire_claim (public once the
-// deadline plus grace has passed; the caller is paid a min(1 XRD, bond) bounty)
+// deadline plus grace has passed; the caller is paid `expire_bounty_pct` of the
+// bond (0.1 live), rounded down)
 // or the dispute path instead. There is no heartbeat timeout to wait out: DB-3
 // removed the leg, so the claim deadline is fixed at claim time.
 export async function cancelTask({ onChainTaskId, dryRun }) {

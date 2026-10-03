@@ -486,9 +486,12 @@ export type AutoResolveDefault =
 /**
  * Read `dispute_auto_resolve_default` from the escrow component's state.
  *
- * This is what auto_resolve_dispute will actually apply, and the finalize
- * manifest must route the returned buckets to match it — a mismatch pays the
- * wrong party (H1). Returns null when the field can't be read (Gateway hiccup /
+ * `raise_dispute` pins this value onto the task, and auto_resolve_dispute applies
+ * the default ruling pinned when the dispute was raised — a later change to this
+ * field does not move a dispute already raised. Under PULL the finalize manifest
+ * routes nothing (the component credits both sides internally), so this value is
+ * for reporting or predicting a settlement, not for routing one. Returns null when
+ * the field can't be read (Gateway hiccup /
  * unexpected shape); callers MUST fail closed on null rather than assume a
  * default, because assuming is the bug.
  */
