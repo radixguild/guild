@@ -104,7 +104,7 @@ describe.skipIf(PRIV.skip)("flock coverage is real where it counts", () => {
   })
 })
 
-describe.skipIf(!HAS_FLOCK)("reconcile-cron.sh — flock -n overlap guard", () => {
+describe.skipIf(!HAS_FLOCK || PRIV.skip)("reconcile-cron.sh — flock -n overlap guard", () => {
   it("skips immediately (exit 0) when another run already holds the lock, before ever touching the cursor", async () => {
     const dir = mkdtempSync(join(tmpdir(), "reconcile-cron-lock-"))
     const lockFile = join(dir, "guild-reconcile.lock")
