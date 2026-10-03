@@ -253,7 +253,7 @@ Add to `claude_desktop_config.json` (macOS:
   "mcpServers": {
     "guild": {
       "command": "npx",
-      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.1.tgz", "guild-mcp"]
+      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.2.tgz", "guild-mcp"]
     }
   }
 }
@@ -268,7 +268,7 @@ that**. So for a long-lived config use the **versioned URL**, which the deploy s
 the stable one and names in `https://radixguild.com/kit/mcp.json` (`"versioned"`):
 
 ```json
-{ "command": "npx", "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.1.tgz", "guild-mcp"] }
+{ "command": "npx", "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.2.tgz", "guild-mcp"] }
 ```
 
 An update is then a URL you change on purpose, never a stale build you did not notice. **A
@@ -291,7 +291,7 @@ restart the client.
 
 Claude Code reads project-scoped servers from a `.mcp.json` at the repo root (checked
 in, so the whole team/every agent gets it — no per-machine setup), or add it for your
-user with `claude mcp add guild -- npx -y -p https://radixguild.com/kit/mcp-0.3.1.tgz guild-mcp`.
+user with `claude mcp add guild -- npx -y -p https://radixguild.com/kit/mcp-0.3.2.tgz guild-mcp`.
 A checked-in config is the longest-lived one there is, so it pins the **versioned** URL (see
 the caching note under Claude Desktop):
 
@@ -300,7 +300,7 @@ the caching note under Claude Desktop):
   "mcpServers": {
     "guild": {
       "command": "npx",
-      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.1.tgz", "guild-mcp"]
+      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.2.tgz", "guild-mcp"]
     }
   }
 }
@@ -318,7 +318,7 @@ required beyond the optional `GUILD_*` overrides below:
 ```json
 {
   "command": "npx",
-  "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.1.tgz", "guild-mcp"],
+  "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.2.tgz", "guild-mcp"],
   "env": {}
 }
 ```
