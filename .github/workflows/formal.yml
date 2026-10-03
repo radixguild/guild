@@ -1,0 +1,172 @@
+name: formal
+
+# Quint model check + mutation proof of the escrow state machine.
+#
+# A SEPARATE workflow on purpose. Apalache needs a JVM and takes minutes; scrypto.yml
+# is already the repo's most expensive job (~19 min) and does not need to grow, and
+# test.yml is tuned around sub-21s ubuntu-slim jobs this cannot qualify for.
+#
+# BILLING: private-repo minutes bill PER JOB, ROUNDED UP, so cost tracks runner rate ×
+# job count, not elapsed time. This is deliberately ONE job running all four tiers
+# rather than a matrix. Apalache dominates the runtime (~60-110s measured at
+# --max-steps=10), which makes round-up irrelevant here and job count the only lever.
+# `ubuntu-slim` is NOT appropriate: a JVM model-check is nowhere near the sub-21s
+# threshold that justified slim for the docs/PII/agent jobs in test.yml.
+#
+# Measured 2026-08-25 on an M-series Mac: typecheck+simulate+5 mutations ≈ 25s,
+# Apalache 8 invariants at --max-steps=10 ≈ 64s. Budget 20 min for a cold runner
+# plus the first Apalache fetch.
+#
+# ⚠️ RE-BUDGETED 2026-09-01. The model went from ONE verified instance to FOUR:
+# AUTO_DEFAULT became a const, so every selectable auto-resolve default is now
+# verified rather than just the deployed SplitEvenly. Measured on the same Mac
+# under load: 156s + 138s + 85s + 85s ≈ 8 min of Apalache, plus 10 mutations.
+# A dedicated runner should land nearer 4×65s, but the old 20-minute cap left no
+# headroom for a cold Apalache fetch on top of that, so the cap is 30. Still ONE
+# job — per the billing note above, job count is the cost lever, not elapsed
+# time, so widening this job is close to free and splitting it would not be.
+
+on:
+  pull_request:
+    # No branch filter — stacked PRs (base = another feature branch) must get this
+    # gate too, not only after they retarget to main. Same reasoning as test.yml.
+  push:
+    branches: [main]
+    paths:
+      - 'formal/**'
+      - 'escrow/scrypto/guild-marketplace-escrow/src/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Change detection for `formal gate` below. `on.pull_request` has no `paths:` filter
+  # any more: a path-filtered workflow never reports on a PR that doesn't touch
+  # its paths, so it could not be a required check (such a PR would wait on it
+  # forever). Every PR runs this cheap job instead; the heavy job(s) skip when
+  # nothing relevant changed, and the gate reports on every PR.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: diff
+        name: did this change touch the paths this workflow checks?
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The escrow source is watched too: a change there does not merely re-run
+          # the check, it FAILS it. The grounding hash in formal/models/*.mutations.json
+          # stops matching, so a human has to re-read lib.rs and either fix the model or
+          # assert it still holds with `node formal/bin/formal.mjs ground <model>`. That
+          # assertion, as a reviewable commit, is the only part of model-vs-code
+          # agreement a machine can enforce.
+          changed="$(git diff --name-only "$BASE_SHA"...HEAD -- ':(glob)formal/**' ':(glob)escrow/scrypto/guild-marketplace-escrow/src/**')"
+          if [ -n "$changed" ]; then echo "run=true"; else echo "run=false"; fi >> "$GITHUB_OUTPUT"
+          printf 'relevant files changed:\n%s\n' "${changed:-(none)}"
+
+  # NB: the required status check is `formal gate` (the job at the end), not this
+  # job. Still, do not rename either casually — same rule as test.yml.
+  formal:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    name: quint + apalache
+    runs-on: ubuntu-latest
+    # GitHub's default job timeout is SIX HOURS. A hung JVM with no cap would burn
+    # 360 minutes off a budget capped in the low tens of dollars.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '20'
+
+      # Apalache is a ~200MB JVM distribution that `quint verify` fetches on first
+      # use. An unpinned auto-fetch on every cache miss is a supply-chain and
+      # availability risk nothing else in this fleet's CI carries, so the version is
+      # pinned in quint.lock.json and the cache key is derived from that same file —
+      # the pin and the cache move together, and a bump is a reviewable diff.
+      - name: Cache Apalache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.quint
+          key: quint-${{ runner.os }}-${{ hashFiles('formal/quint.lock.json') }}
+
+      - name: Install pinned Quint
+        run: |
+          VER=$(node -p "require('./formal/quint.lock.json').tools.quint")
+          npm install -g "@informalsystems/quint@${VER}"
+
+      # `quint run` uses a Rust evaluator that quint DOWNLOADS FROM GITHUB, unauthenticated,
+      # on first use. On a cold ~/.quint that is a network call subject to GitHub's
+      # anonymous rate limit — it failed one repo's first run and not another's, from the
+      # same commit. Warm it here, with retries, so a rate limit is attributed to the step
+      # whose job is fetching rather than surfacing as a mysterious gate failure. Once it
+      # lands, actions/cache keeps it for subsequent runs.
+      - name: Warm the Quint toolchain
+        run: node formal/bin/formal.mjs warm
+
+      # One command, enforcing in order: version pins, grounding drift, typecheck,
+      # simulation, tracked open findings, THE MUTATION PROOF, then Apalache.
+      # Mutations run BEFORE Apalache deliberately — if a model cannot detect the bug
+      # classes it was written for, a clean verify is worthless and there is no reason
+      # to spend the minutes proving it.
+      - name: formal check
+        run: node formal/bin/formal.mjs check
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: formal-report
+          path: formal/REPORT.md
+          if-no-files-found: warn
+
+  # The one check to require on main. It runs for every PR (`if: always()`) and
+  # fails unless change detection succeeded and every job above either passed or
+  # was skipped because this PR touched none of the watched paths. Requiring the
+  # heavy job by name instead would let a broken `changes` job skip it silently
+  # (a skipped job counts as passing), and a skipped matrix job reports under an
+  # unexpanded name that a required context never matches.
+  gate:
+    name: formal gate
+    if: always()
+    needs: [changes, formal]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: every job passed, or was skipped for an unrelated change
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          [ "$CHANGES" = "success" ] || { echo "::error::change detection ended: $CHANGES"; exit 1; }
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::a job in this workflow ended: $r"; exit 1 ;;
+            esac
+          done
+          echo "ok: $RESULTS"

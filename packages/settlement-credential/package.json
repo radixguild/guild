@@ -1,0 +1,36 @@
+{
+  "name": "@radix-guild/settlement-credential",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Evidence-only settlement credential: turn a settled Guild task into a signed, chain-agnostic, verifiable credential, plus a static profile page with an in-page verifier. Draft slice — see README.md for what this is and is not.",
+  "license": "Apache-2.0",
+  "author": "bigdev (https://github.com/bigdevxrd)",
+  "type": "module",
+  "files": [
+    "src/**/*.ts",
+    "!src/**/*.test.ts",
+    "profile/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "test": "bun test src/",
+    "type-check": "bun x tsc --noEmit",
+    "build-fixture": "bun src/build-fixture-cli.ts",
+    "build-verifier": "bun build src/browser-verifier.ts --outfile=profile/verifier.bundle.js --target=browser --format=iife"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "bun-types": "1.3.5",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=20",
+    "bun": ">=1.1"
+  }
+}

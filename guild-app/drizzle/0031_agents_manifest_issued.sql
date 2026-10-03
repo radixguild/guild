@@ -1,0 +1,3 @@
+ALTER TABLE "agents" DROP CONSTRAINT "agents_activated_at_check";--> statement-breakpoint
+ALTER TABLE "agents" ADD COLUMN "manifest_issued_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "agents" ADD CONSTRAINT "agents_activated_at_check" CHECK (("agents"."status" = 'pending' AND "agents"."activated_at" IS NULL) OR ("agents"."status" IN ('active', 'suspended') AND "agents"."activated_at" IS NOT NULL) OR ("agents"."status" = 'retired'));

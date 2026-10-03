@@ -1,0 +1,56 @@
+# lefthook — local git hooks. Runs the same gitleaks scan as CI (secret-scan.yml)
+# against STAGED changes, so a secret is caught before it ever lands in a commit —
+# and checks the IDENTITY the commit is about to carry, because that is the one leak
+# no later commit can take back (see `identity` below).
+#
+# One-time setup (per clone):
+#   brew install lefthook gitleaks   # or: see https://lefthook.dev / https://gitleaks.io
+#   lefthook install                 # writes .git/hooks/* to call this file
+#
+# Bypass in an emergency with `git commit --no-verify` (then fix + re-scan).
+
+pre-commit:
+  parallel: true
+  commands:
+    gitleaks:
+      # Scan only what's staged. --redact keeps any real secret out of terminal
+      # scrollback; -c pins the shared allowlist so local == CI.
+      run: gitleaks git --staged --no-banner --redact -c .gitleaks.toml
+      fail_text: |
+        gitleaks found a potential secret in your staged changes.
+        Review the finding above. If it's a real credential: unstage it, rotate it,
+        and scrub it. If it's a confirmed placeholder: add it to .gitleaks.toml's
+        allowlist (target the value, not the whole path).
+    identity:
+      # The author/committer this commit is about to carry must be on the identity
+      # allowlist in scripts/pii-scan.mjs (GitHub noreply shapes + the project handle).
+      # The same rule runs again over every commit a PR introduces (the pii-scan.yml
+      # workflow where it exists, the maintainers' pre-merge gate where it does not), but
+      # by then the commit exists: identity is part of the commit object, a follow-up commit
+      # cannot repair it, and force-push is denied here. This is the only point at which
+      # the mistake is free. 2026-09: a stray repo-local `test <test@test.com>` override
+      # went unnoticed for days and reached 18 squash commits on main as trailers.
+      #
+      # Structural only — no blocklist, no network, two `git var` reads (~0.2s, node startup). Inside
+      # the hook git has already exported GIT_AUTHOR_*, so `--author=` and `-c user.email=`
+      # overrides are judged too. Missing node is a SKIP, never a block: a hook must not
+      # be what wedges a clone, and the pre-merge check is the backstop.
+      #
+      # A missing scanner is a SKIP for the same reason. scripts/pii-scan.mjs is not in the
+      # public repo (it stays with the maintainers), so a contributor's clone has nothing to
+      # run here. Only the file's absence skips: wherever it exists, its exit code decides.
+      # tests/unit/lefthook-identity-hook.test.ts (guild-app) runs this block both ways.
+      run: |
+        command -v node >/dev/null 2>&1 || { echo "identity check skipped: node not on PATH (checked again before merge)"; exit 0; }
+        [ -f scripts/pii-scan.mjs ] || { echo "identity check skipped: scripts/pii-scan.mjs is not in this clone (checked again before merge)"; exit 0; }
+        node scripts/pii-scan.mjs --check-ident
+      fail_text: |
+        This commit would be recorded under an identity that is not on the allowlist
+        (the value is masked above on purpose). See what git is about to use:
+            git var GIT_AUTHOR_IDENT
+        Expected: the project handle and its GitHub noreply address, from your GLOBAL config.
+        If a stray repo-local override is back, REMOVE it — do not paper over it:
+            git config --local --unset user.email
+            git config --local --unset user.name
+        Never work around this with a per-commit `-c user.email=…` or `--author=…`, and
+        never with `--no-verify`: the commit object keeps whatever identity it was born with.

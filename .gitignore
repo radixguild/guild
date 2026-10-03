@@ -1,0 +1,115 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+**/target/
+dist/
+badge-manager/build/
+guild-app/.next/
+# scripts/deploy.sh builds into .next-candidate and keeps one previous artifact
+# as .next-previous, both alongside .next on the box. Untracked like .next
+# itself — a build output that happened to be named differently is still a build
+# output, and a stray one must never become a committable file.
+guild-app/.next-candidate/
+guild-app/.next-previous/
+guild-app/tsconfig.tsbuildinfo
+guild-app/tsconfig.candidate.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.*.local
+# Pilot agent-fleet secrets (sourced by ops/agent-env/gate1-env.sh) — never commit.
+.env.guild-pilot
+.env.guild-agents
+
+# U3 identity/PII gate (scripts/pii-scan.mjs) — local pattern source. Holds only
+# SHA-256 hashes (never plaintext), but stays gitignored anyway: the gate's own
+# design constraint is that it must never embed the PII it guards, and "hashed"
+# is not "safe to commit" for low-entropy values like an IPv4 (the whole /32
+# space brute-forces in seconds). CI sources the same shape from the
+# GUILD_PII_BLOCKLIST_JSON secret instead. See scripts/pii-scan.mjs's header.
+scripts/.pii-blocklist.local.json
+
+# Database files
+*.db
+*.db-journal
+# SQLite WAL-mode sidecars — the Telegram bot's guild.db runs in WAL mode
+# (bot/db.js), and its -wal file on the box is several MB of live state.
+*.db-wal
+*.db-shm
+
+# Editor/OS files
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Rust
+Cargo.lock
+# Exception: Scrypto blueprints produce binary wasm artifacts — lockfiles
+# must be committed for reproducible mainnet builds.
+!escrow/scrypto/guild-marketplace-escrow/Cargo.lock
+!blueprints/agent-badge-controller/Cargo.lock
+!badge-manager/scrypto/radix-badge-manager/Cargo.lock
+
+# Test artifacts
+guild-app/test-results/
+guild-app/next-env.d.ts
+
+# Logs
+*.log
+.aider*
+
+# Claude Code — local session state (skills + launch.json ARE tracked)
+.claude/settings.local.json
+.claude/tmp/
+.claude/worktrees/
+
+# Playwright artifacts
+guild-app/playwright-report/
+escrow/artifacts/
+
+# agent worker on-chain intent-hash recovery breadcrumbs (runtime artifact)
+guild-app/.guild-worker-intents.jsonl
+.guild-worker-intents.jsonl
+.env.guild-pilot*
+
+# Read-only reference checkouts for the xstelea radix skill (never imported, never committed)
+.repos/
+
+# Third-party agent skills are installed, not vendored. skills-lock.json pins the
+# source + content hash, so `npx skills add` reproduces them exactly; committing
+# 44 files of someone else's content into a repo that may go public is a
+# licensing question we do not need to take on.
+.agents/
+.claude/skills/radix
+
+# Saved public webpages dropped into the tree for research. Swept into a commit
+# by `git add -A` three times now (vs.html #370, then mm.html + rt.html). These
+# are research inputs, not source — keep them, never track them.
+/guild-app/*.html
+
+# Apalache counterexamples + ITF traces, written by `quint verify`
+_apalache-out/
+
+# Mutation-proof scratch file: `formal check` writes <model>.__mut.qnt while it
+# applies each patch and removes it after. A run interrupted mid-mutation leaves
+# one behind, and it was committed once (efeed22, caught immediately) — a
+# half-patched copy of a model beside the real one is exactly the confusion the
+# harness exists to prevent.
+formal/models/*.__mut.qnt
+
+# scripts/deploy.sh holds this directory on the box while a deploy runs (scripts/deploy-lock.sh).
+/.deploy.lock/
+
+# Served agent/MCP kits: scripts/deploy.sh swaps them into the checkout root on the box (KIT_DIR).
+/kit/
+# The previously served kits, kept by scripts/deploy-swap.sh for rollback (KIT_PREVIOUS).
+/kit-previous/
+# scripts/deploy.sh's kit staging dir; a deploy that stops before the swap leaves it behind (KIT_CANDIDATE).
+/kit-candidate/
+# The box's nightly database backup dir: dumps and the live backup.sh (copy kept in ops/backup/). Never commit.
+/backups/

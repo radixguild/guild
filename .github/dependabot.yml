@@ -1,0 +1,24 @@
+# Keeps the SHA pins in .github/workflows/*.yml current. Every third-party
+# `uses:` in this fleet is pinned to a full commit SHA with a `# vX.Y.Z`
+# comment (see each workflow file) — Dependabot is what re-proposes that SHA
+# when the action cuts a new release, as a single reviewable PR, instead of
+# the pin silently going stale.
+#
+# github-actions ONLY. npm/cargo dependency CVEs are already covered by
+# GitHub's Dependabot *security alerts* (a separate feature from this
+# version-update config, on for this repo — run `gh api -i
+# 'repos/{owner}/{repo}/vulnerability-alerts'` inside a clone: gh fills in
+# the repo from the clone's remote, and 204 means on). Adding npm/cargo
+# ecosystems here would additionally open version-update PRs for routine
+# bumps, which is a separate decision (noise vs. currency) this change does
+# not make.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"

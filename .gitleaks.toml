@@ -1,0 +1,141 @@
+# gitleaks config — guild-saas
+# Secret-scanning guardrail (pre-public prerequisite). Runs in CI (secret-scan.yml)
+# and locally via the lefthook pre-commit hook. Pinned to gitleaks 8.30.x semantics.
+#
+# Baseline (2026-07-15): a full-history scan (604 commits, 9.1 MB) surfaced 30
+# findings, ALL benign — doc curl examples and test fixtures. The allowlist below
+# targets those *placeholder values*, NOT their file paths, so a real secret that
+# lands in the same docs/tests still trips the scanner. Do not broaden to whole
+# paths without a reason.
+
+title = "guild-saas gitleaks config"
+
+[extend]
+# Inherit gitleaks' full default ruleset, then narrow with the allowlist below.
+useDefault = true
+
+[allowlist]
+description = "Known non-secret placeholders and example files"
+
+# Example env files are documentation, not real secrets. Real .env / .env.local
+# are gitignored and never committed.
+paths = [
+  '''\.env\.example$''',
+  '''\.env\.sample$''',
+]
+
+# Match against the captured secret value. These are the exact placeholder tokens
+# that live in docs (Authorization: Bearer YOUR_API_KEY) and unit-test fixtures.
+# None of these shapes can collide with a real credential.
+regexTarget = "match"
+regexes = [
+  # Doc placeholders: YOUR_API_KEY / YOUR_TOKEN / YOUR_SECRET / YOUR_BEARER_TOKEN
+  '''YOUR_(?:API_KEY|TOKEN|SECRET|BEARER_TOKEN|BEARER)''',
+  # Sequential/obvious test fixtures
+  '''abcdef1234567890''',
+  '''test-api-key-[A-Za-z0-9]+''',
+  # Mock JWTs whose signature segment is the literal word "signature"
+  # (real JWTs carry a base64 HMAC/RSA signature, never the string "signature").
+  '''eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.signature''',
+  # English PROSE, not a credential. The default generic-api-key rule treats the
+  # word "token" as a keyword and grabs what follows, so ordinary governance
+  # writing trips it: the match that failed CI on 2026-07-26 was literally
+  # "token-weighted\n> funding/treasury " (entropy 3.6) in a design doc. This is
+  # vocabulary this project cannot avoid — PROJECT-STATE.md, the Muan runbook and
+  # the WG packet all discuss token-weighted voting — and it is almost certainly
+  # what failed the un-triaged main run at 85f4695 (leaks found: 1, redacted, then
+  # green on the very next commit with no config change).
+  # Hyphenated lowercase English after "token" cannot collide with a real
+  # credential shape, so this stays value-targeted per the rule above.
+  '''token-(?:weighted|gated|holder|holders|based|denominated)''',
+  # Doc placeholder in guild-public's archived api-design.md (folded with history
+  # 2026-08-14, slice A): an example mint response shows "api_key":
+  # "guild_ak_live_abc123...". The literal trailing ellipsis is part of the match,
+  # so this cannot collide with a real key. Value-targeted per the rule above.
+  '''guild_ak_live_abc123\.\.\.''',
+  # Drizzle column reference, not a credential. `.returning({ key: table.key })`
+  # is the ordinary idiom for naming a returned column, and the default
+  # generic-api-key rule treats `key:` as a keyword and grabs whatever follows —
+  # here the qualified column `x402Settlements.key` (entropy 3.58, flagged twice
+  # in guild-app/src/db/queries/x402.ts on 2026-09-02). A bare dotted TypeScript
+  # identifier cannot collide with a real credential shape, so this stays
+  # value-targeted per the rule at the top of this block rather than
+  # allowlisting the file.
+  #
+  # Worth recording WHY this was urgent rather than cosmetic: `gitleaks git`
+  # scans every commit reachable in the checkout, and CI fetches all refs — so a
+  # false positive introduced on ANY branch reddens the secret scan on EVERY open
+  # PR, including ones that never touch the file. This one arrived on a feature
+  # branch and blocked unrelated PRs within the hour. A scanner that cries wolf
+  # repo-wide is one somebody eventually learns to click past, which is the real
+  # cost.
+  '''key:\s*\w+\.key\b''',
+  # Same generic-api-key false-positive shape, from the Telegram bot folded in
+  # from guild-public (2026-09-29): bot/services/insurance.js's fee-tier table
+  # names each tier's platform_config row as `key: "insurance_fee_tier_<range>"`.
+  # Those are config-row names, not credentials. Pinned to the FOUR literals, not
+  # a pattern: `insurance_fee_tier_\w+` would also have masked a real secret that
+  # merely carried the prefix (found by the fold's review, reproduced with gitleaks).
+  '''key:\s*"insurance_fee_tier_(?:0_100|100_500|500_2000|2000_plus)"''',
+  # A hand-typed test vector in guild-app/tests/unit/x402-structural-decode.test.ts,
+  # named KEY_HEX and shaped exactly like a 32-byte private key — which is why the
+  # scanner is right to look at it, and why this entry pins the EXACT literal
+  # rather than a pattern. A pattern here could mask a real key of the same shape;
+  # a literal cannot mask anything but itself.
+  #
+  # Established fabricated by construction, not by trusting the comment beside it
+  # in the test file — an author's assertion about the thing being checked is not
+  # evidence. The byte sequence is 4f 8e 1a 2b 3c 4d 5e 6f 70 81 92 a3 …, whose
+  # successive deltas are drawn from just {1, 17, 63, 140}: two irregular steps at
+  # the start, then a long run of +17 broken twice by +1. Only 18 distinct byte
+  # values across 32. Visibly hand-typed; no key generator produces it.
+  #
+  # ⚠️ CORRECTED 2026-09-02: this comment previously said the deltas were "0x11
+  # repeated". They are not — the +17 run is long but not uniform. The conclusion
+  # stands on the measured set above, and the overstatement is fixed here rather
+  # than left, because an allowlist justification is exactly the claim a future
+  # reader leans on without re-deriving it.
+  #
+  # ⚠️ AND THIS ENTRY CANNOT BE REMOVED. The fixture was fixed at source in
+  # 0c44800 — KEY_HEX is now computed as (i * 17 + 0x4f) & 0xff, deterministic so
+  # a signature failure stays reproducible, and readable byte-for-byte from the
+  # code, which is the property that makes it obviously not a credential. But
+  # `gitleaks git` scans HISTORY: the literal still exists in commit 7ba9d0c and
+  # always will, short of a rewrite. What the source fix buys is that no FUTURE
+  # commit reintroduces it and this allowlist stops needing to grow — not that it
+  # can shrink. An earlier note here implied otherwise.
+  #
+  # This entry unblocks CI; it is not an endorsement of committing key-shaped
+  # constants.
+  '''4f8e1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7''',
+  # did:key strings (packages/settlement-credential — the settlement-credential
+  # slice, decision 6 of the 2026-09-04 Guild Reality Check). A did:key is a
+  # PUBLIC key by construction: the W3C did:key method embeds the raw public key
+  # bytes (multicodec-tagged, base58btc-encoded) directly in the identifier
+  # specifically so it can be shared and verified without any resolution step —
+  # there is no private-key form of this string, so nothing in it is ever secret
+  # material. High Shannon entropy is exactly what a base58-encoded public key
+  # looks like; that is not evidence of a leaked credential here the way it
+  # would be for an opaque bearer token.
+  # Confirmed non-secret by construction (not by trusting a comment): every
+  # did:key this pattern matches in-repo today is either a throwaway demo key
+  # `generateThrowawaySigningKey()` mints at build time (regenerates differently
+  # on every `bun run build-fixture` run — there is no fixed literal to pin) or
+  # a known-answer test vector independently re-derived from RFC 8032 test
+  # vector 1 (see did-key.test.ts's own comment for how).
+  # Value-targeted per the rule at the top of this block, but note what
+  # `regexTarget = "match"` actually captures for the default generic-api-key
+  # rule: it keys off the substring "key" and grabs the value AFTER it, so the
+  # captured Match text is `key:<base58 body><closing quote>` — the `did:`
+  # prefix and the opening quote are NOT part of what this repo's own
+  # allowlist mechanism compares against. Checked directly with gitleaks
+  # 8.30.1 (`--report-format json`, no redaction, throwaway keys, deleted
+  # after): a JSON `"poster": "did:key:z6Mk...ABC"` line and a TS
+  # `= 'did:key:z6Mk...ABC'` assignment both produced Match text
+  # `key:z6Mk...ABC` followed by whichever quote character closed that
+  # line — never the leading `did:` or the opening quote. The pattern below
+  # matches that exact captured shape (base58btc alphabet, >=20 chars,
+  # immediately closed by a quote) rather than a shape this repo's own
+  # matcher would never actually produce.
+  '''key:z[1-9A-HJ-NP-Za-km-z]{20,}['"]''',
+]

@@ -1,0 +1,49 @@
+{
+  "name": "@radix-guild/alert-policy",
+  "version": "0.1.0",
+  "description": "Edge-triggered operator alerts with backoff reminders, recovery notices and inhibition — the one policy every bigdev bot pages through. Zero dependencies.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/radixguild/guild",
+    "directory": "packages/alert-policy"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.cjs",
+    "dist/**/*.d.ts",
+    "dist/**/*.map",
+    "src/**/*.ts",
+    "!src/**/*.test.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json --emitDeclarationOnly && bun build src/index.ts --format esm --target node --outfile dist/index.js && bun build src/index.ts --format cjs --target node --outfile dist/index.cjs",
+    "test": "bun test src/",
+    "type-check": "tsc --noEmit",
+    "smoke:node": "node --input-type=module -e \"import('./dist/index.js').then(m => { if (typeof m.decide !== 'function' || typeof m.createAlertEvaluator !== 'function') throw new Error('esm exports missing'); console.log('node esm ok:', Object.keys(m).length, 'exports') })\" && node -e \"const m = require('./dist/index.cjs'); if (typeof m.decide !== 'function' || typeof m.SqliteAlertStore !== 'function') throw new Error('cjs exports missing'); console.log('node cjs ok:', Object.keys(m).length, 'exports')\"",
+    "vendor": "bun scripts/vendor.ts"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.39",
+    "bun-types": "1.3.5",
+    "typescript": "5.9.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

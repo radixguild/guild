@@ -1,0 +1,21 @@
+{
+  "name": "radix-guild-bot",
+  "version": "1.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Telegram bot for Radix Guild badge management + governance",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "node --test test/*.test.js tests/*.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.9.0",
+    "dotenv": "16.6.1",
+    "grammy": "1.42.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

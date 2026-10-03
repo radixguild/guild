@@ -1,0 +1,27 @@
+{
+  // Build config — emits dist/*.js + dist/*.d.ts for Node consumers. The dev/test
+  // tsconfig.json stays noEmit (bun runs src/*.ts directly, tests use bun:test).
+  // Excludes everything the tarball excludes (tests, probes, operator-only CLIs)
+  // so dist can never carry a file `files`/publish-gate would have refused as .ts.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/*.test.ts",
+    "src/**/*.probe.ts",
+    "src/derive-agent.ts",
+    "src/throwaway-key.ts",
+    "src/update-pilot-env.ts",
+    "src/live-auth-check.ts"
+  ]
+}

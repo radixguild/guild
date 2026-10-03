@@ -1,0 +1,235 @@
+{
+  "model": "escrow_task.qnt",
+  "main": "escrow_honest_arbiter",
+  "grounds": {
+    "describes": "the Wave B stage 1-6 blueprint (bond held to settlement, proportional W5 splits, proportional expire bounty, FavorNonRaiser, and stage 6's review window + timed release), read line by line 2026-08-30; RE-READ 2026-09-01 for two later changes this prose did not name and should have: (a) the L6(c) self-dealing guard (c5e8f8a, 2026-08-31) - modelled as the not(arbiterIsWorker) guard on resolveDispute and gated by the SELF-DEALING-GUARD-DELETED mutation; (b) resolve_dispute's arbiter_badge moving Bucket -> Proof and its return (Bucket,Bucket) -> Bucket (fa8c15e, 2026-09-01), because the Wave B badge is non-transferable. (b) needs NO model change, and the reason is checkable rather than asserted: mayResolve is a pure Actor predicate, no var in this model represents badge custody or movement, and the model's stated idealisation is 'holding the credential == passing the check'. Why this matters: `formal ground` rewrites only sha256 and verified, never this prose, so a stamp whose describes does not name the change reads as review that did not happen. NOT the deployed component: mainnet still runs the PULL-cutover build until the Wave B swap ceremony. RE-GROUNDED 2026-09-15 (P7-02, task 90, PR #654): lib.rs's ONLY change was one `pub mod nft_swap;` declaration (plus its doc comment) at the top of the file, wiring in a NEW, STANDALONE `NftSwap` blueprint that lives entirely in a sibling file (src/nft_swap.rs) and is never called from, or shares any struct/vault/method with, `guild_marketplace_escrow`. Confirmed by diff, not merely asserted: `git diff` against the pre-PR commit touches zero lines inside `mod guild_marketplace_escrow { ... }` — every inserted line is the six-line module declaration above the `// Config view + state types` banner. No state var, action, or invariant in this model is affected; re-grounded on that reading rather than on trust. NftSwap itself has no Quint model yet — tracked as deferred work (formal/nft_swap.qnt), not blocking this escrow re-ground.",
+    "verified": "2026-09-15",
+    "sources": [
+      {
+        "path": "escrow/scrypto/guild-marketplace-escrow/src/lib.rs",
+        "sha256": "2b69f123b23b5b18"
+      }
+    ],
+    "note": "PROJECT-STATE.md's 2026-07-31 'auto_resolve returns both buckets to the caller' entry describes the PRE-PULL blueprint and is superseded at PROJECT-STATE.md:5346. lib.rs won. If that file changes, this check FAILS until a human re-reads it and re-grounds."
+  },
+  "simulate": {
+    "maxSteps": 25,
+    "maxSamples": 30000
+  },
+  "verify": {
+    "maxSteps": 10,
+    "invariants": [
+      "invConservation",
+      "invNonNegative",
+      "invOnlyAuthorisedSettled",
+      "invNoUnilateralDominance",
+      "invArbiterRulingBounded",
+      "invForfeitureIsCallerAndHouseOnly",
+      "invNoOverWithdraw",
+      "invNoStrandedFunds",
+      "invNoBondLeftBehindAtSettlement",
+      "invSubmitOnlyByWorker"
+    ]
+  },
+  "mutations": [
+    {
+      "id": "BUG-7-REGRESSION",
+      "describes": "settlement reachable by an unauthenticated caller (closed under PULL; this keeps it closed)",
+      "apply": {
+        "type": "delete-line",
+        "match": "mayApprove(caller),"
+      },
+      "mustViolate": "invOnlyAuthorisedSettled"
+    },
+    {
+      "id": "ARBITER-AUTH",
+      "describes": "resolve_dispute reachable without the arbiter badge",
+      "apply": {
+        "type": "delete-line",
+        "match": "mayResolve(caller),"
+      },
+      "mustViolate": "invOnlyAuthorisedSettled"
+    },
+    {
+      "id": "INSURANCE-FOLLOWS-DEFAULT",
+      "describes": "auto-resolve routes insurance by the configured ruling instead of forcing RefundPoster (lib.rs:1716-1723), under a raiser-favouring default. This is the exact shape of the strict-dominance bug closed 2026-08-01/08-06: disputing then pays better than delivering.",
+      "applyAll": [
+        {
+          "type": "replace",
+          "from": "  import escrow_task(ARBITER_IS_WORKER = false, ARBITER_IS_POSTER = false,\n                     AUTO_DEFAULT = SplitEvenly).*",
+          "to": "  import escrow_task(ARBITER_IS_WORKER = false, ARBITER_IS_POSTER = false,\n                     AUTO_DEFAULT = FavorDisputeRaiser).*"
+        },
+        {
+          "type": "replace",
+          "from": "      workerEntitled' = workerEntitled + wShare,",
+          "to": "      workerEntitled' = workerEntitled + wShare + (if (wShare > 0) insuranceVault else 0),"
+        },
+        {
+          "type": "replace",
+          "from": "      posterEntitled' = posterEntitled + (rewardVault - wShare) + insuranceVault,",
+          "to": "      posterEntitled' = posterEntitled + (rewardVault - wShare) + (if (wShare > 0) 0 else insuranceVault),"
+        }
+      ],
+      "mustViolate": "invNoUnilateralDominance"
+    },
+    {
+      "id": "EXPIRED-BOND-TO-POSTER",
+      "describes": "expire_claim credits the forfeited bond to the poster. Ruling DB-4 forbids it: a poster-credited forfeit pays for authoring unsatisfiable briefs at volume. Post-W5 the invariant is the forfeiture ledger (house + bounty == forfeited), because rulings now credit poster bond LEGITIMATELY and a total-take bound can no longer see this.",
+      "applyAll": [
+        {
+          "type": "replace",
+          "from": "    houseVault' = houseVault + (bondVault - EXPIRE_BOUNTY),",
+          "to": "    houseVault' = houseVault,"
+        },
+        {
+          "type": "replace",
+          "from": "    bondVault' = 0,\n    elapsedSinceClaim' = 0,\n    rewardVault' = rewardVault, insuranceVault' = insuranceVault,\n    workerEntitled' = workerEntitled, posterEntitled' = posterEntitled,",
+          "to": "    bondVault' = 0,\n    elapsedSinceClaim' = 0,\n    rewardVault' = rewardVault, insuranceVault' = insuranceVault,\n    workerEntitled' = workerEntitled, posterEntitled' = posterEntitled + (bondVault - EXPIRE_BOUNTY),"
+        }
+      ],
+      "mustViolate": "invForfeitureIsCallerAndHouseOnly"
+    },
+    {
+      "id": "STOLEN-BOND-VIA-SUBMIT",
+      "describes": "submit reachable by a non-worker caller. NARROWED at 5b: submit_task no longer moves money (the bond is held to settlement), so what this now pins is the authority abstraction — an Anyone-reachable submit is an attacker-chosen evidence hash, griefing not theft. The bond-theft class itself is gated at SOURCE (test_submit_task_returns_nothing), because invConservation measurably cannot see it: the sums balance whoever is paid.",
+      "apply": {
+        "type": "delete-line",
+        "match": "maySubmit(caller),"
+      },
+      "mustViolate": "invSubmitOnlyByWorker"
+    },
+    {
+      "id": "BOND-STRANDED-AT-APPROVE",
+      "describes": "approve_and_release forgets the bond leg (5b regression): the task terminates Released with the bond still in its vault. CONSERVATION HOLDS under this bug — the money just sits — which is exactly why invNoBondLeftBehindAtSettlement exists as its own invariant.",
+      "applyAll": [
+        {
+          "type": "replace",
+          "from": "    posterEntitled' = posterEntitled + insuranceVault,\n    workerBondEntitled' = workerBondEntitled + bondVault,\n    rewardVault' = 0, insuranceVault' = 0, bondVault' = 0,",
+          "to": "    posterEntitled' = posterEntitled + insuranceVault,\n    workerBondEntitled' = workerBondEntitled,\n    rewardVault' = 0, insuranceVault' = 0, bondVault' = bondVault,"
+        }
+      ],
+      "mustViolate": "invNoBondLeftBehindAtSettlement"
+    },
+    {
+      "id": "RELEASE-TIMEOUT-PAYS-INSURANCE",
+      "describes": "release_after_review_timeout (stage 6, W2) treats poster silence as a JUDGEMENT and hands the worker the insurance too. This is the faucet/dominance shape that kept auto-release refused for four months: a worker who submits and waits would collect MORE than honest approval pays, on a path they reach alone. The timeout must pay exactly what approve pays. (The other W2 hazard — firing BEFORE the window — is invariant-invisible here because it pays the same approve-equal amounts; the ledger test test_release_after_review_timeout_before_deadline_rejects gates it.)",
+      "applyAll": [
+        {
+          "type": "replace",
+          "from": "    elapsedSinceSubmit >= REVIEW_WINDOW,\n    state' = Released,\n    workerEntitled' = workerEntitled + rewardVault,\n    posterEntitled' = posterEntitled + insuranceVault,",
+          "to": "    elapsedSinceSubmit >= REVIEW_WINDOW,\n    state' = Released,\n    workerEntitled' = workerEntitled + rewardVault + insuranceVault,\n    posterEntitled' = posterEntitled,"
+        }
+      ],
+      "mustViolate": "invNoUnilateralDominance"
+    },
+    {
+      "id": "BOND-STRANDED-AT-TIMEOUT",
+      "describes": "release_after_review_timeout (stage 6, W2) forgets the bond leg - the task terminates Released with the bond still in its vault. The SAME regression as BOND-STRANDED-AT-APPROVE against byte-identical code, and it had no mutation of its own until 2026-09-01: the harness's `replace` is non-global (formal.mjs: out.replace(op.from, op.to) unless op.all), so that entry only ever patched approveAndRelease and left the newer timed-release path ungated. Conservation HOLDS under this bug - the money simply sits - which is why invNoBondLeftBehindAtSettlement has to be its own invariant, and why a settlement path with no mutation of its own is a settlement path nothing checks.",
+      "applyAll": [
+        {
+          "type": "replace",
+          "from": "    workerBondEntitled' = workerBondEntitled + bondVault,\n    rewardVault' = 0, insuranceVault' = 0, bondVault' = 0,\n    settledBy' = Clock,",
+          "to": "    workerBondEntitled' = workerBondEntitled,\n    rewardVault' = 0, insuranceVault' = 0, bondVault' = bondVault,\n    settledBy' = Clock,"
+        }
+      ],
+      "mustViolate": "invNoBondLeftBehindAtSettlement"
+    },
+    {
+      "id": "SELF-DEALING-GUARD-DELETED",
+      "describes": "The L6(c) self-dealing guard (shipped 2026-08-30: resolve_dispute asserts the arbiter badge's assigned_account differs from task.worker_account) is stripped, AND the healthy instance's badge is re-assigned to the worker — both patches on the MAIN module, same shape as INSURANCE-FOLLOWS-DEFAULT's const flip. Both are needed: with the const false the deletion is invariant-invisible (vacuous), and with the guard present the const flip alone is refused at the ruling. A worker-arbiter then rules for themself — reward, insurance remainder, whole bond (W5 follows their own ruling) AND the fee, strictly more than honest delivery pays. Replaces CONFLICTED-ARBITER on the worker side. ⚠️ NOT a twin mutation deliberately: the harness runs twin mutations UNPATCHED (runTwin ignores apply), which is exactly how the first version of this entry reported NOT DETECTED against an intact guard.",
+      "applyAll": [
+        {
+          "type": "replace",
+          "from": "  import escrow_task(ARBITER_IS_WORKER = false, ARBITER_IS_POSTER = false,\n                     AUTO_DEFAULT = SplitEvenly).*",
+          "to": "  import escrow_task(ARBITER_IS_WORKER = true, ARBITER_IS_POSTER = false,\n                     AUTO_DEFAULT = SplitEvenly).*"
+        },
+        {
+          "type": "delete-line",
+          "match": "not(arbiterIsWorker),"
+        }
+      ],
+      "mustViolate": "invNoWorkerArbiterRuling"
+    },
+    {
+      "id": "ARBITER-IS-POSTER-EXPOSURE",
+      "twin": "escrow_arbiter_is_poster",
+      "describes": "The side L6(c) leaves OPEN BY DESIGN: an arbiter badge assigned to the POSTER's account still rules (poster is a caller-supplied payout destination, not an identity — a poster-side check would be decoy-defeatable and read as a defence without being one). No patch: the unmodified model must produce this counterexample, or it has stopped representing the exposure the honesty copy states. The arbiter-poster can rule in a dispute they funded; they cannot STEAL (settlement credits only pinned accounts).",
+      "mustViolate": "invArbiterNotPoster",
+      "engine": "run"
+    }
+  ],
+  "instances": [
+    {
+      "main": "escrow_honest_arbiter",
+      "invariants": [
+        "invConservation",
+        "invNonNegative",
+        "invOnlyAuthorisedSettled",
+        "invNoUnilateralDominance",
+        "invArbiterRulingBounded",
+        "invForfeitureIsCallerAndHouseOnly",
+        "invNoOverWithdraw",
+        "invNoStrandedFunds",
+        "invNoBondLeftBehindAtSettlement",
+        "invSubmitOnlyByWorker"
+      ],
+      "maxSteps": 10,
+      "tier": "fast",
+      "describes": "the DEPLOYED default (SplitEvenly), arbiter assigned to neither party"
+    },
+    {
+      "main": "escrow_favor_non_raiser",
+      "invariants": [
+        "invConservation",
+        "invNonNegative",
+        "invOnlyAuthorisedSettled",
+        "invNoUnilateralDominance",
+        "invArbiterRulingBounded",
+        "invForfeitureIsCallerAndHouseOnly",
+        "invNoOverWithdraw",
+        "invNoStrandedFunds",
+        "invNoBondLeftBehindAtSettlement",
+        "invSubmitOnlyByWorker"
+      ],
+      "maxSteps": 10,
+      "tier": "fast",
+      "describes": "FavorNonRaiser - selectable per task, and stage 6 is what made it coherent to select (lib.rs says so). Never verified before 2026-09-01."
+    },
+    {
+      "main": "escrow_return_to_poster",
+      "invariants": [
+        "invConservation",
+        "invNonNegative",
+        "invOnlyAuthorisedSettled",
+        "invNoUnilateralDominance",
+        "invArbiterRulingBounded",
+        "invForfeitureIsCallerAndHouseOnly",
+        "invNoOverWithdraw",
+        "invNoStrandedFunds",
+        "invNoBondLeftBehindAtSettlement",
+        "invSubmitOnlyByWorker"
+      ],
+      "maxSteps": 10,
+      "tier": "fast",
+      "describes": "ReturnToPoster - selectable per task. Never verified before 2026-09-01."
+    },
+    {
+      "main": "escrow_favor_dispute_raiser",
+      "invariants": [
+        "invConservation",
+        "invNonNegative",
+        "invOnlyAuthorisedSettled",
+        "invNoUnilateralDominance",
+        "invArbiterRulingBounded",
+        "invForfeitureIsCallerAndHouseOnly",
+        "invNoOverWithdraw",
+        "invNoStrandedFunds",
+        "invNoBondLeftBehindAtSettlement",
+        "invSubmitOnlyByWorker"
+      ],
+      "maxSteps": 10,
+      "tier": "fast",
+      "describes": "FavorDisputeRaiser - selectable per task, and the arm INSURANCE-FOLLOWS-DEFAULT mutates toward. Never verified before 2026-09-01."
+    }
+  ]
+}

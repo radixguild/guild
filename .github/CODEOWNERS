@@ -1,0 +1,3 @@
+# Every path defaults to the maintainer. Once branch protection requires
+# review from code owners, this is what enforces it.
+* @bigdevxrd

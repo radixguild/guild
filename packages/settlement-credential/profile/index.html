@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Guild Settlement Credentials — demo profile</title>
+<meta name="robots" content="noindex" />
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --panel: #ffffff;
+    --border: #e2e0da;
+    --text: #1f1e1c;
+    --muted: #6b6a66;
+    --accent: #7a4de8;
+    --ok: #1e7e34;
+    --ok-bg: #e9f7ee;
+    --bad: #b3261e;
+    --bad-bg: #fdecea;
+    --warn: #8a6100;
+    --warn-bg: #fdf3d8;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17161a;
+      --panel: #201f24;
+      --border: #34323a;
+      --text: #eeeceb;
+      --muted: #9a9893;
+      --accent: #b39bff;
+      --ok: #6fd08c;
+      --ok-bg: #143a24;
+      --bad: #ff8a80;
+      --bad-bg: #3a1613;
+      --warn: #f0c674;
+      --warn-bg: #3a2f0d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 780px; margin: 0 auto; padding: 40px 20px 80px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .lede { color: var(--muted); margin: 0 0 8px; max-width: 62ch; }
+  .draft-banner {
+    margin: 18px 0 28px;
+    padding: 12px 14px;
+    border: 1px solid var(--warn);
+    background: var(--warn-bg);
+    color: var(--warn);
+    border-radius: 8px;
+    font-size: 13.5px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 16px; margin: 0 0 2px; }
+  .notice {
+    font-size: 12.5px;
+    color: var(--warn);
+    background: var(--warn-bg);
+    border: 1px solid var(--warn);
+    border-radius: 6px;
+    padding: 6px 9px;
+    margin: 8px 0 14px;
+  }
+  dl.fields { display: grid; grid-template-columns: 160px 1fr; gap: 6px 12px; margin: 0 0 14px; font-size: 13.5px; }
+  dl.fields dt { color: var(--muted); }
+  dl.fields dd { margin: 0; font-family: var(--mono); word-break: break-all; }
+  .badge {
+    display: inline-block;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+  }
+  .badge.unsigned { color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn); }
+  .badge.valid { color: var(--ok); background: var(--ok-bg); border: 1px solid var(--ok); }
+  .badge.invalid { color: var(--bad); background: var(--bad-bg); border: 1px solid var(--bad); }
+  button {
+    font: inherit;
+    font-weight: 600;
+    font-size: 13.5px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent); color: #fff; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .result { margin-top: 14px; font-size: 13.5px; }
+  .result ul { margin: 6px 0 0; padding-left: 18px; }
+  .proof-row { font-family: var(--mono); font-size: 12.5px; margin: 3px 0; }
+  footer { color: var(--muted); font-size: 12.5px; margin-top: 40px; }
+  code { font-family: var(--mono); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Guild Settlement Credentials</h1>
+  <p class="lede">
+    A signed, chain-agnostic receipt that a Guild task settled — plus this page's own
+    in-browser verifier, so nobody has to trust the list below on its own say-so.
+  </p>
+
+  <div class="draft-banner">
+    <strong>Draft slice, not a decision.</strong> This package ships code, tests, and one
+    UNSIGNED demo credential. Nothing here is signed with a real key, and this page is not
+    linked from anywhere live. See <code>../README.md</code> for what this is and is not.
+  </div>
+
+  <div id="list"></div>
+
+  <footer>
+    Verification runs entirely in your browser (WebCrypto Ed25519 + a JCS canonicalizer) —
+    <code>credentials.json</code> is fetched once, nothing is sent anywhere.
+    Source: <a href="https://github.com/radixguild/guild/tree/main/packages/settlement-credential">packages/settlement-credential</a>.
+  </footer>
+</main>
+
+<script src="./verifier.bundle.js"></script>
+<script>
+(function () {
+  const listEl = document.getElementById('list');
+
+  function fieldRow(label, value) {
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.textContent = value === null || value === undefined ? '(null)' : String(value);
+    return [dt, dd];
+  }
+
+  function renderEntry(entry) {
+    const cred = entry.credential;
+    const subject = cred.credentialSubject || {};
+
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    const h2 = document.createElement('h2');
+    h2.textContent = entry.label || cred.id;
+    card.appendChild(h2);
+
+    if (entry.notice) {
+      const notice = document.createElement('div');
+      notice.className = 'notice';
+      notice.textContent = entry.notice;
+      card.appendChild(notice);
+    }
+
+    const dl = document.createElement('dl');
+    dl.className = 'fields';
+    const rows = [
+      ['id', cred.id],
+      ['issuer', cred.issuer],
+      ['task_id', subject.task_id],
+      ['escrow_component', subject.escrow_component],
+      ['settlement_tx', subject.settlement_tx],
+      ['state_version', subject.state_version],
+      ['network', subject.network],
+      ['outcome', subject.outcome],
+      ['amount_xrd', subject.amount_xrd],
+      ['poster', subject.poster],
+      ['worker', subject.worker],
+      ['proofs', cred.proofs.length + ' attached'],
+    ];
+    for (const [label, value] of rows) {
+      const [dt, dd] = fieldRow(label, value);
+      dl.appendChild(dt);
+      dl.appendChild(dd);
+    }
+    card.appendChild(dl);
+
+    const statusBadge = document.createElement('span');
+    if (cred.proofs.length === 0) {
+      statusBadge.className = 'badge unsigned';
+      statusBadge.textContent = 'UNSIGNED';
+    } else {
+      statusBadge.className = 'badge unsigned';
+      statusBadge.textContent = cred.proofs.length + ' proof(s) — unverified';
+    }
+    card.appendChild(statusBadge);
+
+    const verifyBtn = document.createElement('button');
+    verifyBtn.textContent = 'Verify in this browser';
+    verifyBtn.style.marginLeft = '10px';
+    card.appendChild(verifyBtn);
+
+    const resultEl = document.createElement('div');
+    resultEl.className = 'result';
+    card.appendChild(resultEl);
+
+    verifyBtn.addEventListener('click', async function () {
+      verifyBtn.disabled = true;
+      resultEl.textContent = 'Verifying…';
+      try {
+        const result = await window.SettlementCredential.verifyCredential(cred);
+        renderResult(resultEl, result);
+        statusBadge.className = 'badge ' + (cred.proofs.length === 0 ? 'unsigned' : result.valid ? 'valid' : 'invalid');
+        statusBadge.textContent = cred.proofs.length === 0
+          ? 'UNSIGNED'
+          : (result.valid ? 'VALID' : 'INVALID');
+      } catch (err) {
+        resultEl.textContent = 'Verifier error: ' + (err && err.message ? err.message : String(err));
+      } finally {
+        verifyBtn.disabled = false;
+      }
+    });
+
+    return card;
+  }
+
+  function renderResult(el, result) {
+    el.innerHTML = '';
+    const summary = document.createElement('div');
+    summary.textContent =
+      'proofs: ' + result.proofCount +
+      ' · witness present: ' + result.hasWitness +
+      ' · overall: ' + (result.valid ? 'VALID' : 'INVALID');
+    el.appendChild(summary);
+
+    if (result.proofCount === 0) {
+      const note = document.createElement('div');
+      note.style.marginTop = '6px';
+      note.textContent = 'No proofs on this credential — there is nothing to cryptographically check yet. This is expected for the demo fixture.';
+      el.appendChild(note);
+      return;
+    }
+
+    const ul = document.createElement('ul');
+    for (const p of result.perProof) {
+      const li = document.createElement('li');
+      li.className = 'proof-row';
+      li.textContent = '[' + p.role + '] ' + p.verificationMethod + ' -> ' + (p.valid ? 'OK' : 'FAILED: ' + (p.error || ''));
+      ul.appendChild(li);
+    }
+    el.appendChild(ul);
+
+    if (result.errors.length > 0) {
+      const errBox = document.createElement('div');
+      errBox.style.marginTop = '6px';
+      errBox.style.color = 'var(--bad)';
+      errBox.textContent = result.errors.join(' · ');
+      el.appendChild(errBox);
+    }
+  }
+
+  fetch('./credentials.json')
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function (entries) {
+      if (!Array.isArray(entries) || entries.length === 0) {
+        listEl.textContent = 'No credentials listed yet.';
+        return;
+      }
+      for (const entry of entries) listEl.appendChild(renderEntry(entry));
+    })
+    .catch(function (err) {
+      listEl.textContent =
+        'Could not load credentials.json (' + err.message + '). ' +
+        'This page must be served over http(s) — opening index.html directly via file:// ' +
+        'blocks the fetch in most browsers. Try: cd profile && python3 -m http.server 8787';
+    });
+})();
+</script>
+</body>
+</html>

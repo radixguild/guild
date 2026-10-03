@@ -1,0 +1,59 @@
+name: Task
+description: A unit of work — the atom of the dev board. One task = one issue.
+title: "[TASK] "
+labels: ["type:task", "status:pending"]
+body:
+  - type: input
+    id: task_id
+    attributes:
+      label: Task ID
+      description: Stable short ID scoped to this repo (e.g. G-101). Referenced in commits + PRs.
+      placeholder: G-101
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      options:
+        - P1 — Pre-launch / Foundation
+        - P2 — Robustness / Soft launch
+        - P3 — Feature build
+        - P4 — Deploy
+        - Backlog
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: One sentence. What does "done" look like?
+    validations:
+      required: true
+  - type: input
+    id: files
+    attributes:
+      label: Files / area
+      description: Which file(s) or module this touches.
+      placeholder: escrow/scrypto/guild-marketplace-escrow/src/lib.rs
+  - type: input
+    id: effort
+    attributes:
+      label: Effort estimate
+      placeholder: 30min / 1hr / 1d
+  - type: textarea
+    id: needs
+    attributes:
+      label: Blocked by / needs
+      description: Task IDs or decisions this depends on. Leave blank if unblocked.
+  - type: dropdown
+    id: instance
+    attributes:
+      label: Who executes
+      description: One instance owns code per repo (workflow rule).
+      options:
+        - Mac Claude (code + build + deploy)
+        - VPS Claude (research + design + draft only)
+        - bigdev (decision / sign / deploy action)
+    validations:
+      required: true

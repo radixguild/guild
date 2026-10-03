@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Read the Contributing Guide first
+    url: https://github.com/radixguild/guild/blob/main/CONTRIBUTING.md
+    about: Setup, code style, and how proposals become issues in this repo.
+  - name: Feature proposal (governance vote)
+    url: https://t.me/radix_guild
+    about: Propose a feature via the TG bot's /propose command — badge holders vote before an issue is opened for it.

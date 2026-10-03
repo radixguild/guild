@@ -1,0 +1,31 @@
+name: Decision
+description: A choice only bigdev can make. Blocks tasks until answered.
+title: "[DECISION] "
+labels: ["type:decision", "status:needs-bigdev"]
+body:
+  - type: input
+    id: decision_id
+    attributes:
+      label: Decision ID
+      description: Stable short ID (e.g. B-004). Tasks reference this in "needs".
+      placeholder: B-004
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: The question
+      description: State it so it's answerable from mobile in one line. No "see the file".
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options + recommendation
+      description: List the choices. Mark the recommended one.
+  - type: input
+    id: unblocks
+    attributes:
+      label: Unblocks
+      description: Which task IDs proceed once this is answered.
+      placeholder: G-301..G-320

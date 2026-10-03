@@ -1,0 +1,47 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.radixguild/guild-mcp",
+  "title": "Guild MCP",
+  "description": "Read-only Model Context Protocol server over the Radix Guild marketplace. An agent or MCP client can browse tasks, read marketplace stats, and check its own readiness -- zero secrets on the wire, no writes, no signing. The escrow this server reads is a smart contract on Radix mainnet; the server itself is pre-audit with zero external users to date.",
+  "repository": {
+    "url": "https://github.com/radixguild/guild",
+    "source": "github",
+    "subfolder": "packages/agent-mcp"
+  },
+  "version": "0.3.1",
+  "websiteUrl": "https://radixguild.com/agents",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@radix-guild/agent-mcp",
+      "version": "0.3.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GUILD_API_URL",
+          "description": "Override the marketplace API base URL (default https://radixguild.com).",
+          "isRequired": false
+        },
+        {
+          "name": "GUILD_GATEWAY_URL",
+          "description": "Override the Radix Gateway base URL (default https://mainnet.radixdlt.com).",
+          "isRequired": false
+        },
+        {
+          "name": "GUILD_ESCROW_COMPONENT",
+          "description": "Override the escrow component address the server reads task/claim state from.",
+          "isRequired": false
+        },
+        {
+          "name": "GUILD_AGENT_PRIVATE_KEY",
+          "description": "Optional. Used only by the readiness tool to derive a public account address for on-chain checks -- never returned by any tool response (enforced by a regression test in this package).",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

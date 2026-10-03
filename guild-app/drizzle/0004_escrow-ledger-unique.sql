@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "escrow_task_tx_type_unique" ON "escrow_transactions" USING btree ("task_id","tx_type");

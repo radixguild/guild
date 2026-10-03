@@ -1,0 +1,17 @@
+{
+  // Build config — emits dist/*.js + dist/*.d.ts for Node/ESM consumers; the
+  // CJS bundle for the CommonJS bots (guild-public bot, auto-trader-xrd,
+  // sats-trader-tg) is produced by `bun build` in the same `build` script.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+}

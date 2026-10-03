@@ -1,0 +1,190 @@
+name: Scrypto Build + Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'escrow/scrypto/**'
+      - 'badge-manager/scrypto/radix-badge-manager/**'
+      - 'blueprints/agent-badge-controller/**'
+  pull_request:
+    # No branch filter — stacked PRs (base = another feature branch) must report
+    # `scrypto gate` too, not only after they retarget to main. Same reasoning as
+    # test.yml and formal.yml.
+  workflow_dispatch:
+
+# The other three workflows have carried this since they were written; this one
+# never did, and it is the most expensive job in the repo (~19 min — the Rust
+# wasm32 build plus the ledger-simulator tests that CANNOT run on a Mac, per
+# CLAUDE.md, so this workflow is the only place they execute at all).
+#
+# Observed 2026-08-16, which is what prompted adding it: TWO runs of this
+# workflow were in flight simultaneously on the same branch
+# (chore/licence-apache2, runs 31932360587 and 31933171237, created 20 minutes
+# apart). Without a concurrency group the superseded run is never cancelled, so
+# a rapid second push bills a full second ~19-minute run for a commit nobody
+# will ever look at. Private-repo minutes are billed per job rounded up, so that
+# is ~19 wasted billed minutes per superseded push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege, matching the rest of the fleet (test.yml, formal.yml,
+# npm-lockfile.yml, pii-scan.yml, secret-scan.yml all declare this). Neither
+# job needs more than a read checkout: no PR comments, no releases, no
+# packages. `gh api repos/{owner}/{repo}/actions/permissions/workflow`
+# reports the org/repo default as read-only today, so this does not change
+# behavior — it stops this one workflow from silently depending on that
+# default if it's ever widened elsewhere.
+permissions:
+  contents: read
+
+jobs:
+  # Change detection for `scrypto gate` below. `on.pull_request` has no `paths:` filter
+  # any more: a path-filtered workflow never reports on a PR that doesn't touch
+  # its paths, so it could not be a required check (such a PR would wait on it
+  # forever). Every PR runs this cheap job instead; the heavy job(s) skip when
+  # nothing relevant changed, and the gate reports on every PR.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: diff
+        name: did this change touch the paths this workflow checks?
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed="$(git diff --name-only "$BASE_SHA"...HEAD -- ':(glob)escrow/scrypto/**' ':(glob)badge-manager/scrypto/radix-badge-manager/**' ':(glob)blueprints/agent-badge-controller/**')"
+          if [ -n "$changed" ]; then echo "run=true"; else echo "run=false"; fi >> "$GITHUB_OUTPUT"
+          printf 'relevant files changed:\n%s\n' "${changed:-(none)}"
+
+  scrypto:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    # GitHub's default job timeout is SIX HOURS. This job had none, so a hang
+    # anywhere (a toolchain fetch stalling, a test deadlocking in the ledger
+    # simulator) bills up to 360 minutes from a budget that is currently capped
+    # in the low tens of dollars. Measured runs: 15.2 / 18.6 / 18.6 / 18.9 /
+    # 19.2 / 19.3 min across the 2026-08-09 series, success and failure alike.
+    # 45 is ~2.3x the observed maximum — loose enough that a legitimately slower
+    # build (a cold cargo registry, a dependency bump) still finishes, tight
+    # enough that a hang costs 45 minutes instead of 360.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@ffaa7fb73f2b6e3c49bc425913220fa3d71c3ee5 # 1.92.0
+        with:
+          targets: wasm32-unknown-unknown
+      # Zero build caching existed anywhere in the fleet before this, on the
+      # single most expensive job (~19 min). Caches only ~/.cargo/registry,
+      # ~/.cargo/git/db and this crate's target/ — never the build OUTPUT
+      # (the .wasm/.rpd uploaded below), so wasm parity is untouched: the
+      # cache warms rustc's inputs and incremental object files, the compiler
+      # still runs and still produces its own output this run. Key is
+      # automatic (rust-cache hashes Cargo.lock + the toolchain/target from
+      # the steps above), so a Cargo.lock or toolchain bump invalidates it
+      # on its own — nothing to keep in sync here.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 (2.9.2)
+        with:
+          workspaces: escrow/scrypto/guild-marketplace-escrow -> target
+      - run: cargo build --release --target wasm32-unknown-unknown
+        working-directory: escrow/scrypto/guild-marketplace-escrow
+      - run: cargo test
+        working-directory: escrow/scrypto/guild-marketplace-escrow
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: guild-marketplace-escrow-wasm
+          path: |
+            escrow/scrypto/guild-marketplace-escrow/target/wasm32-unknown-unknown/release/guild_marketplace_escrow.wasm
+            escrow/scrypto/guild-marketplace-escrow/target/wasm32-unknown-unknown/release/guild_marketplace_escrow.rpd
+
+  # The badge-manager and agent-badge-controller blueprints had no CI at all
+  # until this job: never built, never tested, anywhere. Their tests use the
+  # scrypto-test ledger simulator, which cannot run on a Mac (CLAUDE.md), so
+  # this is the only place they execute. A separate job (not a matrix over the
+  # escrow job) so the escrow job above, its check name and its artifact stay
+  # byte-identical. fail-fast off: one crate failing must not cancel the
+  # other's result.
+  #
+  # Cost: the path filter is workflow-wide, so a change to any one of the three
+  # crates runs all three jobs (this matrix adds two to every run). Per-crate
+  # gating would need a paths-filter step or separate workflow files.
+  scrypto-badges:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    # Same 45 as the escrow job: same toolchain, same cold scrypto/scrypto-test
+    # dependency build (the bulk of the time); a hang costs 45 minutes, not 360.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - crate: badge-manager/scrypto/radix-badge-manager
+            name: radix-badge-manager
+            bin: radix_badge_manager
+          - crate: blueprints/agent-badge-controller
+            name: agent-badge-controller
+            bin: guild_agent_badge_controller
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@ffaa7fb73f2b6e3c49bc425913220fa3d71c3ee5 # 1.92.0
+        with:
+          targets: wasm32-unknown-unknown
+      # Same caching as the escrow job above — cargo registry + git db +
+      # this crate's target/ only, never the build output. `workspaces`
+      # scopes it to the matrix crate, so the two crates never share (or
+      # collide on) a cache entry.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 (2.9.2)
+        with:
+          workspaces: ${{ matrix.crate }} -> target
+      - run: cargo build --release --target wasm32-unknown-unknown
+        working-directory: ${{ matrix.crate }}
+      - run: cargo test
+        working-directory: ${{ matrix.crate }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.name }}-wasm
+          path: |
+            ${{ matrix.crate }}/target/wasm32-unknown-unknown/release/${{ matrix.bin }}.wasm
+            ${{ matrix.crate }}/target/wasm32-unknown-unknown/release/${{ matrix.bin }}.rpd
+
+  # The one check to require on main. It runs for every PR (`if: always()`) and
+  # fails unless change detection succeeded and every job above either passed or
+  # was skipped because this PR touched none of the watched paths. Requiring the
+  # heavy job by name instead would let a broken `changes` job skip it silently
+  # (a skipped job counts as passing), and a skipped matrix job reports under an
+  # unexpanded name that a required context never matches.
+  gate:
+    name: scrypto gate
+    if: always()
+    needs: [changes, scrypto, scrypto-badges]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: every job passed, or was skipped for an unrelated change
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          [ "$CHANGES" = "success" ] || { echo "::error::change detection ended: $CHANGES"; exit 1; }
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::a job in this workflow ended: $r"; exit 1 ;;
+            esac
+          done
+          echo "ok: $RESULTS"

@@ -1,0 +1,47 @@
+Guild — a Radix marketplace for humans and agents (guild-saas)
+Copyright 2026 bigdev (https://github.com/bigdevxrd)
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE). The
+licence covers every crate and package in this repository, including the escrow
+blueprint (escrow/scrypto/guild-marketplace-escrow), the deprecated escrow
+snapshot (escrow/scrypto/guild-escrow), the agent badge controller
+(blueprints/agent-badge-controller), the Badge Manager
+(badge-manager/scrypto/radix-badge-manager), the agent client
+(packages/agent-client), the MCP server (packages/agent-mcp) and the dashboard
+(guild-app). It is deliberately NOT dual-licensed "MIT OR Apache-2.0": dual
+licensing makes the Apache patent grant optional, and that grant is the reason
+Apache-2.0 was chosen for a money-handling blueprint.
+
+Prior licence. Before 2026-08-16 the repository root carried the MIT License
+(the packages and the blueprint moved to Apache-2.0 on 2026-08-04). All
+contributions were made by the copyright holder above or by automated agent
+tooling operated by the copyright holder (commits authored by agent personas such
+as "Ralph (Archon)", "Copilot" and "vps-claude" are that tooling, not third-party
+contributors). The former MIT grant is recorded here in ABRIDGED form — the full
+prior text is in the original repository's history (commit 20e8893^, LICENSE):
+
+    MIT License — Copyright (c) 2026 Big Dev
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions: The
+    above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED
+    "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+Third-party components keep their own licences. Three are worth naming:
+
+- The Scrypto crates build against the Radix engine and Scrypto SDK crates
+  (scrypto, sbor, radix-*), which Radix publishes under its own "Radix License,
+  v1.0", not an SPDX licence. See those crates' licence files.
+- @radixdlt/rola and @radixdlt/radix-dapp-toolkit declare "SEE LICENSE IN
+  RADIX-SOFTWARE-EULA" in package.json. Upstream's README states the library
+  code is Apache-2.0 and the EULA covers Radix's binaries
+  (https://github.com/radixdlt/rola); rola's npm tarball omits the LICENSE file
+  that README links to.
+- Next.js's optional image optimisation installs sharp's prebuilt libvips
+  binary (@img/sharp-libvips-*), LGPL-3.0-or-later, dynamically linked; source
+  at https://github.com/lovell/sharp-libvips.

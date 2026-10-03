@@ -1,0 +1,1 @@
+ALTER TABLE "tasks" ADD COLUMN "on_chain_task_id" integer;

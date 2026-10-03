@@ -1,0 +1,7 @@
+# Radix Guild — security contact (RFC 9116)
+# Report privately first. Do not post exploit details publicly until a fix ships.
+Contact: https://t.me/bigdev_xrd
+Policy: https://radixguild.com/bug-bounty
+Preferred-Languages: en
+Canonical: https://radixguild.com/.well-known/security.txt
+Expires: 2027-09-24T00:00:00.000Z

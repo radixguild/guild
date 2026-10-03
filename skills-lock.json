@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "radix": {
+      "source": "xstelea/radix-skills",
+      "sourceType": "github",
+      "skillPath": "radix/SKILL.md",
+      "computedHash": "fde31f8efc220286777116255e7c6e7aceca8205027a0faf38f619c34e42a18f"
+    }
+  }
+}

@@ -1,0 +1,111 @@
+name: npm-lockfile
+
+# CI installs guild-app with bun (test.yml); the Guild box installs it with
+# `npm ci` (scripts/deploy.sh step 2). Nothing in CI ever ran npm against
+# guild-app/package-lock.json, so a lockfile npm refuses could merge green and
+# fail only at deploy. That happened: Dependabot #805's regen dropped vitest's
+# nested esbuild, `npm ci` on the box refused it, and #810 restored the 27
+# entries by hand. Dependabot security updates regenerate package-lock.json
+# whatever CI uses, so this is the guard.
+#
+# It runs the box's exact install (same command, Node 22 as on the box) and
+# only when the manifest or the lockfile changes — Actions minutes are billed
+# per job, rounded up (see test.yml's ubuntu-slim note). The `npm-lockfile gate`
+# job at the bottom reports on every PR, so it is the one to require on main;
+# requiring the install job itself would leave unrelated PRs waiting on it.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - guild-app/package.json
+      - guild-app/package-lock.json
+      - .github/workflows/npm-lockfile.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Change detection for `npm-lockfile gate` below. `on.pull_request` has no `paths:` filter
+  # any more: a path-filtered workflow never reports on a PR that doesn't touch
+  # its paths, so it could not be a required check (such a PR would wait on it
+  # forever). Every PR runs this cheap job instead; the heavy job(s) skip when
+  # nothing relevant changed, and the gate reports on every PR.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: diff
+        name: did this change touch the paths this workflow checks?
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed="$(git diff --name-only "$BASE_SHA"...HEAD -- ':(glob)guild-app/package.json' ':(glob)guild-app/package-lock.json' ':(glob).github/workflows/npm-lockfile.yml')"
+          if [ -n "$changed" ]; then echo "run=true"; else echo "run=false"; fi >> "$GITHUB_OUTPUT"
+          printf 'relevant files changed:\n%s\n' "${changed:-(none)}"
+
+  npm-ci:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    name: npm ci (as the box installs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node 22 (the box runs v22)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: npm ci — the command scripts/deploy.sh runs on the box
+        working-directory: guild-app
+        run: npm ci
+      # A regen can also drop a platform-specific optional dependency without
+      # npm ci failing; the build would then fail on the box instead. The box
+      # is x86_64 glibc, so its SWC binary must be in the lockfile and installed.
+      - name: The box's Next.js SWC binary installed
+        working-directory: guild-app
+        run: test -d node_modules/@next/swc-linux-x64-gnu || { echo "::error::@next/swc-linux-x64-gnu missing — the lockfile lost the box's platform binary"; exit 1; }
+
+  # The one check to require on main. It runs for every PR (`if: always()`) and
+  # fails unless change detection succeeded and every job above either passed or
+  # was skipped because this PR touched none of the watched paths. Requiring the
+  # heavy job by name instead would let a broken `changes` job skip it silently
+  # (a skipped job counts as passing), and a skipped matrix job reports under an
+  # unexpanded name that a required context never matches.
+  gate:
+    name: npm-lockfile gate
+    if: always()
+    needs: [changes, npm-ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: every job passed, or was skipped for an unrelated change
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          [ "$CHANGES" = "success" ] || { echo "::error::change detection ended: $CHANGES"; exit 1; }
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::a job in this workflow ended: $r"; exit 1 ;;
+            esac
+          done
+          echo "ok: $RESULTS"

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "tasks_onchain_component_unique" ON "tasks" USING btree ("on_chain_task_id","escrow_component") WHERE "tasks"."on_chain_task_id" is not null;

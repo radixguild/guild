@@ -1,0 +1,230 @@
+{
+  "model": "nft_swap.qnt",
+  "main": "nft_swap",
+  "grounds": {
+    "describes": "the LIVE NftSwap blueprint (P7-02, task 90, PR #654; mainnet component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4 per docs/design/nft-swap.md), src/nft_swap.rs read in full, all 779 lines, on 2026-09-27, and checked against the 30 ledger tests in tests/nft_swap.rs. Every public method is PUBLIC in enable_method_auth!; the receipt-gated ones (cancel, extend_listing, withdraw_proceeds) check a bearer listing-receipt Proof (listing_id_from_receipt, :667-678), modelled as the Seller actor, and fill takes no Proof at all (S6a). Transitions: list (:320-422, mandatory expiry in (now, now+30d]), fill (:433-487, Listed + now<expires_at + exact alternative match), cancel (:494-514, Listed, no expiry guard, asset to the receipt holder), extend_listing (:526-541, Listed, max(now,expires_at)+30d, stacks), withdraw_proceeds (:550-581, Filled + not withdrawn, take_all pushed to the pinned seller), burn_listing_receipt (:589-620, MODELLED). Invariants 1-3 transliterate assert_conservation's three documented clauses (:693-698). No owner-configurable branching const exists (the only consts, MAX_LISTING_HORIZON_SECS and THIRTY_DAYS_SECS, are one fixed value), so there is one instance, not an instances array. docs/design/nft-swap.md (status: proposal) was read for the rulings only; where its §3/§4 tables disagree with the source (Option<Instant> expiry, a buyer field on FilledEvent) the source won.",
+    "verified": "2026-09-27",
+    "sources": [
+      {
+        "path": "escrow/scrypto/guild-marketplace-escrow/src/nft_swap.rs",
+        "sha256": "5d656eb3d6083493"
+      }
+    ],
+    "note": "The source comment at nft_swap.rs:773-777 claims 'a listing extended from any starting point never reaches further ahead than a fresh listing could have been given'. The code (:533-536), the ledger test test_extend_listing_pushes_expiry_by_30_days (second call reaches +60d) and the S2 ruling ('longer is paid') all say extensions STACK. The model follows the code; no invariant bounds extended expiry. If nft_swap.rs changes, this check FAILS until a human re-reads it and re-grounds."
+  },
+  "simulate": {
+    "maxSteps": 25,
+    "maxSamples": 20000
+  },
+  "verify": {
+    "maxSteps": 10,
+    "invariants": [
+      "invAssetHeldIffListed",
+      "invProceedsHeldIffOwed",
+      "invProceedsMatchAlternative",
+      "invProceedsEqualAsk",
+      "invAssetConserved",
+      "invProceedsConserved",
+      "invFilledWithIffFilled",
+      "invCancelOnlyBySeller",
+      "invExtendOnlyBySeller",
+      "invWithdrawOnlyBySeller",
+      "invBurnOnlyBySeller",
+      "invCancelReturnsAssetToSeller",
+      "invNoFillAfterExpiry",
+      "invNoDoubleFill",
+      "invWithdrawAtMostOnce",
+      "invListExpiryWithinHorizon",
+      "invNothingStrandedBehindBurnedReceipt"
+    ]
+  },
+  "mutations": [
+    {
+      "id": "CANCEL-AUTH",
+      "describes": "cancel reachable without the listing receipt. The one receipt-gated method with a MONEY consequence: cancel returns the asset bucket to its caller (nft_swap.rs:503-513), so an Anyone-reachable cancel is asset theft, and both the authority ghost and the asset destination must see it.",
+      "apply": {
+        "type": "delete-line",
+        "match": "mayCancel(caller),"
+      },
+      "mustViolate": [
+        "invCancelOnlyBySeller",
+        "invCancelReturnsAssetToSeller"
+      ]
+    },
+    {
+      "id": "EXTEND-AUTH",
+      "describes": "extend_listing reachable without the listing receipt. Griefing-shaped, not theft (it moves no value): a stranger keeps someone else's listing fillable longer than they chose. extend_listing changes no state, so no terminal-state ghost could ever see this; extendedBy exists for exactly this call site.",
+      "apply": {
+        "type": "delete-line",
+        "match": "mayExtend(caller),"
+      },
+      "mustViolate": "invExtendOnlyBySeller"
+    },
+    {
+      "id": "WITHDRAW-AUTH",
+      "describes": "withdraw_proceeds reachable without the listing receipt. Pins the model's receipt abstraction on this call site; in the code the payout still goes to the PINNED seller whoever calls (:568-569), so the real-world face is timing/griefing, not theft. Same narrowing as escrow_task's STOLEN-BOND-VIA-SUBMIT.",
+      "apply": {
+        "type": "delete-line",
+        "match": "mayWithdraw(caller),"
+      },
+      "mustViolate": "invWithdrawOnlyBySeller"
+    },
+    {
+      "id": "BURN-AUTH",
+      "describes": "burn_listing_receipt reachable without the listing receipt Bucket (the receipt-resource / amount-1 checks at nft_swap.rs:590-595). burn changes no `state` (it only sets receiptBurned), so no terminal-state ghost could ever see this; burnedBy exists for exactly this call site. Without it, deleting mayBurn tripped nothing in allSafety — the state guards still stop a premature burn, so the strand invariant stays green.",
+      "apply": {
+        "type": "delete-line",
+        "match": "mayBurn(caller),"
+      },
+      "mustViolate": "invBurnOnlyBySeller"
+    },
+    {
+      "id": "FILL-WRONG-RESOURCE",
+      "describes": "fill accepts a payment whose resource does not match the chosen alternative (nft_swap.rs:449,453 deleted). assert_conservation clause 3 — proceeds resource equals the filled alternative's resource — is the invariant that must break.",
+      "apply": {
+        "type": "delete-line",
+        "match": "G-FILL-RES"
+      },
+      "mustViolate": "invProceedsMatchAlternative"
+    },
+    {
+      "id": "FILL-WRONG-AMOUNT",
+      "describes": "fill accepts a payment of the right resource but the wrong amount (nft_swap.rs:450/454 deleted): the seller is paid less than the ask. assert_conservation's clause 3 checks the resource only and cannot see this, which is why invProceedsEqualAsk exists beside it.",
+      "apply": {
+        "type": "delete-line",
+        "match": "G-FILL-AMT"
+      },
+      "mustViolate": "invProceedsEqualAsk"
+    },
+    {
+      "id": "FILL-WRONG-NFT-ID",
+      "describes": "fill accepts an NFT of the named resource but a different local id than the NonFungible alternative names (nft_swap.rs:455-456 deleted). Resource and amount both match, so clause 3 holds; only invProceedsEqualAsk's id leg sees it.",
+      "apply": {
+        "type": "delete-line",
+        "match": "G-FILL-ID"
+      },
+      "mustViolate": "invProceedsEqualAsk"
+    },
+    {
+      "id": "FILL-AFTER-EXPIRY",
+      "describes": "fill's expiry gate removed (nft_swap.rs:437-441): a lapsed listing fills. A temporal safety property — S2 made expiry MANDATORY precisely so a forgotten listing cannot be bought at a stale price.",
+      "apply": {
+        "type": "delete-line",
+        "match": "G-FILL-EXPIRY"
+      },
+      "mustViolate": "invNoFillAfterExpiry"
+    },
+    {
+      "id": "DOUBLE-FILL",
+      "describes": "fill's `state == Listed` guard removed (nft_swap.rs:436). THE ARMING MUTATION for invNoDoubleFill, which is vacuous by construction in the healthy model (formal/README.md point 3 — the BUG-7-REGRESSION / ARBITER-AUTH trap). Without the guard: a second fill from Filled OVERWRITES the proceeds vault (the insert at :467 is 'never overwritten' only because of this guard), destroying the first buyer's payment; a fill from Cancelled hands out an asset the component no longer holds.",
+      "apply": {
+        "type": "delete-line",
+        "match": "G-FILL-LISTED"
+      },
+      "mustViolate": [
+        "invNoDoubleFill",
+        "invAssetConserved",
+        "invProceedsConserved"
+      ]
+    },
+    {
+      "id": "CANCEL-AFTER-FILL",
+      "describes": "cancel's `state == Listed` guard removed (nft_swap.rs:499): the seller cancels a Filled listing and the component hands out an asset the buyer already received — released twice. test_cancel_after_filled_reverts is the ledger-side pin.",
+      "apply": {
+        "type": "delete-line",
+        "match": "G-CANCEL-LISTED"
+      },
+      "mustViolate": "invAssetConserved"
+    },
+    {
+      "id": "FILL-FORGETS-FILLED-WITH",
+      "describes": "fill moves to Filled but never records which alternative it filled with (filled_with stays None, nft_swap.rs:72-74 / nft_swap.rs:472 `listing.filled_with = Some(alternative)` skipped). Replaced rather than deleted: Quint requires every action to assign every state var. The dedicated arming mutation for invFilledWithIffFilled, which no other mutation named (CANCEL-AFTER-FILL also breaks it, but only incidentally).",
+      "apply": {
+        "type": "replace",
+        "from": "    filledWith' = alt,",
+        "to": "    filledWith' = filledWith,"
+      },
+      "mustViolate": "invFilledWithIffFilled"
+    },
+    {
+      "id": "FILL-KEEPS-ASSET",
+      "describes": "fill forgets to take the asset out of its vault (the take_all at :475-479 dropped): the listing is Filled while the asset is still held. Arms assert_conservation clause 1 (asset held iff Listed) on its own.",
+      "apply": {
+        "type": "replace",
+        "from": "    assetVault' = assetVault - 1,          // asset_vaults[id].take_all()",
+        "to": "    assetVault' = assetVault,"
+      },
+      "mustViolate": "invAssetHeldIffListed"
+    },
+    {
+      "id": "WITHDRAW-BEFORE-FILL",
+      "describes": "withdraw_proceeds' `state == Filled` guard removed (nft_swap.rs:555): a withdraw on a Listed listing drains an empty vault and sets proceeds_withdrawn, so the later fill's payment lands in a vault the idempotency guard now refuses to release — stranded. Arms assert_conservation clause 2 (proceeds held iff Filled-and-unwithdrawn).",
+      "apply": {
+        "type": "delete-line",
+        "match": "G-WITHDRAW-FILLED"
+      },
+      "mustViolate": "invProceedsHeldIffOwed"
+    },
+    {
+      "id": "WITHDRAW-IDEMPOTENCY-GUARD-DELETED",
+      "describes": "withdraw_proceeds' `!proceeds_withdrawn` guard removed (nft_swap.rs:556): a second withdraw commits. MEASURED, not assumed: against THIS code conservation HOLDS under this bug, because take_all() drained the vault on the first call and the second deposits zero — so the only invariant that sees the guard deleted alone is the withdrawal count. Its off-chain face is a second ProceedsWithdrawnEvent (amount 0). The double-PAYOUT half of the idempotency claim is DOUBLE-PAYOUT below.",
+      "apply": {
+        "type": "delete-line",
+        "match": "G-WITHDRAW-ONCE"
+      },
+      "mustViolate": "invWithdrawAtMostOnce"
+    },
+    {
+      "id": "DOUBLE-PAYOUT",
+      "describes": "The idempotency guard removed AND the payout computed from the filled alternative's recorded ask amount instead of take_all() of the vault — the refactor under which that guard becomes the ONLY thing preventing a double payout. The second withdraw pays the seller again from nothing and invProceedsConserved must break. Two patches on purpose: with the guard present the amount-based payout is still single and conserves, and with take_all() the guard-less second call pays zero (WITHDRAW-IDEMPOTENCY-GUARD-DELETED).",
+      "applyAll": [
+        {
+          "type": "delete-line",
+          "match": "G-WITHDRAW-ONCE"
+        },
+        {
+          "type": "replace",
+          "from": "    sellerPaid' = sellerPaid + proceedsVault,   // PAYOUT: take_all() of the vault",
+          "to": "    sellerPaid' = sellerPaid + askAmt(filledWith),"
+        }
+      ],
+      "mustViolate": "invProceedsConserved"
+    },
+    {
+      "id": "LIST-NO-HORIZON",
+      "describes": "list's S2 ceiling removed (nft_swap.rs:367-374): a listing is accepted with expires_at beyond now + 30 days, i.e. more fill-window than S2 includes for free (longer is PAID, via extend_listing's royalty).",
+      "apply": {
+        "type": "delete-line",
+        "match": "G-LIST-HORIZON"
+      },
+      "mustViolate": "invListExpiryWithinHorizon"
+    },
+    {
+      "id": "LIST-EXPIRY-IN-PAST",
+      "describes": "list's 'expires_at must be in the future' check removed (nft_swap.rs:363-366): a listing is born already lapsed — unfillable from its first block. test_list_rejects_expiry_in_past is the ledger-side pin.",
+      "apply": {
+        "type": "delete-line",
+        "match": "G-LIST-FUTURE"
+      },
+      "mustViolate": "invListExpiryWithinHorizon"
+    },
+    {
+      "id": "BURN-WHILE-LISTED",
+      "describes": "burn_listing_receipt's Listed refusal removed (nft_swap.rs:605-608): the only credential that can cancel is burned while the asset is still escrowed — stranded forever.",
+      "apply": {
+        "type": "delete-line",
+        "match": "G-BURN-LISTED"
+      },
+      "mustViolate": "invNothingStrandedBehindBurnedReceipt"
+    },
+    {
+      "id": "BURN-WHILE-OWED",
+      "describes": "burn_listing_receipt's 'proceeds are still owed' refusal removed (nft_swap.rs:609-612): the only credential that can withdraw_proceeds is burned while the buyer's payment is still in the vault — stranded forever. test_burn_listing_receipt_refuses_while_filled_unwithdrawn is the ledger-side pin.",
+      "apply": {
+        "type": "delete-line",
+        "match": "G-BURN-OWED"
+      },
+      "mustViolate": "invNothingStrandedBehindBurnedReceipt"
+    }
+  ]
+}

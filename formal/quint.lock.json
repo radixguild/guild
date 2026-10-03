@@ -1,0 +1,8 @@
+{
+  "tools": {
+    "quint": "0.32.0",
+    "apalache": "0.56.1",
+    "jdkMajor": "17"
+  },
+  "note": "A verification result is meaningless without the checker version that produced it. Apalache is auto-fetched by `quint verify` into ~/.quint and pinned here so the cache key and the pin move together. Bump deliberately, re-run every model, and re-record REPORT.md."
+}

@@ -1,0 +1,1 @@
+ALTER TABLE "tasks" ADD COLUMN "escrow_component" text;
