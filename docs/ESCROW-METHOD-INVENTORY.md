@@ -42,9 +42,12 @@
 
 > Method index for `escrow/scrypto/guild-marketplace-escrow/src/lib.rs`.
 >
-> ✅ **The signature table is now GENERATED and CI-checked** (2026-08-09). Regenerate with
-> `cd guild-app && bun scripts/gen-method-inventory.mjs --write`; `--check` runs on every PR in
-> `test.yml`, which is **unfiltered** — `scrypto.yml` is path-filtered to `escrow/scrypto/**`
+> ✅ **The signature table is now GENERATED and CI-checked** (2026-08-09). The generator,
+> `gen-method-inventory.mjs` (`--write` regenerates, `--check` verifies), is kept in the
+> private operations repository. In this repository `tests/unit/method-inventory-gate.test.ts`
+> makes the same comparison through the same shipped functions
+> (`guild-app/scripts/lib/blueprint-methods.mjs`), in `test.yml`'s unit job on every PR, which
+> is **unfiltered** — `scrypto.yml` is path-filtered to `escrow/scrypto/**`
 > and so would miss an edit to *this file*, while a `lib.rs` edit needs catching too. Only an
 > unfiltered job sees both sides.
 >
@@ -136,12 +139,14 @@
 
 > P7-02 (task 90): a STANDALONE blueprint in the same Scrypto package
 > (`escrow/scrypto/guild-marketplace-escrow`), own module
-> (`src/nft_swap.rs`). Design: `docs/design/nft-swap.md`. It shares the
+> (`src/nft_swap.rs`). Design: `docs/design/nft-swap.md` (kept in the private operations
+> repository). It shares the
 > receipt-NFT + internal-minter + royalty-dial PATTERNS with
 > `guild_marketplace_escrow` by copy, not by refactor — none of the escrow's
 > own behaviour changed to make room for this. Same generation contract as
 > the block above: signatures only, byte-checked in CI
-> (`gen-method-inventory.mjs --check`); this method's own prose (state
+> (`method-inventory-gate.test.ts` here, `gen-method-inventory.mjs --check` in the
+> private operations repository); this method's own prose (state
 > machine, invariants, royalty dials) lives in `nft_swap.rs`'s doc comments,
 > not restated here to avoid a second copy that can drift.
 

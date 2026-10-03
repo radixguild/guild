@@ -120,4 +120,4 @@ This is Block 1 of the Ralph PRD re-extraction:
 - **Block 2** (API routes + auth): Depends on this Block 1
 - **Blocks 3-5** (Frontend, agents, polish): Depend on Blocks 1+2
 
-The original Archon PRD (`.archon/`) was deleted 2026-08-18 as deprecated; the live dependency graph is `docs/PROJECT-STATE.md`.
+The original Archon PRD (`.archon/`) was deleted 2026-08-18 as deprecated; the live dependency graph is `docs/PROJECT-STATE.md`, kept in the private operations repository.

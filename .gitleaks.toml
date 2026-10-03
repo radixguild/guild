@@ -1,12 +1,14 @@
-# gitleaks config — guild-saas
-# Secret-scanning guardrail (pre-public prerequisite). Runs in CI (secret-scan.yml)
-# and locally via the lefthook pre-commit hook. Pinned to gitleaks 8.30.x semantics.
+# gitleaks config — written for guild-saas, the private repository this one was
+# exported from (see PROVENANCE.md).
+# Secret-scanning guardrail: every merge into this public repository must pass it.
+# Runs in CI (secret-scan.yml) and locally via the lefthook pre-commit hook.
+# Pinned to gitleaks 8.30.x semantics.
 #
-# Baseline (2026-07-15): a full-history scan (604 commits, 9.1 MB) surfaced 30
-# findings, ALL benign — doc curl examples and test fixtures. The allowlist below
-# targets those *placeholder values*, NOT their file paths, so a real secret that
-# lands in the same docs/tests still trips the scanner. Do not broaden to whole
-# paths without a reason.
+# Baseline (2026-07-15, taken in that private repository): a full-history scan
+# (604 commits, 9.1 MB) surfaced 30 findings, ALL benign — doc curl examples and
+# test fixtures. The allowlist below targets those *placeholder values*, NOT their
+# file paths, so a real secret that lands in the same docs/tests still trips the
+# scanner. Do not broaden to whole paths without a reason.
 
 title = "guild-saas gitleaks config"
 

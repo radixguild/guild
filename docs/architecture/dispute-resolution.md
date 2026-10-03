@@ -42,13 +42,21 @@
 > badge and the L6(c) self-dealing guard. The PULL component `…cz468e` this banner used to
 > name is retired in place. The dispute UI has been compiled **ON** since 2026-08-29
 > (`NEXT_PUBLIC_FEATURE_DISPUTES=true`; the deploy gate `scripts/launch-check.sh` now FAILS a
-> build with it off — CLAUDE.md has the measurements) — and `raise_dispute` /
+> build with it off — the operator's CLAUDE.md has the measurements) — and `raise_dispute` /
 > `resolve_dispute` are PUBLIC methods on a LIVE mainnet component either way, reachable by
 > anyone who builds the manifest themselves. **§0 is the operator runbook for the one path
 > this doc previously described as unbuilt: a human arbiter ruling a real dispute — exercised
 > once on the live component (task 5, 2026-09-14; § Verification status).** §1-§3 are kept as
 > historical design record (see the banner before §1) — do not read anything past that banner
 > as describing what actually shipped.
+>
+> Operator files this doc cites — the deploy gate (`scripts/launch-check.sh`), the cron scripts
+> `scripts/escrow-drift-watch.mjs` and `scripts/keeper.mjs`, `CLAUDE.md`,
+> `docs/ESCROW-ADDRESSES.md`, `docs/DESIGN-REVIEW-2027.md`,
+> `docs/design/dispute-path-h2h-a2a-h2a.md` and `PROJECT-STATE.md` — are kept in the private
+> operations repository. They are named so the reasoning can be followed; what a reader here
+> can check directly is `guild-app/scripts/arbiter-harness.mjs`, the blueprint's `lib.rs`,
+> and the chain itself.
 
 # Guild Dispute Resolution System
 
@@ -843,6 +851,9 @@ function calculateDisputePreventionScore(task: TaskCreationData): DisputePrevent
 > on 2026-09-17 — the numbers had drifted by ~700 lines since 2026-08-23.
 
 ### Live today
+
+Operator scripts and records named in this table (the deploy gate, the drift watcher, the keeper,
+`DESIGN-REVIEW-2027.md`) are kept in the private operations repository; see the banner at the top.
 
 | Component | Location | Status |
 |-----------|----------|--------|

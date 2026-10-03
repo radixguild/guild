@@ -33,11 +33,6 @@ raw receipts. It does not compute or publish a score.
   aggregates them. Every existing example this package could draw on
   (see the fixture) is between the operator's own wallets — self-dealt, disclosed as
   such, and explicitly not evidence of anything beyond "the mechanism runs."
-- **Not added to `publish/MANIFEST.md`.** This package is not on the public-snapshot
-  allowlist. It contains no infra strings, no IPs, no personal names, no private
-  repo names — it would pass the manifest's own PII bar — but INCLUDE is a decision
-  for whoever reviews decision 6, not something this PR should presume. If/when it's
-  approved, add `packages/settlement-credential/**` to the manifest in that commit.
 
 ## Why WebCrypto Ed25519, not a new dependency
 
@@ -89,8 +84,11 @@ profile/
 `src/fixtures/unsigned-credential.task3.json` describes a **genuinely settled**
 Guild task: task 3's `auto_resolve_dispute` on the PULL escrow component, which
 committed on mainnet 2026-08-26T13:53:43Z. Every field traces to a specific line in
-this repo's own source of truth (cited in `build-fixture-cli.ts` and in the
-fixture's own `.provenance.json` sibling):
+the project's own record (cited in `build-fixture-cli.ts` and in the
+fixture's own `.provenance.json` sibling). That record — `docs/PROJECT-STATE.md` and
+`docs/ESCROW-ADDRESSES.md` below — is kept in the private operations repository, and its
+line numbers are as of when the fixture was built; the transaction and the component
+themselves are public on the Radix ledger:
 
 | field | value | source |
 |---|---|---|

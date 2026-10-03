@@ -13,7 +13,8 @@
 > `auto_resolve_dispute` the insurance returns to the poster whole while only the reward
 > splits (mainnet-measured 0.5 / 0.55 on a 1.0 + 0.05 task). Its stated dependency,
 > `GuildEscrow`, is the **deprecated** blueprint. Parameter ground truth:
-> `ESCROW-PARAMETER-SHEET.md`; live values: `ESCROW-ADDRESSES.md`.
+> `ESCROW-PARAMETER-SHEET.md`; live values: `ESCROW-ADDRESSES.md` (both kept in the private
+> operations repository).
 
 # Guild Insurance Model
 
@@ -366,7 +367,7 @@ ELSE (current state):
 | `insurance_vault` | `escrow/scrypto/guild-escrow/src/lib.rs:143` | On-chain vault for insurance XRD |
 | `insurance_fee_xrd` field | `guild-app/src/lib/types.ts:43` | Task type includes insurance amount |
 | Insurance display in UI | `guild-app/src/app/tasks/[id]/page.tsx` | Shows insurance fee on task detail |
-| Insurance calculation | `guild-app/src/app/tasks/new/page.tsx` | `reward × INSURANCE_RATE` |
+| Insurance calculation | `guild-app/src/app/tasks/create/page.tsx` | `reward × INSURANCE_RATE` |
 | Arbiter fee (10% of insurance) | `escrow/scrypto/guild-escrow/src/lib.rs:356` | Paid from insurance vault on dispute resolution |
 
 ### Needs Building

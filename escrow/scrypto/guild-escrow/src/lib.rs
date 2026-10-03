@@ -1,10 +1,10 @@
 //! # guild-escrow — DEPRECATED 2026-05-23
 //!
 //! Superseded by [`guild_marketplace_escrow`](../../guild-marketplace-escrow/src/lib.rs).
-//! See [`README.md`](../README.md) for the audit-driven rationale and the
-//! migration table.
+//! See [`README.md`](../README.md) for the rationale (findings from the 2026-05-23
+//! in-house scrypto scan, not an audit) and the migration table.
 //!
-//! This crate is retained as an audit-time snapshot and is **not** part of
+//! This crate is retained as a scan-time snapshot and is **not** part of
 //! the default scrypto CI matrix. Do not modify; do not consume from new
 //! components.
 

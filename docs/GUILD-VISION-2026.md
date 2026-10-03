@@ -237,7 +237,9 @@ remains is the Telegram bot's, folded into this repository's `bot/` on 2026-09-2
 profile, leaderboard, treasury, settings, fund tasks" — profile, leaderboard and task funding all
 ship; only `/treasury` and `/settings` are genuinely absent, and both wait on components that do
 not exist. The rest of the *Needed* list is accurate: the four Scrypto components are still
-unbuilt. Current status lives in `PROJECT-STATE.md`; current plan in `EXTERNAL-V1-FRAMEWORK.md`.
+unbuilt. Current status lives in `PROJECT-STATE.md`; current plan in `EXTERNAL-V1-FRAMEWORK.md` —
+both kept in the private operations repository; [`STATE.md`](../STATE.md) is the public digest
+of the first.
 
 ### Built
 - **GuildMarketplaceEscrow** — 1502 lines, 45 tests, multi-token, disputes, insurance

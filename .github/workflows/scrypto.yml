@@ -15,16 +15,18 @@ on:
 
 # The other three workflows have carried this since they were written; this one
 # never did, and it is the most expensive job in the repo (~19 min — the Rust
-# wasm32 build plus the ledger-simulator tests that CANNOT run on a Mac, per
-# CLAUDE.md, so this workflow is the only place they execute at all).
+# wasm32 build plus the ledger-simulator tests that CANNOT run on a Mac — the
+# README's Scrypto note: the WASM build needs Linux — so this workflow is the
+# only place they execute at all).
 #
-# Observed 2026-08-16, which is what prompted adding it: TWO runs of this
+# Observed 2026-08-16 in the private repository this one was exported from,
+# which is what prompted adding it: TWO runs of this
 # workflow were in flight simultaneously on the same branch
 # (chore/licence-apache2, runs 31932360587 and 31933171237, created 20 minutes
 # apart). Without a concurrency group the superseded run is never cancelled, so
 # a rapid second push bills a full second ~19-minute run for a commit nobody
-# will ever look at. Private-repo minutes are billed per job rounded up, so that
-# is ~19 wasted billed minutes per superseded push.
+# will ever look at. While this repository was private its minutes were billed
+# per job rounded up, so that was ~19 wasted billed minutes per superseded push.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

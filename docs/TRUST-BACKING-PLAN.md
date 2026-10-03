@@ -52,7 +52,8 @@ app's stated license)~~ ✅ **licence PICKED AND APPLIED 2026-08-04** — `Cargo
 because it would make the patent grant optional. ⚠️ Note the parenthetical was also wrong on its
 own terms at the time: the app's licence WAS **MIT**, not Apache — root `LICENSE` was MIT and
 GitHub reported `mit`, so the blueprint did *not* "match the app". ✅ **Closed: guild-app's
-licence is LOCKED 2026-08-15 (PROJECT-STATE.md, DECISIONS LOCKED item 3): Apache-2.0 everywhere —
+licence is LOCKED 2026-08-15 (PROJECT-STATE.md, kept in the private operations repository:
+DECISIONS LOCKED item 3): Apache-2.0 everywhere —
 applied by PR #385** (opened 2026-08-16; open at time of writing): root `LICENSE` → Apache-2.0,
 `NOTICE`, `guild-app/package.json`, `README.md:205/212`, `CONTRIBUTING.md:121`. This sentence
 read "the question still open for the flip sitting" until 2026-08-16; the reason the sweep could
@@ -119,7 +120,8 @@ Sequencing:
 2. **Earn phase:** trust accrues only from settled escrow history (completions, on-time
    rate, dispute outcomes, waivers granted/received) — not from purchases or follows.
    App-side trust tiers exist today; the soulbound on-chain badge lands with the
-   reputation design (`design/reputation-design.md`) in the vNext2 era — see the ⚠️ above:
+   reputation design (`design/reputation-design.md`, kept in the private operations
+   repository) in the vNext2 era — see the ⚠️ above:
    that needs a NEW resource, not a change to the live one.
 3. **Retail phase:** open onboarding once the badge ladder carries enough signal that a
    stranger can pick a worker by record alone.
