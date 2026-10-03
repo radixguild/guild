@@ -84,8 +84,13 @@ const ALL = {
 // Each of these SHIPPED in this bot and was false on 2026-09-20. The website's copy is
 // gated by guild-saas's honest-copy rules; this is the bot's own, smaller gate.
 const BANNED = [
-  [/open[-\s]source|apache/i, "the code is not public — the repo is private and its link 404'd"],
-  [/github\.com/i, "no repo link until a repo is public"],
+  // Until the open-source flip these two banned "open source"/"apache" and every github.com link
+  // (both repos were private; the link 404'd). The code is public now (radixguild/guild, F21):
+  // the stale claim is what is banned, and the one public repo is the only link allowed.
+  [/not public yet|code is not public|opens at launch|repo(sitory)? is private|closed[-\s]source/i, "the code is public (github.com/radixguild/guild) since the open-source flip"],
+  // `(?![\w-])`, not `\b`: a word boundary also matches before "-", which let
+  // github.com/radixguild/guild-ops and …/guild-saas through as the public repo (F21 review, F11).
+  [/github\.com\/(?!radixguild\/guild(?![\w-]))/i, "the only public repo is github.com/radixguild/guild"],
   [/execution layer|DAOs?\s+govern|the guild (ships|executes)/i, "an affiliation with Radix DAOs nobody ruled"],
   [/(governance|guild|your)\s+identity/i, "the badge records membership; it is transferable and anyone can mint one"],
   [/\b0 XRD\b|no XRD (required|needed)|completely free/i, "minting has a network fee and claiming locks a bond"],
@@ -136,7 +141,9 @@ test("no message makes a claim that shipped here and was false", () => {
 
 test("the gate itself fires on the sentences that shipped (control)", () => {
   const shipped = [
-    "The public half (this bot, the reference dashboard, docs) is open source, Apache 2.0:",
+    // "The public half … is open source, Apache 2.0" shipped while both repos were private. It is
+    // true since the flip, so it left this list; the stale sentence below is the false one now.
+    "The code is not public yet.",
     "Radix Guild is the execution layer for Radix DAOs — badges, voting, proposals, XP rewards.",
     "It's your governance identity — username, tier, XP, and level stored on the Radix ledger.",
     "No. Badge minting is free (0 XRD).",
@@ -176,6 +183,23 @@ test("the gate itself fires on the sentences that shipped (control)", () => {
   for (const s of shipped) assert.ok(BANNED.some(([re]) => re.test(s)), "not caught: " + s);
 });
 
+test("the repo-link rule lets through github.com/radixguild/guild and nothing that only starts like it", () => {
+  const [re] = BANNED.find(([, why]) => why.startsWith("the only public repo"));
+  const allowed = [
+    "The code is public: github.com/radixguild/guild.",
+    "https://github.com/radixguild/guild/blob/main/SECURITY.md",
+    "(https://github.com/radixguild/guild, Apache-2.0)",
+  ];
+  const refused = [
+    "https://github.com/radixguild/guild-ops",
+    "github.com/radixguild/guild-saas",
+    "github.com/radixguild/guilds",
+    "https://github.com/bigdevxrd/guild-saas",
+  ];
+  for (const s of allowed) assert.doesNotMatch(s, re, s);
+  for (const s of refused) assert.match(s, re, s);
+});
+
 test("every radixguild.com path a message links to is one this file knows exists", () => {
   // /link-telegram is served by guild-saas; /link (its only user) is flag-off until it is.
   const KNOWN = new Set(["", "/tasks", "/mint", "/trust", "/lifecycle", "/agents", "/link-telegram", "/groups", "/projects"]);
@@ -189,7 +213,7 @@ test("the three states of a DM /start say three different next steps", () => {
   assert.match(ALL.startDmNew, /Start with the task board/);
   assert.match(ALL.startDmNew, /link your Radix wallet, mint a Guild badge and hold some XRD of your own for the claim bond\./);
   assert.match(ALL.startDmLinked, /mint your free Guild badge \(network fee only\)/);
-  assert.match(ALL.startDmBadge, /You hold a Guild badge\. Claiming happens on the web app and locks a bond of at least 76\.45 XRD\./);
+  assert.match(ALL.startDmBadge, /You hold a Guild badge\. Claiming happens on the web app and locks a bond of at least 76\.45 XRD today \(an owner setting\)\./);
   assert.doesNotMatch(ALL.startDmBadge, /mint/i);
 });
 

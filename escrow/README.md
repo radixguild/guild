@@ -8,7 +8,7 @@ Scrypto blueprints for Guild marketplace escrow.
 
 ## Deprecated (retained for reference)
 
-- **[`scrypto/guild-escrow/`](scrypto/guild-escrow/)** — Pre-audit single-token escrow. Two high-severity findings from the 2026-05-23 audit (worker role `allow_all`, arbiter accepts any badge). See its [`README.md`](scrypto/guild-escrow/README.md) for migration guidance. Do not modify; do not add as a dependency.
+- **[`scrypto/guild-escrow/`](scrypto/guild-escrow/)** — Pre-scan single-token escrow. Two high-severity findings from the 2026-05-23 in-house scrypto scan (worker role `allow_all`, arbiter accepts any badge). See its [`README.md`](scrypto/guild-escrow/README.md) for migration guidance. Do not modify; do not add as a dependency.
 
 ## Sibling-repo legacy (not in this tree)
 

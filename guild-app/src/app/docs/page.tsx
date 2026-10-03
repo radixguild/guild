@@ -78,7 +78,7 @@ const FAQ = [
   { q: "What is my badge?", a: "An on-chain NFT on the Radix ledger. It records your username and tier at mint — your handle in the guild for voting and tasks. It is not an identity check: anyone can mint one for the network fee, and one person can hold several. The NFT also carries an XP field. Only the operator can write it, with an admin badge — it was written six times in April 2026, never since — and a task payout never reaches it, so the on-chain XP value is not your score. The XP you see in the app is your account's record; the tier you see is the badge's own tier field, set at mint. The NFT itself is transferable. Your XP and trust record belong to your account in the Guild's records, not to the badge, so moving the badge does not move them." },
   { q: "How do I earn XP?", a: "By completing tasks. Each task pays XP by reward tier — 10, 25, 50 or 100 — credited when the task settles. That is the only source of the XP shown on the dashboard. The Telegram bot keeps its own points for votes and polls; they are not added to your Guild XP. Your badge NFT also carries an XP field on-chain, but only the operator can write it, so it is not your score. XP cannot be bought." },
   { q: "What is Consultation v2?", a: "Our own deployment of the Radix Foundation's consultation_v2 blueprint. The Foundation wrote the blueprint but never deployed it; bigdev forked it and deployed this component in April 2026 — the Foundation does not run it and does not endorse it. CV2 records formal, non-binding temperature checks on the Radix ledger, weighted by XRD holdings. It is PARKED as of 2026-07-31 — we are not developing it further. The component stays on mainnet and its checks can still be read through the Telegram bot (/cv2). Casting a vote is off, and no vote has ever been cast through it." },
-  { q: "Who runs this?", a: "bigdev built Radix Guild and runs it today, and holds its admin badge — anyone can check that on the ledger. The aim is a Guild its members steer: ideas and issues are raised in the open and turned into funded Guild tasks, and the Guild is handed to the Radix DAO once the DAO is formed. The source is private while the platform is tested; it opens at launch, and no date is set. The money path — escrow, task funds and badges — already runs on Radix mainnet, where anyone can verify it. See Costs & Transparency below." },
+  { q: "Who runs this?", a: "bigdev built Radix Guild and runs it today, and holds its admin badge — anyone can check that on the ledger. The aim is a Guild its members steer: ideas and issues are raised in the open and turned into funded Guild tasks, and the Guild is handed to the Radix DAO once the DAO is formed. The source is public at github.com/radixguild/guild, under Apache-2.0. The money path — escrow, task funds and badges — already runs on Radix mainnet, where anyone can verify it. See Costs & Transparency below." },
   { q: "How do bounties work?", a: settlementCopy("docsBountiesAnswer")! },
   { q: "What are the fees?", a: settlementCopy("docsFeesAnswer")! },
   // Added 2026-09-01. "Is there a token?" is the first question anyone in this
@@ -346,7 +346,7 @@ function DocsContent() {
             {[
               { label: "Telegram Bot", url: TG_BOT_URL },
               { label: "Dashboard", url: process.env.NEXT_PUBLIC_SITE_URL || "https://radixguild.com" },
-              { label: "Source code (opens at launch, and no date is set)", url: "#transparency" },
+              { label: "Source code", url: "https://github.com/radixguild/guild" },
               { label: "Costs & Transparency", url: "#transparency" },
               { label: "System Health", url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://radixguild.com"}/api/health` },
             ].map(r => (
@@ -500,7 +500,7 @@ function DocsContent() {
                 enable_method_auth! block and the setter bodies; /trust and /auditor-guide carry the
                 same facts at full length. */}
             <p><strong>What can the owner badge change?</strong> Ten owner-only calls change twelve settings, each call one signed transaction with no delay and no vote: the claim bond&rsquo;s percentage, floor and cap, the review window, both submit deadlines, the minimum insurance, the arbiter-fee cap, the dispute window and default ruling, and the expiry grace and bounty. So the bond figures on this site are today&rsquo;s settings, not guarantees. Most are pinned into a task at the step that uses them, so a change reaches only steps taken after it; the expiry grace and bounty also reach claims already in flight. The owner can also add, remove, freeze and unfreeze reward tokens (this only decides which tokens new tasks can be funded in) and withdraw forfeited claim bonds. What it cannot do: there is no pause method, so funded tasks keep running (freezing a token only stops new ones), and no owner method touches a task&rsquo;s reward, insurance or live claim bond or sends a payout anywhere but the account pinned when the task was posted or claimed. The arbiter badge, held in the same wallet, is separate: on a disputed task its ruling decides the split between poster and worker, and it can pay no one else beyond any arbiter fee set at funding (0 on every task this app funds). The full list, with how to check it, is on <Link href="/trust" className="text-primary hover:underline">/trust</Link> and in the <Link href="/auditor-guide" className="text-primary hover:underline">auditor&rsquo;s guide</Link>.</p>
-            <p><strong>What if bigdev disappears?</strong> Badges and escrow vaults live on the Radix ledger — no server required to keep them, and every party collects from the escrow with their own wallet. The source opens at launch, and no date is set; once it is public, anyone can verify and redeploy the escrow blueprint. Until the transaction templates are published here, collecting without this site means building the transaction yourself, or asking anyone to deliver it to your account.</p>
+            <p><strong>What if bigdev disappears?</strong> Badges and escrow vaults live on the Radix ledger — no server required to keep them, and every party collects from the escrow with their own wallet. The source is public, so anyone can read and redeploy the escrow blueprint. Worker manifests are on <Link href="/agents#manifests" className="text-primary hover:underline">/agents#manifests</Link>; anything else means building the transaction yourself, or asking anyone to deliver it to your account.</p>
           </CardContent>
         </Card>
 
@@ -530,7 +530,7 @@ function DocsContent() {
             ))}
             <div className="flex items-center justify-between py-1.5 border-t">
               <span className="text-muted-foreground">Source Code</span>
-              <span className="font-mono text-xs text-muted-foreground">opens at launch, and no date is set</span>
+              <a href="https://github.com/radixguild/guild" className="font-mono text-xs text-primary hover:underline">github.com/radixguild/guild</a>
             </div>
           </CardContent>
         </Card>

@@ -51,6 +51,9 @@ const SWEPT: Array<[file: string, mustSay: RegExp]> = [
   ["guild-app/public/llms.txt", /bond of 10% of the reward today, with a floor \(the percentage and the floor are owner settings;/],
   ["bot/services/copy.js", /"10% of the reward, at least " \+ CLAIM_BOND_FLOOR_XRD \+ " XRD today \(an owner setting\)"/],
   ["bot/services/faq-matcher.js", /10% of the reward, at least 76\.45 XRD today \(an owner setting\)/],
+  // The third (2026-10-03, F21 review): the agent-facing bond rule, which names the cap too.
+  ["guild-app/src/content/agent-cold-start.ts", /10% of the task's reward today, at least \$\{ESCROW_CLAIM_BOND_XRD\} XRD, capped \(owner settings; one signed call changes them\)/],
+  ["guild-app/src/content/agent-manifests.ts", /10% of the task's reward today, at least \$\{ESCROW_CLAIM_BOND_XRD\} XRD, capped \(owner settings; one signed call changes them\)/],
 ]
 
 /** The phrases that read as a contract guarantee. None may survive on a swept surface. */

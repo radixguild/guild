@@ -4,7 +4,7 @@ This blueprint is **deprecated as of 2026-05-23**. Use [`guild-marketplace-escro
 
 ## Why
 
-The 2026-05-23 scrypto audit (see `~/Projects/scrypto-audit-kit/audit-reports/`) flagged two high-severity issues in this blueprint:
+The 2026-05-23 in-house scrypto scan (reports not published) flagged two high-severity issues in this blueprint:
 
 - **F-001** — the `worker` role uses `allow_all`, so any badge holder (or anonymous caller in some paths) can mark a task as claimed and post the bond. `guild-marketplace-escrow` requires a `worker_badge` resource at instantiate and gates `claim_task` on bucket presentation of that exact resource.
 - **F-002** — `resolve_dispute` accepts any badge as the arbiter credential. `guild-marketplace-escrow` requires `arbiter_badge_resource` at instantiate and bucket-burns the badge on resolve.
@@ -25,7 +25,7 @@ Cherry-picked design for the replacement lives in [`docs/ESCROW-DESIGN.md`](../.
 
 ## Retention rationale
 
-This crate is kept in-tree as a reference for migrators and to preserve the audit-time snapshot for future review. It is **not** included in `.github/workflows/scrypto.yml`'s build/test matrix — that workflow exists and runs (5 green runs as of 2026-09-27, covering `guild-marketplace-escrow`, `badge-manager/scrypto/radix-badge-manager` and `blueprints/agent-badge-controller`); this deprecated, known-vulnerable crate is deliberately excluded from it, not pending inclusion.
+This crate is kept in-tree as a reference for migrators and to preserve the scan-time snapshot for future review. It is **not** included in `.github/workflows/scrypto.yml`'s build/test matrix — that workflow exists and runs (5 green runs as of 2026-09-27, covering `guild-marketplace-escrow`, `badge-manager/scrypto/radix-badge-manager` and `blueprints/agent-badge-controller`); this deprecated, known-vulnerable crate is deliberately excluded from it, not pending inclusion.
 
 Do not modify this crate. Do not add it as a dependency of new components.
 

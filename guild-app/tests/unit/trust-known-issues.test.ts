@@ -103,8 +103,18 @@ describe("/trust Hard Questions", () => {
   });
 
   it("answers the five questions a sceptic asks first", () => {
-    for (const needle of [/cents/i, /code is closed/i, /take the money/i, /squat or spam/i, /paying himself/i]) {
+    // The code question was "…but the code is closed." until the open-source flip; it is
+    // "…can I check the code?" since (F21 review, F1).
+    for (const needle of [/cents/i, /check the code/i, /take the money/i, /squat or spam/i, /paying himself/i]) {
       expect(block, needle.source).toMatch(needle);
     }
+  });
+
+  it("says the source is public but does not claim the deployed package is proven to be it", () => {
+    // Reading the source is possible since the flip; proving the package on the ledger was built
+    // from it is the reproducible build, which is still planned. The answer must say both.
+    expect(block).toMatch(/source is public at github\.com\/radixguild\/guild/);
+    expect(block).toMatch(/reproducible build[^"`]{0,60}still planned/);
+    expect(block).not.toMatch(/code is closed|repositories are private/);
   });
 });

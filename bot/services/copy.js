@@ -69,7 +69,7 @@ const ADMIN_BADGE_LINE =
 
 const BADGE_HOLDER_LINE =
   "You hold a Guild badge. Claiming happens on the web app and locks a bond of at least " +
-  CLAIM_BOND_FLOOR_XRD + " XRD.";
+  CLAIM_BOND_FLOOR_XRD + " XRD today (an owner setting).";
 
 /** @param {{ portal: string, linkedAddress?: string|null, hasBadge?: boolean }} o */
 function startDm({ portal, linkedAddress, hasBadge }) {
@@ -222,7 +222,7 @@ function badgeCard({ badge, trust }) {
 /** The onboarding "I've minted → check my badge" answer when a badge is there. */
 function badgeFound({ badge, trust }) {
   return "Badge found. Claiming happens on the web app and locks a bond of at least " +
-    CLAIM_BOND_FLOOR_XRD + " XRD.\n\n" + badgeCard({ badge, trust });
+    CLAIM_BOND_FLOOR_XRD + " XRD today (an owner setting).\n\n" + badgeCard({ badge, trust });
 }
 
 /** Onboarding step 2. Until 2026-09-24 it said "It's free (0 XRD)" — there is a network fee. */
@@ -265,7 +265,7 @@ function faq({ portal }) {
     "No. They are off-ledger polls stored in this bot's database, one vote per Telegram account. " +
     "Linking a wallet here is not verified, so a vote does not prove badge ownership.\n\n" +
     "Who runs it? Is the code public?\n" +
-    ADMIN_BADGE_LINE + " The code is not public yet. What is and isn't true today, and the " +
+    ADMIN_BADGE_LINE + " The code is public: github.com/radixguild/guild. What is and isn't true today, and the " +
     "known issues, are published at " + portal + "/trust"
   );
 }
@@ -348,7 +348,7 @@ function myStatus({ tickets }) {
 
 function sourceStatus({ portal }) {
   return (
-    "The code is not public yet.\n\n" +
+    "The code is public: github.com/radixguild/guild.\n\n" +
     "What is live, who controls what, and the known issues are published at " + portal + "/trust"
   );
 }

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 // Track B wave 1: the trust docs published as in-app pages. Beyond rendering,
 // these pin the honest-copy decisions (P9): deployed-vs-planned markers present,
-// no GitHub links while the source is unpublished, no fee claimed during beta.
+// no link to any repository but the public one, no fee claimed during beta.
 
 test.describe("How the Guild works (merged into /guide)", () => {
   test("renders the flow with the live-vs-planned marker", async ({ page }) => {
@@ -56,12 +56,21 @@ test.describe("Trust page", () => {
     await expect(page.getByText("Checkable Today")).toBeVisible();
     // The live escrow component is linked to the public dashboard.
     await expect(page.locator("a[href*='dashboard.radixdlt.com/component/']")).toBeVisible();
-    // Source publication is stated as planned, not done (P9 — no false OSS claims).
-    // One sentence sitewide since 2026-09-07: "opens at launch, and no date is set".
-    await expect(page.getByText("opens at launch", { exact: false })).toBeVisible();
-    await expect(page.getByText("no date is set", { exact: false })).toBeVisible();
-    // ...and accordingly no GitHub links exist anywhere on the page.
-    await expect(page.locator("a[href*='github.com']")).toHaveCount(0);
+    // Since the open-source flip, source publication is Done — and the step that would prove
+    // the deployed package was built from that source, the reproducible build, is still
+    // Planned (P9: deployed-vs-planned markers, no claim ahead of reality). Until the flip this
+    // pinned "opens at launch" / "no date is set", which the flip change removed.
+    const backingRow = (item: string) => page.locator("div.bg-muted").filter({ hasText: item });
+    await expect(backingRow("Escrow blueprint source published").getByText("Done", { exact: true })).toBeVisible();
+    await expect(backingRow("Reproducible-build verification").getByText("Planned", { exact: true })).toBeVisible();
+    // The page names the public repository...
+    await expect(page.getByText("github.com/radixguild/guild", { exact: false }).first()).toBeVisible();
+    // ...and links no other GitHub repository (the earlier one is not public). Whether /trust
+    // links the public one at all is the owner's call; this holds either way.
+    const githubHrefs = await page
+      .locator("a[href*='github.com']")
+      .evaluateAll((links) => links.map((a) => a.getAttribute("href") ?? ""));
+    for (const href of githubHrefs) expect(href).toMatch(/^https:\/\/github\.com\/radixguild\/guild(?:[/?#]|$)/);
   });
 });
 

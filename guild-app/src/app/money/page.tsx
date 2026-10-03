@@ -57,7 +57,7 @@ const POSTER_COSTS = [
 
 const WORKER_COSTS = [
   {
-    label: `Claim bond — 10% of the reward, floored at ${ESCROW_CLAIM_BOND_XRD} XRD, forfeitable`,
+    label: `Claim bond — 10% of the reward, floored at ${ESCROW_CLAIM_BOND_XRD} XRD today (an owner setting), forfeitable`,
     detail:
       `A stake you post to claim a task, marking the claim as live: 10% of the task's reward, at least ${ESCROW_CLAIM_BOND_XRD} XRD today (an owner setting). What can cost you is the expiry race, not the size of the stake. It is not handed back when you submit: it stays in the escrow until the task settles, is credited back to you in full when the work is approved or released after the review window, splits the way the reward does if a dispute is raised, and is collected with the same withdrawal as the reward. Submit has no deadline check, so even a late submission protects it. The catch is the race: once your deadline passes, expire_claim can be called by ANYONE, not only you or the poster, and it forfeits the whole bond and reopens the task. Not instantly, though: the contract refuses to expire a claim until ${ESCROW_EXPIRE_GRACE_SECS / 3600} hour past the deadline, so a late submit inside that hour still saves your bond from forfeiture. After that it is first-to-commit, and a claim left unattended can lose the whole bond to a stranger for the cost of their gas.`,
   },
@@ -314,8 +314,9 @@ function MoneyContent() {
             </a>
           </p>
           <p className="text-muted-foreground">
-            <span className="font-semibold text-foreground">Source audit:</span> opens at launch, and no
-            date is set — the escrow blueprint is a private build until then, so no repo link is offered yet.
+            <span className="font-semibold text-foreground">Source:</span> the escrow blueprint
+            source is public at github.com/radixguild/guild; a reproducible build that ties it to the
+            deployed package is still planned.
           </p>
         </CardContent>
       </Card>

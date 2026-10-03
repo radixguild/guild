@@ -5,7 +5,7 @@ import { join, relative, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 import { REPO_IS_PUBLIC } from "@/lib/config"
 import { REPO_ROOT, REQUIRE_PRIVATE_INPUTS } from "../support/private-input"
-import { BANNED, violation } from "../../scripts/honest-copy.mjs"
+import { BANNED, STALE_PRIVATE_CLAIM, violation } from "../../scripts/honest-copy.mjs"
 
 /**
  * The open-source flip makes every "the source is not public yet" sentence false.
@@ -33,44 +33,16 @@ import { BANNED, violation } from "../../scripts/honest-copy.mjs"
  *   agents-selfserve-honesty.test.ts once it merges (they ship inside the kits, so they
  *   say nothing about visibility at all).
  *
- * Three listed lines in the copy are NOT "the source is not public yet": the warning about
- * tasks 70, 92 and 93 (/agents, /trust's Known Issues and private-repo-note.tsx). Those
- * briefs are hash-locked on-chain and name a PR against bigdevxrd/guild-saas, which stays
- * private (the flip is of radixguild/guild), so the warning is still true after the flip.
- * Reword them to name that repo; do not delete them or empty PRIVATE_REPO_TASK_IDS.
- *
  * A wrapped sentence is read across one line break. Two always-on controls keep a broken
  * scanner from passing as clean: the regex must catch every phrasing in MUST_CATCH and
  * pass every true sentence in MUST_PASS, and each scope has a file-count floor.
  */
 
-// The phrasing list matches the F21 draft's STALE_PRIVATE_CLAIM in honest-copy.mjs
-// (not on main yet); once it lands, import it here instead, so there is one list. "The
-// source is public" and "the source is published" stay legal: both are true after the flip.
-const NOT_PUBLIC_YET = new RegExp(
-  [
-    String.raw`opens at launch`,
-    String.raw`closed[-\s]source`,
-    String.raw`\brepo(?:s|sitory|sitories)?\s+(?:is|are)\s+(?:still\s+)?private\b`,
-    String.raw`\brepo(?:sitory)?\s+is\s+not\s+(?:fully\s+|yet\s+)?open\b`,
-    String.raw`\b(?:repo(?:sitory)?|source|code)\b[^.;!?]{0,40}\bwhich\s+is\s+private\b`,
-    String.raw`\bprivate\s+build\b`,
-    String.raw`\bprivate\s+until\s+then\b`,
-    String.raw`\b(?:source|code)(?:\s+code)?\s+(?:is|are)\s+(?:still\s+)?(?:private|closed)\b`,
-    String.raw`\btoday\s+it(?:\s+is|['’]s)\s+private\b`,
-    String.raw`not public yet`,
-    String.raw`\b(?:source|code|repo(?:sitory)?)\b[^.;!?]{0,30}\bnot\s+yet\s+public\b`,
-    String.raw`code is not public`,
-    String.raw`private code repository`,
-    String.raw`not (?:yet )?open[-\s]source`,
-    String.raw`\b(?:once|until)\s+(?:the\s+|its\s+|our\s+)?(?:[\w'’-]+\s+){0,2}(?:source|code|repo(?:sitory)?)(?:\s+code)?\s+(?:is|goes|becomes)\s+(?:public|published|open(?:ed)?)\b`,
-    String.raw`\b(?:source|code)(?:\s+code)?\s+(?:will\s+be|is\s+being|is\s+to\s+be)\s+(?:opened|published|released|open[-\s]sourced)\b`,
-    String.raw`\bwill\s+be\s+open[-\s]sourced\b`,
-    String.raw`\bbeing\s+made\s+public\b`,
-    String.raw`\(coming\)[^.;!?]{0,40}\bsource\b`,
-  ].join("|"),
-  "i",
-)
+// One list: the scan is honest-copy's stale-private-claim regex (STALE_PRIVATE_CLAIM), the
+// same one launch-check CHECK 4 applies to the built pages, rather than a copy of it kept in
+// step by hand. "The source is public" and "the source is published" stay legal: both are
+// true after the flip.
+const NOT_PUBLIC_YET = STALE_PRIVATE_CLAIM
 
 const MUST_CATCH = [
   "the source opens at launch, and no date is set",
@@ -93,6 +65,11 @@ const MUST_CATCH = [
   "a small project whose source is being opened",
   "it will be open-sourced",
   "Component addresses, configuration, and (coming) the escrow blueprint source itself",
+  // Added with the second F21 review (2026-10-03).
+  "The source is not public.",
+  "The code isn't public yet.",
+  "the client isn't open source",
+  "the code will be public at launch",
 ]
 
 const MUST_PASS = [
@@ -104,6 +81,8 @@ const MUST_PASS = [
   "its full transaction and settlement history is public on the Radix ledger",
   "Until a reproducible build ties the source to the deployed package, verify behaviour too.",
   "Not open yet", // a funding pool's draft label (src/lib/funding-display.ts)
+  "The code is public at https://github.com/radixguild/guild (Apache-2.0).",
+  "The client is open source under Apache-2.0.",
 ]
 
 const COPY_ROOTS = ["guild-app/src", "guild-app/public", "bot"]
@@ -240,9 +219,7 @@ describe("every 'not public yet' claim in the copy moves with REPO_IS_PUBLIC", (
   it.runIf(REPO_IS_PUBLIC)("after the flip, no user-facing sentence says the source is not public", () => {
     expect(
       hits,
-      `REPO_IS_PUBLIC is true: rewrite each of these in the same change. The tasks 70/92/93 warning is the exception to ` +
-        `"say it is public": it stays true (their briefs name the private bigdevxrd/guild-saas), so reword it to name that ` +
-        `repo rather than delete it:\n${hits.join("\n")}`,
+      `REPO_IS_PUBLIC is true: rewrite each of these in the same change:\n${hits.join("\n")}`,
     ).toEqual([])
   })
 })

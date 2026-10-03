@@ -319,8 +319,8 @@ function TaskDetailView({ id }: { id: string }) {
             />
           </div>
         )}
-        {/* Claimable, but finishing needs the private repository — warn BEFORE
-            the claim area (private-repo-note.tsx says why, and when to remove). */}
+        {/* Claimable, but its brief points at the Guild's earlier repository — warn
+            BEFORE the claim area (private-repo-note.tsx says why, and when to remove). */}
         {task.status === "open" && (
           <PrivateRepoTaskNote
             taskId={task.id}

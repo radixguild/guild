@@ -22,9 +22,9 @@ Tasks marketplace UI: list, detail, submit-work, create. Mounts under the (dashb
 
 `Task` / `User` / `Submission` types are derived from the Drizzle schema via `lib/marketplace-types.ts`. Pure formatting utilities live in `lib/marketplace-utils.ts`.
 
-## Public/SaaS Marker
+## Public marker
 
-🔒 **SaaS-distinctive.** Marketplace UI is the core saas surface — stays in guild-saas closed-source. Components could be partially extracted as primitives later (TaskCard shape is generic), but the marketplace flow is the saas value.
+Public since the open-source flip (`radixguild/guild`, Apache-2.0), like the rest of the app. Components could be extracted as primitives later (the TaskCard shape is generic).
 
 ## Known Gaps for Follow-up
 

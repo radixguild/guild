@@ -255,6 +255,31 @@ export const DIST_DIR = process.env.LAUNCH_CHECK_DIST_DIR || ".next";
 export const fileFor = (route) =>
   DIST_DIR + "/server/app" + (route === "/" ? "/index" : route) + ".html";
 
+/** "The code is not public" in any of the forms it shipped before the open-source
+ *  flip, on the site, in the docs or in the bot: "opens at launch", "closed-source",
+ *  "the repository is private" / "the repositories are private", "this repo is not
+ *  fully open", "…, which is private", "a private build", "private until then",
+ *  "the code is closed", "the source is private", "today it is private", "not public
+ *  yet", "not yet public", "not open source yet", "private code repository",
+ *  "once / until the source is public|published", "the source will be published",
+ *  "is being opened", "(coming) … source"; and, since the second F21 review
+ *  (2026-10-03), "the source is not public" / "the code isn't public yet", "isn't
+ *  open source", "being made public" and "the code will be (made) public".
+ *
+ *  Precise on purpose, because CHECK 4 fails a deploy on any hit: "the source is
+ *  published", "now that the source is public", "the code is public at …" and "open
+ *  source under Apache-2.0" are TRUE after the flip and stay quiet, as do "private
+ *  key", "privately" and "the dice game is closed".
+ *
+ *  Exported so the source-side tripwire (tests/unit/repo-visibility-flip.test.ts,
+ *  which scans src/, public/ and bot/ line by line) can share it rather than keep a
+ *  second list. Through BANNED it reaches what the honest-copy gates read — the
+ *  built pages (launch-check CHECK 4, tests/e2e/cold-user.spec.ts) and the source
+ *  strings some unit tests scan — never the shipped docs; the bot gates its own
+ *  replies in bot/test/copy.test.js. */
+export const STALE_PRIVATE_CLAIM =
+  /opens at launch|closed[-\s]source|\brepo(?:s|sitory|sitories)?\s+(?:is|are)\s+(?:still\s+)?private\b|\brepo(?:sitory)?\s+is\s+not\s+(?:fully\s+|yet\s+)?open\b|\b(?:repo(?:sitory)?|source|code)\b[^.;!?]{0,40}\bwhich\s+is\s+private\b|\bprivate\s+build\b|\bprivate\s+until\s+then\b|\b(?:source|code)(?:\s+code)?\s+(?:is|are)\s+(?:still\s+)?(?:private|closed)\b|\btoday\s+it(?:\s+is|['’]s)\s+private\b|not public yet|\b(?:source|code|repo(?:sitory)?)\b[^.;!?]{0,30}\bnot\s+yet\s+public\b|code is not public|private code repository|not (?:yet )?open[-\s]source|\b(?:once|until)\s+(?:the\s+|its\s+|our\s+)?(?:[\w'’-]+\s+){0,2}(?:source|code|repo(?:sitory)?)(?:\s+code)?\s+(?:is|goes|becomes)\s+(?:public|published|open(?:ed)?)\b|\b(?:source|code)(?:\s+code)?\s+(?:will\s+be|is\s+being|is\s+to\s+be)\s+(?:opened|published|released|open[-\s]sourced)\b|\bwill\s+be\s+open[-\s]sourced\b|\(coming\)[^.;!?]{0,40}\bsource\b|\b(?:source|code|repo(?:sitory)?)\s+(?:is\s+not|isn['’]t)\s+(?:yet\s+)?(?:public|open)\b|isn['’]t\s+(?:yet\s+)?open[-\s]source|being\s+made\s+public|\b(?:source|code|repo(?:sitory)?)\s+will\s+be\s+(?:made\s+)?public\b/i;
+
 // ── The rule table ───────────────────────────────────────────────────────────
 // Each entry is false in a way that costs a cold user something.
 //   { label, re, allow?: RegExp[] }
@@ -844,24 +869,19 @@ export const BANNED = [
   },
 
   // ── Two claims a live Telegram test found, 2026-09-20 ──────────────────────
-  // (1) OPEN SOURCE. The bot said "open source, Apache 2.0: github.com/bigdevxrd/
-  // guild-public" and the OpenGraph card said "Apache-2.0 licensed". Both repos
-  // are PRIVATE; the link 404s for everyone but the operator. Until a repo is
-  // actually public, no surface may say the code is open, public or licensed.
-  // Legal and left alone: /about's "not open source yet"; a LICENCE NAME as a
-  // task term ("Apache-2.0" in the deliverable-licence picker); and /lights-on's
-  // conditional promise about things not yet published ("Anything we publish …
-  // is Apache-2.0") — a commitment about the future, not a claim about today.
+  // (1) OPEN SOURCE — turned around at the open-source flip. On 2026-09-20 the
+  // bot said "open source, Apache 2.0: github.com/bigdevxrd/guild-public" and the
+  // OpenGraph card said "Apache-2.0 licensed" while both repos were PRIVATE, so
+  // this rule was "open-source-claim" and banned any claim that the code was
+  // open, public or licensed. At the flip the code went public (radixguild/guild,
+  // Apache-2.0), and what is false now is the opposite sentence: a built page may
+  // not say the code is private, closed, or opening later. Legal: "the source is
+  // public", "the source is published", a licence name ("Apache-2.0"), and
+  // "private" about anything other than the code's visibility (a private key, a
+  // private report). See STALE_PRIVATE_CLAIM above for the phrasings.
   {
-    label: "open-source-claim — no repo is public; nothing here is open source or licensed to anyone yet",
-    re: /\b(?:is|are|fully|100%|completely)\s+open[-\s]source\b|\bopen[-\s]sourced?\s+(?:under|on\s+github|\(|,\s*apache|,\s*mit)|\b(?:apache[-\s]?2\.0|mit)[-\s]licen[sc]ed\b|\blicen[sc]ed\s+under\s+(?:the\s+)?(?:apache|mit)\b|\bsource\s+(?:code\s+)?is\s+(?:public|available)\b/i,
-    allow: [
-      /\b(?:not|isn['’]t|aren['’]t|never)\b(?:\s+[\w,]+){0,4}\s+open[-\s]source/i,
-      /\bnot\s+(?:yet\s+)?(?:public|available)\b/i,
-      // /trust + /bug-bounty ship "once the source is public" — a condition, true today.
-      // The live probe caught this rule firing on it before it merged.
-      /\b(?:once|when|until|if|after)\b(?:\s+[\w,]+){0,3}\s+source\s+(?:code\s+)?is\s+(?:public|available)\b/i,
-    ],
+    label: "stale-private-claim — the code is public (radixguild/guild); nothing may say it is private, closed-source or opens later",
+    re: STALE_PRIVATE_CLAIM,
   },
   // (2) "THE ON-CHAIN XP FIELD HAS NEVER BEEN WRITTEN." Four pages said so. A
   // Gateway read on 2026-09-20 refuted it: <guild_member_bigdevxrd> carries

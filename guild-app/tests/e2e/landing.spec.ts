@@ -123,8 +123,13 @@ test.describe("Landing Page", () => {
     await expect(
       page.locator("footer").getByRole("link", { name: "Ledger" })
     ).toBeVisible();
-    // P9: dead GitHub link removed until source publishes — must not reappear
-    await expect(page.locator("footer").getByText("GitHub")).toHaveCount(0);
+    // P9 removed a dead GitHub link while the repositories were private. Since the open-source
+    // flip the footer may link the public repository (the owner's call); it may never link
+    // another one, so a link to the earlier, non-public repository cannot come back.
+    const githubHrefs = await page
+      .locator("footer a[href*='github.com']")
+      .evaluateAll((links) => links.map((a) => a.getAttribute("href") ?? ""));
+    for (const href of githubHrefs) expect(href).toMatch(/^https:\/\/github\.com\/radixguild\/guild(?:[/?#]|$)/);
   });
 
   test("dark mode is locked (forced theme beats a persisted 'light')", async ({ page }) => {

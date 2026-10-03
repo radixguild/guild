@@ -67,10 +67,13 @@ describe("lights-on content — the three sentences that must survive verbatim",
   // Re-pinned 2026-09-24: the third was "Apache-2.0, forever". bigdev's
   // 2026-09-20 ruling allows no licence or open-source claim on any surface
   // until a repository is actually public, and none is.
+  // Re-pinned 2026-10-03 (F21 review): the Guild's code IS public now (radixguild/guild,
+  // Apache-2.0), so "nothing is published yet" is scoped to the shared-infrastructure
+  // effort this page is about, and the sentence says what is published.
   const REQUIRED_SENTENCES = [
     "XRD pays no dividend. The 2018 token sale terms gave holders no right to dividends, profits or distributions",
     "We are not raising money, taking payment, or selling anything",
-    "Licensing is not decided; nothing is published yet.",
+    "For this shared-infrastructure effort, licensing is not decided and nothing is published yet; the Guild's own code is public under Apache-2.0.",
   ]
 
   it.each(REQUIRED_SENTENCES)('WHAT_THIS_IS_NOT contains "%s" verbatim', (sentence) => {

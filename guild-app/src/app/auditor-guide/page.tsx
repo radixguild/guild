@@ -48,13 +48,15 @@ const TRUST_CLAIMS = [
     // owner badge, and the arbiter's reach is stated beside it.
     claim: "The owner badge cannot move escrowed funds.",
     body: "The owner badge has no authority over task vaults: it cannot touch reward or insurance. Everything it can do, all fifteen methods: manage the accepted-token whitelist (add_accepted_token, remove_accepted_token) and freeze or unfreeze a token (freeze_token, unfreeze_token), which only changes what NEW tasks may be funded in; withdraw forfeited claim bonds (withdraw_forfeited_bonds); and change twelve settings through ten calls. Eight of those calls are pinned into each task at the step that uses them, so a change reaches only tasks that get there afterwards: set_min_insurance_fraction and set_max_arbiter_fee_pct at funding; set_claim_bond_params, set_human_submit_deadline_secs and set_agent_submit_deadline_secs at claim; set_review_window_secs at submission; set_dispute_auto_resolve_secs and set_dispute_auto_resolve_default when a dispute is raised. Two are read at the moment a claim is expired, so a change DOES reach claims already in flight: set_expire_grace_secs (no upper bound, so the grace after a missed deadline could be cut to zero) and set_expire_bounty_pct (0–100% of the forfeited bond paid to whoever calls expire_claim; the rest goes to the owner's vault). Every one of these calls emits a public on-chain event. The arbiter badge sits in the same operator wallet as the owner badge: on a disputed task, its ruling decides how the reward, the insurance and the claim bond split between poster and worker, and it can pay no one else beyond the arbiter fee set on the task (0 on tasks funded through this app).",
-    check: "Read the blueprint's enable_method_auth! block (source publication — see the trust page): every restrict_to: [OWNER] method is named above. Then watch the component's events on the Gateway for the matching *Updated / Token* / ForfeitedBondsWithdrawn events, and read expire_claim to see it use the live grace and bounty values.",
+    check: "Read the blueprint's enable_method_auth! block (escrow/scrypto/guild-marketplace-escrow/src/lib.rs in github.com/radixguild/guild): every restrict_to: [OWNER] method is named above. Then watch the component's events on the Gateway for the matching *Updated / Token* / ForfeitedBondsWithdrawn events, and read expire_claim to see it use the live grace and bounty values.",
   },
   {
     n: "2",
     claim: "Nobody can be stranded.",
     body: "Claimed tasks expire publicly; disputes auto-resolve publicly after the window; submitted work can be released by anyone once the review window lapses, if the poster never acts. The winner finalizes from their own wallet — our keeper is watch-only by decision: it alerts humans and sends no transactions on the money path.",
-    check: "The keeper's watch-only decision is documented in-code (scripts/keeper.mjs header); observe that auto_resolve_dispute, expire_claim and release_after_review_timeout carry no badge requirement.",
+    // The keeper's script is not in the public repository (open-source flip,
+    // 2026-10-02), so the check points at the ledger, which anyone can read.
+    check: "Check it on the ledger: no keeper account signs on the money path — every approval and every withdrawal in the component's history is signed by the poster's or the worker's own account. Then observe that auto_resolve_dispute, expire_claim and release_after_review_timeout carry no badge requirement.",
   },
   {
     n: "3",
@@ -96,7 +98,7 @@ const HONEST_GAPS = [
 const KNOWN_LIMITS = [
   "Blueprint upgrades are migrations (a new component and an env swap), never in-place: the code behind a component address does not change. Its settings can — the owner badge can move the parameters listed under the owner's powers above. Most are pinned into a task at the step that uses them, so a change reaches only tasks that get there afterwards; the two expiry settings apply to claims already in flight. Read the live values per component address, not from this page.",
   "There is one arbiter badge today (supply 1; the operator can mint more) and the operator holds it. The deployed blueprint has no multi-arbiter rule to switch on: a panel with recall and assignment is a next-blueprint design, not a setting.",
-  "The app and the escrow blueprint are both closed-source today; the source opens at launch, and no date is set.",
+  "The app and the escrow's Scrypto source are public (github.com/radixguild/guild, Apache-2.0): the task-escrow and NftSwap blueprints, and a deprecated earlier escrow package kept for reference. Reproducible-build verification, which would tie that source to the deployed packages, is still planned.",
   "This is experimental software on mainnet. The honest-gaps register above is live, not historical.",
 ];
 
@@ -227,7 +229,7 @@ Refunded (terminal)`}</pre>
               changing <code className="font-mono">submit_task</code>&rsquo;s validation, but by
               what now surrounds it: a non-zero evidence commitment bound to the committed brief,
               disputes live so a poster&rsquo;s remedy is real, and the claim bond held to
-              settlement so a garbage submission stakes real value against a dispute ruling. On
+              settlement so a garbage submission stakes real value once a dispute is raised. On
               that basis <code className="font-mono">release_after_review_timeout</code> is
               deployed and PUBLIC today.{" "}
               <code className="font-mono">settle_by_agreement</code> is still deferred. {settlementCopy("auditorHeartbeatStatus")}
@@ -278,10 +280,10 @@ Refunded (terminal)`}</pre>
         <CardContent>
           <p className="text-sm leading-relaxed">
             The operator is pseudonymous (bigdev / @bigdevxrd) with a verifiable on-chain track
-            record. In lieu of doxxing, two backing steps are planned: publishing the escrow
-            blueprint source with reproducible-build verification (it opens at launch, and no date
-            is set), and a bug bounty paid through the Guild&rsquo;s own escrow (on-chain,
-            visible). Status of each:{" "}
+            record. In lieu of doxxing, two backing steps: publishing the escrow blueprint source
+            (done: it is public under Apache-2.0) with reproducible-build verification (planned), and
+            a bug bounty paid through the Guild&rsquo;s own escrow (planned; on-chain, visible).
+            Status of each:{" "}
             <Link href="/trust" className="text-primary hover:underline">trust &amp; verification</Link>.
             Trustee-verified identity for tasks/projects over $50k USD is planned, not available
             yet: a named third party would attest the operator&rsquo;s identity and standing without

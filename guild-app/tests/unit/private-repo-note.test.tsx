@@ -1,14 +1,19 @@
 /**
- * The private-repository warning on board tasks an outsider can claim but not
- * finish (src/components/tasks/private-repo-note.tsx, 2026-09-24).
+ * The warning on board tasks an outsider can claim but cannot deliver from the
+ * public repository alone (src/components/tasks/private-repo-note.tsx,
+ * 2026-09-24; reworded at the open-source flip, 2026-10-02).
  *
+ * 2026-10-03: the three tasks it named, 70, 92 and 93, were cancelled and
+ * refunded on-chain, so the list is empty and the note renders for nobody.
  * What is pinned, and why:
- *  - the list and the prose agree: /trust's Known Issues and /agents name the
- *    same task ids the UI warns on, so removing an id from one place without
- *    the others goes red;
- *  - the note renders on exactly those tasks, on the "Claimable now" strip row
- *    and above the task page's Claim area (before EscrowClaimButton);
- *  - the note passes every honest-copy rule.
+ *  - the list is empty, and /trust's Known Issues and /agents no longer name
+ *    those tasks, so the warning cannot linger in one place after the others;
+ *  - the note renders nothing for those ids or any other, on its own and on the
+ *    "Claimable now" strip;
+ *  - the component is still wired above the task page's Claim area (before
+ *    EscrowClaimButton), so re-adding an id is all a future warning needs;
+ *  - the note's text passes every honest-copy rule — including
+ *    stale-private-claim, so it may not call the code private.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { readFileSync } from "node:fs"
@@ -35,7 +40,9 @@ import { ClaimableNowSection } from "@/components/tasks/project-group"
 import type { Task } from "@/lib/marketplace-types"
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8")
-const words: Record<number, string> = { 1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five" }
+
+/** Board ids the note used to name; cancelled and refunded on-chain 2026-10-03. */
+const CANCELLED = [70, 92, 93]
 
 function makeTask(id: number, overrides: Partial<Task> = {}): Task {
   return {
@@ -56,63 +63,51 @@ function makeTask(id: number, overrides: Partial<Task> = {}): Task {
   } as unknown as Task
 }
 
-describe("the list and the prose agree", () => {
-  it("is not empty while /trust still carries the known issue", () => {
-    expect(PRIVATE_REPO_TASK_IDS.length).toBeGreaterThan(0)
+// The note's own wording (earlier repository, "before you claim") is no longer pinned:
+// it renders for nobody, and a future task would need its own wording anyway.
+describe("tasks 70, 92 and 93 are gone, from the list and from the prose", () => {
+  it("the list is empty, so none of them needs the warning", () => {
+    expect([...PRIVATE_REPO_TASK_IDS]).toEqual([])
+    for (const id of CANCELLED) expect(needsPrivateRepoAccess(id), `task ${id}`).toBe(false)
   })
 
-  it("/trust's Known Issues names exactly these tasks, with the right count word", () => {
+  it("/trust's Known Issues no longer carries the warning", () => {
     const src = read("src/app/trust/page.tsx")
-    const title = src.match(/title: "(\w+) open tasks can't be finished from outside yet"/)
-    expect(title, "known-issue title").not.toBeNull()
-    expect(title![1]).toBe(words[PRIVATE_REPO_TASK_IDS.length])
-    const body = src.match(/body: "Tasks ([\d, and]+) are finished by a pull request/)
-    expect(body, "known-issue body").not.toBeNull()
-    const named = (body![1].match(/\d+/g) ?? []).map(Number)
-    expect(named).toEqual([...PRIVATE_REPO_TASK_IDS])
+    expect(src).not.toMatch(/open tasks were briefed against the earlier repository/)
+    expect(src).not.toMatch(/Tasks 70, 92 and 93/)
   })
 
-  it("/agents points at the same tasks", () => {
+  it("/agents no longer makes an exception for them", () => {
     const src = read("src/app/agents/page.tsx").replace(/\s+/g, " ")
-    const m = src.match(/tasks ([\d, and]+) are finished by a pull request/)
-    expect(m, "/agents sentence").not.toBeNull()
-    expect((m![1].match(/\d+/g) ?? []).map(Number)).toEqual([...PRIVATE_REPO_TASK_IDS])
+    expect(src).not.toMatch(/tasks 70, 92 and 93/i)
+    expect(src).not.toMatch(/with one exception to know before you claim/)
   })
 })
 
 describe("the note", () => {
   beforeEach(() => cleanup())
 
-  it("is true only for the listed board ids", () => {
-    for (const id of PRIVATE_REPO_TASK_IDS) expect(needsPrivateRepoAccess(id)).toBe(true)
-    expect(needsPrivateRepoAccess(99)).toBe(false)
+  it("renders nothing for the cancelled tasks or any other", () => {
+    for (const id of [...CANCELLED, 99]) {
+      const { container, unmount } = render(<PrivateRepoTaskNote taskId={id} />)
+      expect(container.firstChild, `task ${id}`).toBeNull()
+      unmount()
+    }
   })
 
-  it("renders for a listed task and nothing for any other", () => {
-    const listed = PRIVATE_REPO_TASK_IDS[0]
-    const { container, rerender } = render(<PrivateRepoTaskNote taskId={listed} />)
-    expect(screen.getByTestId("private-repo-note")).toHaveTextContent(PRIVATE_REPO_TASK_NOTE)
-    rerender(<PrivateRepoTaskNote taskId={99} />)
-    expect(container.firstChild).toBeNull()
-  })
-
-  it("appears on the 'Claimable now' row of a listed task and not on the others", () => {
-    const listed = PRIVATE_REPO_TASK_IDS[0]
+  it("appears on no 'Claimable now' row", () => {
     render(
       <ClaimableNowSection
-        tasks={[makeTask(listed), makeTask(99), makeTask(5, { status: "paid" })]}
+        tasks={[...CANCELLED.map((id) => makeTask(id)), makeTask(99), makeTask(5, { status: "paid" })]}
         usdRate={null}
       />,
     )
-    const rows = screen.getAllByTestId("claimable-now-row")
     // The paid task is not claimable, so it is not on the strip at all.
-    expect(rows).toHaveLength(2)
-    const byId = (id: number) => rows.find((r) => r.textContent?.includes(`#${id}`))!
-    expect(byId(listed)).toHaveTextContent(PRIVATE_REPO_TASK_NOTE)
-    expect(byId(99)).not.toHaveTextContent(PRIVATE_REPO_TASK_NOTE)
+    expect(screen.getAllByTestId("claimable-now-row")).toHaveLength(4)
+    expect(screen.queryByTestId("private-repo-note")).toBeNull()
   })
 
-  it("sits above the Claim area on the task page", () => {
+  it("is still wired above the Claim area on the task page, for any id added later", () => {
     const src = read("src/app/tasks/[id]/page.tsx")
     const note = src.indexOf("<PrivateRepoTaskNote")
     const claim = src.indexOf("<EscrowClaimButton")
@@ -121,6 +116,7 @@ describe("the note", () => {
     expect(note).toBeLessThan(claim)
   })
 
+  // /trust's known issue was the second text checked here until 2026-10-03; it went with the tasks.
   it("passes every honest-copy rule", () => {
     const hits = [...BANNED, ...PULL_BANNED]
       .map((r: { label: string; re: RegExp; allow?: RegExp[] }) => [r.label.split(" ")[0], violation(PRIVATE_REPO_TASK_NOTE, r)])

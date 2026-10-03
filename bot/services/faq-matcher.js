@@ -34,7 +34,7 @@ const FAQ_ENTRIES = [
   {
     keywords: ["who", "run", "admin", "control", "bigdev", "owner"],
     q: "Who runs this?",
-    a: "There is no Guild DAO. @bigdev_xrd runs the Guild and holds its admin badge; the aim is to hand it to the Radix DAO once that DAO is formed. No date is set. The code is not public yet. What is live and the known issues are published at radixguild.com/trust",
+    a: "There is no Guild DAO. @bigdev_xrd runs the Guild and holds its admin badge; the aim is to hand it to the Radix DAO once that DAO is formed. No date is set. The code is public at github.com/radixguild/guild. What is live and the known issues are published at radixguild.com/trust",
   },
   {
     keywords: ["bounty", "task", "work", "claim", "submit", "escrow"],

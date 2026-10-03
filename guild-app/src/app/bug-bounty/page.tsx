@@ -7,11 +7,10 @@ import { disputeCopy } from "@/lib/settlement-copy";
 import { withPageOg } from "@/lib/page-metadata";
 import { TG_GROUP_HANDLE } from "@/lib/config";
 
-// Beta bug-bounty page. INTERIM by design: while the source is private (kept
-// private for beta per bigdev 2026-07-16), this is an off-ledger, good-faith
-// programme — NOT the provably-funded on-chain version. That one ("posted as
-// real on-chain Guild tasks once the source is public") stays Planned on
-// /trust; this page must not claim to be it.
+// Beta bug-bounty page. INTERIM by design: this is an off-ledger, good-faith
+// programme — NOT the provably-funded on-chain version. That one (posted as real
+// on-chain Guild tasks, "next, now that the source is public" since the
+// open-source flip) stays Planned on /trust; this page must not claim to be it.
 //
 // Honest-copy rules (P9): no "guaranteed", nothing is owed, and the scope
 // names exactly what's live (happy-path marketplace) vs off (disputes, agent
