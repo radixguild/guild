@@ -6,8 +6,9 @@ name: formal
 # is already the repo's most expensive job (~19 min) and does not need to grow, and
 # test.yml is tuned around sub-21s ubuntu-slim jobs this cannot qualify for.
 #
-# BILLING: private-repo minutes bill PER JOB, ROUNDED UP, so cost tracks runner rate ×
-# job count, not elapsed time. This is deliberately ONE job running all four tiers
+# BILLING (written while this repository was private, where Actions minutes bill PER
+# JOB, ROUNDED UP): cost tracked runner rate × job count, not elapsed time. This is
+# deliberately ONE job running all four tiers
 # rather than a matrix. Apalache dominates the runtime (~60-110s measured at
 # --max-steps=10), which makes round-up irrelevant here and job count the only lever.
 # `ubuntu-slim` is NOT appropriate: a JVM model-check is nowhere near the sub-21s
