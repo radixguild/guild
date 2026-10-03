@@ -32,8 +32,7 @@
 >   code. `FEATURE-MAP.md` §"Cross-doc contradictions" #3 names fixing this framing as an
 >   outstanding item — this note is that fix, in place.
 > - ⚠️ **"Layer 3: Guild REST API (any language)"** describes the 44-endpoint bot API that was
->   **decided retiring**; `docs/agent-api.md` is flagged ASPIRATIONAL for the same reason. The
->   real agent path is `packages/agent-client`.
+>   **decided retiring**. The real agent path is `packages/agent-client`.
 > - ⚠️ **The Flywheel phases and the 3-month success metrics did not happen on that timeline**
 >   (Phase 1 "Bootstrap" is roughly where things stand: the loop is proven, the board is not yet
 >   seeded, and seeding is **P5**, behind the PULL cutover). Nothing here is a commitment.

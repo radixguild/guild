@@ -30,8 +30,9 @@
 
 > ⚠️ **Freshness note 2026-08-15 — the model stands; three pointers have moved.**
 > - **`PRODUCTION-SCHEDULE.md`, cited as the companion below and in §9's landing map, is
->   ARCHIVED** (2026-08-06 → `archive/PRODUCTION-SCHEDULE-2026-06-12.md`). The governing plan is
->   `EXTERNAL-V1-FRAMEWORK.md`.
+>   ARCHIVED** (2026-08-06 → `archive/PRODUCTION-SCHEDULE-2026-06-12.md`, in the private
+>   repository this one was exported from). The governing plan is `EXTERNAL-V1-FRAMEWORK.md`,
+>   kept in the private operations repository.
 > - 🔴 **No fee dial exists on the production component.** F1/F2's numbers are *decided*, not
 >   *deployed*: the royalty instrument rides the **PULL cutover (P2)**, which has not happened.
 >   Today the fee is 0% by **structural absence**, not by a dial set to zero — which is why
@@ -46,8 +47,9 @@
 >   that fed that call, not as the call.
 
 > 2026-06-12 · Status: Direction decided in shape; final numbers go in the decision packet
-> (rows in §9, mirrored in `ESCROW-PARAMETER-SHEET.md`). Companion: `PRODUCTION-SCHEDULE.md`
-> Q3/Q4, `TRUST-BACKING-PLAN.md`. Research basis: three-lane sweep 2026-06-12 (web3 protocol
+> (rows in §9, mirrored in `ESCROW-PARAMETER-SHEET.md`, kept in the private operations
+> repository). Companion: `PRODUCTION-SCHEDULE.md` Q3/Q4 (archived — see the note above),
+> `TRUST-BACKING-PLAN.md`. Research basis: three-lane sweep 2026-06-12 (web3 protocol
 > revenue, incentive/bootstrap design, marketplace take rates — the take-rate lane partially
 > covered by the others; off-platform-leakage circumvention studies not pulled, directional
 > evidence only).
@@ -210,7 +212,7 @@ appears in practice.
 
 ## 9. Decision rows — DECIDED 2026-06-13
 
-All six settled in the decision-packet sitting (`DECISION-PACKET.md`).
+All six settled in the decision-packet sitting (`DECISION-PACKET.md`, kept in the private operations repository).
 
 | # | Parameter | Decision | Status |
 |---|---|---|---|
@@ -276,7 +278,7 @@ against the ~$320k/mo GMV bar: cheap per converted builder, ruinous if farmed. S
 - **Cap + monthly budget are a TBD** to set before public beta, sized off real tx costs.
 
 **Radix mechanics — researched 2026-06-13, natively shippable.** Full note +
-sources in `design/gasless-onboarding.md`. Summary:
+sources in `design/gasless-onboarding.md` (kept in the private operations repository). Summary:
 
 - **Mechanism = subintents / pre-authorizations** (Transaction V2, "Cuttlefish", Dec 2024).
   The user signs a *subintent* (mint badge / post free task / vote) which **cannot lock the
@@ -332,7 +334,7 @@ published reward-to-cost floor pre-empts that: the poster knows the floor, and t
 3× / 2 : 1 — below it, don't post to the agent lane.**
 
 **Reference AI cost by task class** — grounded in the `dowork-claude` harness ledger (that harness is retired; the sandbox executor now records the same ledger)
-(`.claude/dowork-ledger.jsonl`), priced at Anthropic **API** rates (Opus 4.8 $5/$25, Sonnet 5
+(`.claude/dowork-ledger.jsonl`, kept in the private operations repository), priced at Anthropic **API** rates (Opus 4.8 $5/$25, Sonnet 5
 $3/$15, Haiku 4.5 $1/$5 per MTok; cache-read 0.1× input, cache-write 1.25×):
 
 | Task class | Ref model (harness auto-tiers) | Ref AI cost | 5× floor | vs. F3 $3 min |

@@ -1,18 +1,20 @@
 name: npm-lockfile
 
 # CI installs guild-app with bun (test.yml); the Guild box installs it with
-# `npm ci` (scripts/deploy.sh step 2). Nothing in CI ever ran npm against
-# guild-app/package-lock.json, so a lockfile npm refuses could merge green and
-# fail only at deploy. That happened: Dependabot #805's regen dropped vitest's
-# nested esbuild, `npm ci` on the box refused it, and #810 restored the 27
-# entries by hand. Dependabot security updates regenerate package-lock.json
-# whatever CI uses, so this is the guard.
+# `npm ci` (step 2 of the deploy script, which is kept in the private operations
+# repository). Nothing in CI ever ran npm against guild-app/package-lock.json,
+# so a lockfile npm refuses could merge green and fail only at deploy. That
+# happened, in the private repository this one was exported from: Dependabot
+# #805's regen dropped vitest's nested esbuild, `npm ci` on the box refused it,
+# and #810 restored the 27 entries by hand. Dependabot security updates
+# regenerate package-lock.json whatever CI uses, so this is the guard.
 #
 # It runs the box's exact install (same command, Node 22 as on the box) and
-# only when the manifest or the lockfile changes — Actions minutes are billed
-# per job, rounded up (see test.yml's ubuntu-slim note). The `npm-lockfile gate`
-# job at the bottom reports on every PR, so it is the one to require on main;
-# requiring the install job itself would leave unrelated PRs waiting on it.
+# only when the manifest or the lockfile changes — written while this repository
+# was private, when Actions minutes were billed per job, rounded up (see
+# test.yml's ubuntu-slim note). The `npm-lockfile gate` job at the bottom
+# reports on every PR, so it is the one to require on main; requiring the
+# install job itself would leave unrelated PRs waiting on it.
 
 on:
   pull_request:

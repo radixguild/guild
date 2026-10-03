@@ -8,8 +8,8 @@
      supersedes: none (folded from guild-public 2026-08-14 — BEST-PRACTICES.md already cited docs/BADGE-SCHEMAS.md, dangling here until this fold) -->
 # Radix Guild — Badge Schemas
 
-> ⚠️ Where this doc disagrees with `ASSET-REGISTRY.md` (chain-verified), the
-> registry wins. Known drift: the `guild_role` manager is deployed but DORMANT (total_minted=0,
+> ⚠️ Where this doc disagrees with `ASSET-REGISTRY.md` (chain-verified; kept in the private
+> operations repository), the registry wins. Known drift: the `guild_role` manager is deployed but DORMANT (total_minted=0,
 > chain-read 2026-07-17), not operationally "LIVE"; the member badge's on-chain `xp`/`tier`
 > fields have never been written since mint. Schemas 3-6 below are proposals, never deployed.
 >

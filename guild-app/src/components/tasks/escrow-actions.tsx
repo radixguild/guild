@@ -51,6 +51,7 @@ import {
   humanizeTxError,
   resyncEscrowTask,
   fileDisputeEvidence,
+  type EscrowTxResult,
 } from "@/lib/escrow-utils"
 import {
   loadUserBadge,
@@ -139,9 +140,16 @@ function TxSuccess({ label, txId }: { label: string; txId: string }) {
 
 // Shared error line (smoke finding 4): one short human summary, the raw
 // payload tucked behind a collapsed expando — never full-width JSON.
-function TxError({ error }: { error: string }) {
-  if (!error) return null
-  const { summary, detail } = humanizeTxError(error)
+//
+// `summary` overrides the humanized line, for a sentence the caller wrote
+// itself: humanizeTxError folds anything over 160 characters into "Transaction
+// failed — open the error details below.", which would hide exactly the
+// explanation the caller is trying to show. `error` then becomes the detail.
+function TxError({ error, summary: fixedSummary }: { error: string; summary?: string }) {
+  if (!error && !fixedSummary) return null
+  const { summary, detail } = fixedSummary
+    ? { summary: fixedSummary, detail: error || undefined }
+    : humanizeTxError(error)
   return (
     <div className="space-y-1 text-xs" role="alert">
       <p className="text-destructive">{summary}</p>
@@ -1139,6 +1147,61 @@ export function ReleaseAfterReviewTimeoutButton({
 }
 
 // ── Cancel (cancel_task / …after_claim) — poster, while open or assigned ───────
+//
+// 2026-10-03, task 70: the poster pressed Cancel twice, the Radix Wallet showed
+// no transaction, and the page said nothing that explained it; the same
+// cancel_task manifest committed from the Radix Dashboard a minute later. The
+// press reaches rdt.walletApi.sendTransaction through one gate, ensureSession(),
+// and the bundle served that day baked the right component and receipt
+// resource — so a wallet that shows nothing means the request stopped at
+// sign-in or the dApp toolkit did not deliver it. Each of those now ends in a
+// sentence on this button: the sign-in line below, the toolkit codes in
+// humanizeTxError (escrow-utils.ts), and the wait hint for a request the wallet
+// never answers.
+
+/**
+ * Pressed, but sign-in did not complete, so the cancel was never sent. It
+ * replaces the shared "Approve the wallet signature to continue." on this
+ * button: that line asks the poster to approve a request, and when the request
+ * never reached the wallet there is nothing to approve. ensureSession() returns
+ * a bare false for every cause (dismissed in the wallet, the ROLA challenge not
+ * fetched, the request not delivered, /verify refusing), so this states what is
+ * certain — no transaction was sent — and the check that covers the silent ones.
+ */
+export const CANCEL_SIGN_IN_INCOMPLETE =
+  "Sign-in didn't complete, so no cancel transaction was sent to your wallet. If your wallet never showed a sign-in request, the request didn't get through: reload the page, or disconnect and reconnect with the Connect button at the top, then try again."
+
+/** How long a press waits on the wallet before the page says so. */
+export const WALLET_WAIT_HINT_MS = 20_000
+
+/**
+ * Under a still-spinning Cancel once the wallet has gone WALLET_WAIT_HINT_MS
+ * without answering. Before it, a request the toolkit could not deliver left
+ * "Cancelling..." on screen indefinitely, with nothing to check and the button
+ * disabled. A cancel needs the poster's signature, so the last sentence holds
+ * however long the wait.
+ */
+export const CANCEL_WALLET_WAIT_HINT =
+  "Still waiting for your Radix Wallet. If the wallet isn't showing a request, it hasn't received this one: cancel the pending request from the Connect button at the top of the page (or reload), reconnect, and try again. Nothing is cancelled until you approve it in the wallet."
+
+/**
+ * Times the stretch of a handler that waits on the wallet. `start()` arms a
+ * WALLET_WAIT_HINT_MS timer and returns the function that disarms it; call
+ * that in a `finally` as soon as the wallet answers, so the hint never covers a
+ * later wait that is not the wallet's (confirmEscrowTx alone retries for up to
+ * ~16 s after a successful send).
+ */
+function useWalletWaitHint() {
+  const [slow, setSlow] = useState(false)
+  const start = useCallback(() => {
+    const timer = setTimeout(() => setSlow(true), WALLET_WAIT_HINT_MS)
+    return () => {
+      clearTimeout(timer)
+      setSlow(false)
+    }
+  }, [])
+  return { slow, start }
+}
 
 export function EscrowCancelButton({
   taskDbId,
@@ -1164,8 +1227,11 @@ export function EscrowCancelButton({
   const { account, rdt, ensureSession, sessionMismatch } = useWallet()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  // True when the press stopped at sign-in; `error` then holds any detail.
+  const [signInFailed, setSignInFailed] = useState(false)
   const [txId, setTxId] = useState("")
   const runGuarded = useTxGuard()
+  const walletWait = useWalletWaitHint()
 
   if (!isEscrowDeployed()) return null
   if (!account || !rdt) return null
@@ -1177,22 +1243,46 @@ export function EscrowCancelButton({
   async function handleCancel() {
     setLoading(true)
     setError("")
-    // Session is needed for the post-tx confirm (POST /tasks/[id]/escrow is
-    // withAuth). Establish it BEFORE the on-chain tx so we don't spend gas on a
-    // tx the DB can't then confirm. No-op if already signed in.
-    if (!(await ensureSession())) {
-      setError("Approve the wallet signature to continue.")
+    setSignInFailed(false)
+    // Everything up to the wallet's answer runs under the wait hint, and in a
+    // try: ensureSession() can THROW (signIn's /verify fetch has no catch of its
+    // own), and a throw here used to leave "Cancelling..." up for good — no
+    // message, button disabled.
+    const stopWaitHint = walletWait.start()
+    let signedIn = false
+    let result: EscrowTxResult | null = null
+    try {
+      // Session is needed for the post-tx confirm (POST /tasks/[id]/escrow is
+      // withAuth). Establish it BEFORE the on-chain tx so we don't spend gas on
+      // a tx the DB can't then confirm. No-op if already signed in.
+      signedIn = await ensureSession()
+      if (signedIn) {
+        result = await sendCancelTx({
+          escrowComponent: ESCROW_COMPONENT,
+          account: account!,
+          taskId: onChainTaskId!,
+          phase,
+          workerAccount: workerId,
+          rdt: rdt!,
+        })
+      }
+    } catch (e) {
+      // Kept as the detail line under whichever summary applies below.
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      stopWaitHint()
+    }
+    if (!signedIn) {
+      setSignInFailed(true)
       setLoading(false)
       return
     }
-    const result = await sendCancelTx({
-      escrowComponent: ESCROW_COMPONENT,
-      account: account!,
-      taskId: onChainTaskId!,
-      phase,
-      workerAccount: workerId,
-      rdt: rdt!,
-    })
+    if (result === null) {
+      // sendCancelTx threw, which its contract says it never does (it returns
+      // failures). The catch above already put what it threw on screen.
+      setLoading(false)
+      return
+    }
     if (!result.ok) {
       const failure = result.error ?? "Cancel failed"
       // Missing receipt NFT = the task already settled/cancelled on-chain (the
@@ -1238,12 +1328,17 @@ export function EscrowCancelButton({
             ? settlementCopy("cancelButtonOpen")
             : settlementCopy("cancelButtonClaimed")}
       </Button>
+      {loading && walletWait.slow && (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          {CANCEL_WALLET_WAIT_HINT}
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
         {phase === "open"
           ? settlementCopy("cancelDescriptionOpen")
           : settlementCopy("cancelDescriptionClaimed")}
       </p>
-      <TxError error={error} />
+      <TxError error={error} summary={signInFailed ? CANCEL_SIGN_IN_INCOMPLETE : undefined} />
     </div>
   )
 }

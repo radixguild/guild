@@ -1,4 +1,7 @@
 <!-- status: live
+     verified: 2026-10-03 (the References list ONLY: it now says which sources are unpublished and
+     where. The 2026-09-30 stamp below said the architecture-2026-05 links pointed at archive/;
+     they did not until this pass. Nothing else re-checked.)
      verified: 2026-09-30 (link paths only: the architecture-2026-05 links point at archive/, where those files moved; nothing else re-checked)
      verified: 2026-08-15 (the three patterns are still the project's working convention and
      are actively cited from blueprint source — escrow/scrypto/guild-marketplace-escrow/
@@ -226,8 +229,8 @@ The PR review must reference this deviation comment.
 
 ## References
 
-- Audit reports: `~/Projects/scrypto-audit-kit/audit-reports/*-2026-05-23.md` (4 reports, 6 Medium findings of this class)
-- Architecture: `docs/architecture-2026-05/ARCHITECTURE.md` §5a
-- Options analysis: `docs/architecture-2026-05/OPTIONS.md` Q4
-- Ignition role-hierarchy patterns: `~/Projects/scrypto-audit-kit/references/ignition-patterns.md` §Pattern 1
-- CaviarNine HyperStake authorization patterns: `~/Projects/scrypto-audit-kit/references/caviarnine-hyperstake-patterns.md`
+- Scan reports: the 2026-05-23 in-house scrypto scan — a scan, not an audit (4 reports, 6 Medium findings of this class; reports not published)
+- Architecture: `ARCHITECTURE.md` §5a, from the 2026-05 architecture set (`docs/archive/architecture-2026-05/`, in the private repository this one was exported from)
+- Options analysis: `OPTIONS.md` Q4, same set
+- Ignition role-hierarchy patterns: the scan kit's reference notes (not published), §Pattern 1
+- CaviarNine HyperStake authorization patterns: the scan kit's reference notes (not published)

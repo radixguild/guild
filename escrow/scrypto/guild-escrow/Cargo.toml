@@ -2,7 +2,7 @@
 name = "guild-escrow"
 version = "1.0.0"
 edition = "2021"
-description = "DEPRECATED 2026-05-23 — superseded by guild-marketplace-escrow. Retained as audit-time snapshot; see README.md."
+description = "DEPRECATED 2026-05-23 — superseded by guild-marketplace-escrow. Retained as a scan-time snapshot (2026-05-23 in-house scan, not an audit); see README.md."
 license = "Apache-2.0"
 publish = false
 

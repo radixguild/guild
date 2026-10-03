@@ -16,8 +16,7 @@
 # How the Guild Works — one page
 
 > The light version. For the deep dive (state machine, auth patterns, verification
-> recipes), see `AUDITOR-GUIDE.md`. Visuals: `guild-app/public/infographics/`
-> (governance-era set — being refreshed for the marketplace).
+> recipes), see `AUDITOR-GUIDE.md`.
 > **In-app twin:** radixguild.com/**guide** (`guild-app/src/app/guide/page.tsx`) — keep the
 > two in sync. ⚠️ This line named `/how-it-works` until 2026-08-15; that route has been a
 > `redirect()` shell to `/guide#how-it-works` since the MVP-5 chrome trim (2026-08-14), so
@@ -76,10 +75,12 @@ means hiring a big firm or trawling Discord and praying. This is the third optio
    dispute coverage can summon an arbiter who rules against the committed terms.
    ⚠️ *Target flow, not today (updated 2026-08-23):* signed split offers are
    `settle_by_agreement`, which is Wave-B and absent from the deployed component; the
-   RFP/offers design is PARKED to v1.1 (`design/rfp-offers-2026-07-06.md`). ⚠️ *Corrected
+   RFP/offers design is PARKED to v1.1 (`design/rfp-offers-2026-07-06.md`, kept in the private
+   operations repository). ⚠️ *Corrected
    2026-08-29:* this said the **dispute UI is compiled OFF in production** and live disputes
    were mock-only. **Both are now false — disputes shipped LIVE 2026-08-29** (PR #465), and
-   `launch-check.sh` CHECK 1/2 were inverted so a disputes-OFF build fails the deploy. Raise
+   `launch-check.sh` (the deploy gate, kept in the private operations repository) CHECK 1/2
+   were inverted so a disputes-OFF build fails the deploy. Raise
    a dispute and the arbiter path are both live; what is NOT live is `settle_by_agreement`
    (Wave B). The earlier correction on this line still stands for provenance: the 2026-08-17
    PULL cutover closed BUG-7 structurally (see `AUDITOR-GUIDE.md` §6).
@@ -103,7 +104,8 @@ component insurance is **mandatory at 5%** (`min_insurance_fraction` = 0.05) and
 rate is fixed, and `raise_dispute` asserts only `state == Submitted` plus a poster-receipt
 or claimer-badge proof — so **every funded task that reaches Submitted is disputable,
 covered or not**. "Opt-in coverage, and no coverage ⇒ no dispute path" is decision D3 in
-`ESCROW-PARAMETER-SHEET.md`, still un-shipped. Per-task disputability is a banned claim in
+`ESCROW-PARAMETER-SHEET.md` (kept in the private operations repository), still un-shipped.
+Per-task disputability is a banned claim in
 `guild-app/scripts/honest-copy.mjs` precisely because no such mechanism exists.
 
 ## Why trust it
