@@ -225,7 +225,7 @@ export function ClaimableNowSection({ tasks, ...usd }: { tasks: Task[] } & UsdDi
                   <span className="font-mono text-xs text-muted-foreground">#{t.id}</span>{" "}
                   {t.title}
                 </span>
-                {/* Claimable but not finishable from outside — see private-repo-note.tsx. */}
+                {/* Claimable, but briefed against the earlier repository — see private-repo-note.tsx. */}
                 <PrivateRepoTaskNote taskId={t.id} className="mt-0.5" />
               </span>
               <span className="shrink-0 font-mono text-xs text-muted-foreground">

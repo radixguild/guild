@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ESCROW_CLAIM_BOND_XRD,
   ESCROW_COMPONENT,
-  REPO_IS_PUBLIC,
   TG_BOT_HANDLE,
   TG_BOT_URL,
   TG_GROUP_HANDLE,
@@ -31,7 +30,11 @@ export const metadata: Metadata = withPageOg("/trust", {
 // written, and an answer that stops being true is deleted or rewritten in the
 // change that makes it untrue. None of these is a defence. They are what is so.
 //   - "cents": XRD/USD read from /api/v1/quote/xrd-usd AND CoinGecko, 2026-09-20.
-//   - "closed source": both repositories read PRIVATE; the package on-ledger is WASM.
+//   - "check the code": rewritten at the open-source flip (2026-10-02). The source is
+//     public (radixguild/guild); the package on-ledger is WASM, and no reproducible
+//     build ties the two yet (BACKING_PLAN's second row, Planned). The live package
+//     (Wave B, 2026-09-13) predates nft_swap in the crate, so a build of today's tree
+//     does not reproduce its hash; the answer says so (F21 review, 2026-10-03).
 //   - "owner powers": lib.rs enable_method_auth — the OWNER list is token admin,
 //     freeze/unfreeze, withdraw_forfeited_bonds and ten setters. No owner method
 //     touches a task's reward vault or a live bond. freeze_token only trips
@@ -46,8 +49,8 @@ const HARD_QUESTIONS = [
     a: `At today's XRD price the tasks on this board pay cents, not wages — every task page shows the dollar figure beside the XRD one, so you can see it before you click. Nothing here is compensation yet. What a task does give you is a real escrow settlement on mainnet that you can verify end to end, and a say in whether this is worth building further.`,
   },
   {
-    q: "You say \"verify, don't vouch\" — but the code is closed.",
-    a: "That is a fair hit. You cannot read the source of the contract that holds the money: the package on the ledger is compiled code, and the repositories are private. What you can verify today is behaviour — every transaction, the component's state, and each public method and who may call it (the auditor's guide lists them). Until the blueprint's source is published, \"verify\" here means verifying what it does, not what it says.",
+    q: "You say \"verify, don't vouch\" — can I check the code?",
+    a: "Yes, you can read it: the source is public at github.com/radixguild/guild, under Apache-2.0, the escrow's Scrypto source included. What is not done yet is proving that the package on the ledger, which is compiled code, was built from that source: the reproducible build that would show it is still planned (the backing plan, below). Until it is done, verify behaviour as well as reading the code — every transaction, the component's state, and each public method and who may call it (the auditor's guide lists them). The live escrow package was built before the NftSwap blueprint joined this crate, so a build of today's tree will not reproduce its hash.",
   },
   {
     q: "Can the operator take the money in escrow?",
@@ -55,7 +58,7 @@ const HARD_QUESTIONS = [
   },
   {
     q: "Claiming costs almost nothing. Can't someone just squat or spam the tasks?",
-    a: `Yes. The claim bond is 10% of the reward with a floor of ${ESCROW_CLAIM_BOND_XRD} XRD — a few cents at today's price — so locking up a task is cheap. An hour after a squatted claim's deadline, anyone can end it, which forfeits the bond and reopens the task. Junk is harder: the contract cannot judge quality and has no reject method — the Reject button on a task page records the poster's decision but moves no money. A poster's only on-chain answer to a junk submission is to raise a dispute inside the 72-hour review window, and the arbiter then has to rule inside a second 72 hours — if he does not, the default even split pays the submitter half the reward, and half of their claim bond goes to the poster. If the poster does nothing at all, the contract releases the full reward. So a poster's attention is the real defence, and tasks with an objectively checkable deliverable are the safe ones. That is a real weakness at this price, not a solved problem.`,
+    a: `Yes. The claim bond is 10% of the reward with a floor of ${ESCROW_CLAIM_BOND_XRD} XRD today (an owner setting) — a few cents at today's price — so locking up a task is cheap. An hour after a squatted claim's deadline, anyone can end it, which forfeits the bond and reopens the task. Junk is harder: the contract cannot judge quality and has no reject method — the Reject button on a task page records the poster's decision but moves no money. A poster's only on-chain answer to a junk submission is to raise a dispute inside the 72-hour review window, and the arbiter then has to rule inside a second 72 hours — if he does not, the default even split pays the submitter half the reward, and half of their claim bond goes to the poster. If the poster does nothing at all, the contract releases the full reward. So a poster's attention is the real defence, and tasks with an objectively checkable deliverable are the safe ones. That is a real weakness at this price, not a solved problem.`,
   },
   {
     q: "Isn't every task here just the operator paying himself?",
@@ -91,17 +94,6 @@ const KNOWN_ISSUES = [
     body: "Before you submit, the poster can cancel a task you have claimed. Your claim bond comes back in full, but the time you spent is not paid. Once you submit, the poster can no longer cancel.",
   },
   {
-    // Checked 2026-09-24 against the public task API: 70, 92 and 93 are open and
-    // each is delivered as a change to the Guild's repository (70: "Prerequisites:
-    // repo access"; 92 and 93 name files in the repo). The repository is private.
-    // Delete this item when those tasks close or the repository opens (REPO_IS_PUBLIC
-    // flips true, @/lib/config) — this body stays a plain string literal on purpose
-    // (private-repo-note.test.tsx's `body: "Tasks ...` regex pins its exact source
-    // text), so it is hand-edited at that point, not derived like the SDK item below.
-    title: "Three open tasks can't be finished from outside yet",
-    body: "Tasks 70, 92 and 93 are finished by a pull request to the Guild's code repository, which is private. You can claim them but not finish them, and a claim not submitted by its deadline can lose its bond. Don't claim them unless the operator has given you access.",
-  },
-  {
     // The in-app notifications switch is off on the live build, and the task
     // pager (scripts/task-activity-watch.mjs) pages the OPERATOR only. The bot's
     // escrow DMs cover bounties created through the bot, not tasks posted here.
@@ -114,8 +106,8 @@ const KNOWN_ISSUES = [
     body: "Ten owner-only calls change twelve settings — among them the claim bond, the review window and the arbiter-fee cap. Most are pinned into a task at the step that uses them (funding, claim, submission or dispute), so a change reaches only steps taken after it. Two reach claims already in flight: the grace period after a claim deadline before anyone can end the claim (an hour today), and the share of a forfeited bond paid to whoever ends it (10% today; the rest goes to a vault only the operator can withdraw). Every change emits a public on-chain event.",
   },
   {
-    title: "The agent SDK is not published yet",
-    body: `@radix-guild/agent-client is not on npm${REPO_IS_PUBLIC ? "" : ", and the repository is private"}. Agents can integrate today over the plain HTTP API described at /openapi.json.`,
+    title: "The agent SDK is not on npm",
+    body: "@radix-guild/agent-client is served only as a tarball from radixguild.com/kit/ (sha256 on /agents); its source is at github.com/radixguild/guild. Any language can use /openapi.json.",
   },
   {
     title: "The member badge verifies nothing",
@@ -144,7 +136,9 @@ const CHECKABLE_TODAY = [
     // arbiter — the operator. What stays true: nothing signs FOR a user.
     title: "The platform never signs for you",
     body: `Our keeper is watch-only by decision: it alerts humans over Telegram and holds no signing key. Winners finalize from their own wallets. The Guild's own agents, which post and work tasks like any other account, sign from keys on the Guild's server. ${settlementCopy("trustKeeperSettlementNote")}`,
-    verify: "Auditor's guide §2, claim 2 — the keeper's watch-only decision is stated in-code at scripts/keeper.mjs. Every approval and every withdrawal in the component's history is signed by the poster's or the worker's own account, and its one dispute ruling by the arbiter, the operator; you can read the signer off each transaction on the dashboard.",
+    // The keeper's script is not in the public repository (open-source flip,
+    // 2026-10-02), so the recipe points at the ledger, which anyone can read.
+    verify: "Auditor's guide §2, claim 2 — on the ledger: every approval and every withdrawal in the component's history is signed by the poster's or the worker's own account, and its one dispute ruling by the arbiter, the operator; no keeper account signs on the money path. You can read the signer off each transaction on the dashboard.",
   },
   {
     title: "Terms are committed at funding",
@@ -167,24 +161,27 @@ const BACKING_PLAN: {
 }[] = [
   {
     item: "Escrow blueprint source published",
-    status: "Planned",
-    // Licence: decided 2026-08-15 (docs/OPERATOR-TASKS.md §3, applied by PR #385 —
-    // root LICENSE + NOTICE). Worded as a future effect on purpose: honest-copy's
-    // open-source-claim rule bans any present-tense licence claim while the repo
-    // is private (a grant to nobody is not a grant). /lights-on is the precedent.
-    detail: "Publishing — opens at launch, and no date is set. The money-path blueprint is the part readers need first. The licence is decided: what we publish is Apache-2.0.",
-    proves: "The auth roles and vault rules described in the auditor's guide are the code that actually runs.",
+    status: "Done",
+    // Done at the open-source flip (2026-10-02). Licence: Apache-2.0, decided
+    // 2026-08-15 (root LICENSE + NOTICE). What ships under escrow/: the
+    // guild-marketplace-escrow crate (the task escrow and NftSwap blueprints) and
+    // the deprecated guild-escrow package, kept for reference. "proves" stops at
+    // "anyone can read": the live escrow's package (Wave B, 2026-09-13) was built
+    // before nft_swap joined the crate, so no build of this tree reproduces its
+    // bytes as-is — tying source to package is the next row's job.
+    detail: "Published at the open-source flip, at github.com/radixguild/guild under Apache-2.0: the app, the bot, the agent kits and the escrow's Scrypto source (the task-escrow and NftSwap blueprints, and a deprecated earlier escrow package kept for reference).",
+    proves: "Anyone can read the auth roles and vault rules the auditor's guide describes. That they are exactly the code running on the ledger is what the next row, the reproducible build, will show.",
   },
   {
     item: "Reproducible-build verification",
     status: "Planned",
-    detail: "Follows source publication: build the blueprint yourself, compare the hash against the deployed package.",
+    detail: "Follows source publication: build the blueprint yourself, compare the hash against the deployed package. The live escrow package was built before the NftSwap blueprint joined this crate, so a build of today's tree will not reproduce its hash.",
     proves: "The published source compiles to exactly the deployed on-chain WASM.",
   },
   {
     item: "Bug bounty through our own escrow",
     status: "Planned",
-    detail: "Posted as real on-chain Guild tasks once the source is public — the pot is provably funded, the payout path is the product itself. Until then the beta bug bounty pays no cash — a report gets a reply and a straight answer (fixed, deferred or disagreed, with the reasoning), and credit by name or handle when the fix ships, if you want it — at ",
+    detail: "Next, now that the source is public: posted as real on-chain Guild tasks — the pot would be provably funded, and the payout path would be the product itself. Until then the beta bug bounty pays no cash — a report gets a reply and a straight answer (fixed, deferred or disagreed, with the reasoning), and credit by name or handle when the fix ships, if you want it — at ",
     link: { href: "/bug-bounty", label: "/bug-bounty" },
     proves: "Security claims have skin in the game, visible on-ledger.",
   },

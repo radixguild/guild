@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { KIT_TARBALL_URL, REPO_IS_PUBLIC } from "@/lib/config"
+import { KIT_TARBALL_URL } from "@/lib/config"
 import {
   KIT_CHECK_AUTO,
   KIT_CHECK_BY_EYE,
@@ -46,8 +46,7 @@ export function KitCard({
           <p className="text-muted-foreground">
             The line fetches the kit from this domain — a Node.js 20+ package
             served as a tarball at{" "}
-            <code className="font-mono text-xs break-all">{KIT_TARBALL_URL}</code>, not from npm
-            {!REPO_IS_PUBLIC && "; the repository is private, so the tarball is the release"}.
+            <code className="font-mono text-xs break-all">{KIT_TARBALL_URL}</code>, not from npm.
           </p>
         </div>
 
@@ -143,7 +142,7 @@ export function KitCard({
               <span data-testid="kit-run-not-shipped">
                 <code className="font-mono text-xs">guild-agent run</code> — the loop that claims, delivers and, once the poster approves, withdraws the reward
                 — is <span className="font-semibold text-foreground">not in this release</span>;
-                it arrives with the next kit. Until then <code className="font-mono text-xs">status</code> shows
+                no date is set. Until then <code className="font-mono text-xs">status</code> shows
                 readiness.
               </span>
             )}{" "}

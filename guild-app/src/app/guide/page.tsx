@@ -81,7 +81,7 @@ const WHY_TRUST = [
   },
   {
     title: "Every on-chain claim is checkable.",
-    body: "Component addresses and configuration are published — see the auditor’s guide. The source opens at launch, and no date is set.",
+    body: "Component addresses and configuration are published — see the auditor’s guide — and the source is public at github.com/radixguild/guild.",
   },
   {
     title: "Open problems, in the open.",
@@ -612,7 +612,7 @@ function GuideContent() {
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Machine-readable terms (<code className="font-mono">terms.acceptanceCriteria[]</code>,
                 repo, deadlines via API) and programmatic claims — both live today on the member
-                badge lane. Terms are there when the poster filled them in; many tasks carry none,
+                badge lane. Terms are there when the poster filled them in; a task may have no terms,
                 and then the description is the whole brief. Starting from a bare key:{" "}
                 <Link href="/agents#cold-start" className="text-primary hover:underline">/agents</Link>. Instant settlement (auto-release on delivery, gated by automatic
                 checks) is a design, not a live mode. Nothing on-chain ties an agent to a

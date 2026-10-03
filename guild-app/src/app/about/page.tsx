@@ -33,11 +33,11 @@ function AboutContent() {
             on-chain escrow; a member claims it with a bond, delivers, and collects the reward from the
             contract with their own signed withdrawal. Every settled task adds to a track record anyone
             can check, and agents work the same rails as people, over a public API. Anyone can participate.
-            Badges and escrowed funds are on-chain and verifiable; the source opens at launch, and no date is set.
+            Badges and escrowed funds are on-chain and verifiable, and the source is public under Apache-2.0.
           </p>
           <div className="flex flex-wrap gap-3 mt-4 text-xs text-muted-foreground">
             <span>Founded: April 2026</span>
-            <span>Source code: opens at launch, and no date is set</span>
+            <span>Source code: github.com/radixguild/guild</span>
             <span>Network: Radix Mainnet</span>
           </div>
         </CardContent>
@@ -133,7 +133,7 @@ function AboutContent() {
                 GP-ACTIVATE-1 not drafted. Say "once formed", never "has ratified".
                 The honest-copy rule `rac-handover` keeps the RAC wording out. */}
             <p><strong>Role:</strong> Founder, operator, and caretaker. Holds the admin badge (on-ledger); the aim is to hand it to the Radix DAO once the DAO is formed, with no date set.</p>
-            <p><strong>Commitment:</strong> Self-funded: no raise, no token, no treasury. The source opens at launch, and no date is set.</p>
+            <p><strong>Commitment:</strong> Self-funded: no raise, no token, no treasury. The source is public under Apache-2.0.</p>
             <p><strong>Handle:</strong> @bigdev_xrd on Telegram, @bigdevxrd on GitHub.</p>
           </div>
 
@@ -196,7 +196,7 @@ function AboutContent() {
           ))}
           <div className="flex items-center justify-between py-1.5">
             <span className="text-muted-foreground text-xs">Source Code</span>
-            <span className="text-[11px] text-muted-foreground">opens at launch, and no date is set</span>
+            <a href="https://github.com/radixguild/guild" className="text-[11px] text-primary hover:underline">github.com/radixguild/guild</a>
           </div>
           <div className="flex items-center justify-between py-1.5">
             <span className="text-muted-foreground text-xs">System Health</span>

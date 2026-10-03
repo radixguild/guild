@@ -12,6 +12,7 @@ import {
   OPERATOR_ROUTES,
   OPTIONAL_ROUTES,
   REDIRECT_ROUTES,
+  STALE_PRIVATE_CLAIM,
   fileFor,
   violation,
   visibleText,
@@ -862,27 +863,87 @@ describe("audit-claim — the noun form the \"audited\" rule could not see (adde
 });
 
 describe("two claims a live Telegram test found (added 2026-09-20)", () => {
-  it("open-source-claim fires on what the bot and the OpenGraph card shipped", () => {
-    const rule = ruleFor("open-source-claim");
-    // guild-public bot SOURCE_STATUS, verbatim.
-    expect(violation("The public half (this bot, the reference dashboard, docs) is open source, Apache 2.0:", rule)).toBeTruthy();
-    // public/og-image.svg, verbatim.
-    expect(violation("Apache-2.0 licensed • Built on Radix", rule)).toBe("Apache-2.0 licensed");
-    expect(violation("The escrow blueprint is licensed under the Apache licence.", rule)).toBeTruthy();
-    expect(violation("The source code is public on GitHub.", rule)).toBeTruthy();
+  // Until the open-source flip this was "open-source-claim" (no surface could say the code was
+  // public). It turned around at the flip (F21): the code is public, so the stale claims are banned.
+  it("stale-private-claim fires on the sentences the site shipped before the flip", () => {
+    const rule = ruleFor("stale-private-claim");
+    expect(violation("Badges and escrowed funds are on-chain and verifiable; the source opens at launch, and no date is set.", rule)).toBe("opens at launch");
+    expect(violation("The app and the escrow blueprint are both closed-source today.", rule)).toBe("closed-source");
+    expect(violation("The code is not public yet.", rule)).toBeTruthy();
+    expect(violation("(not on npm; the repository is private)", rule)).toBeTruthy();
+    expect(violation("a pull request to the Guild's private code repository", rule)).toBeTruthy();
+    expect(violation("the dashboard and bot in front of them are not open source yet.", rule)).toBeTruthy();
   });
 
-  it("open-source-claim leaves the honest sentences legal", () => {
-    const rule = ruleFor("open-source-claim");
-    // src/app/about/page.tsx, verbatim.
-    expect(violation("the dashboard and bot in front of them are not open source yet.", rule)).toBeNull();
-    // src/content/lights-on.ts — a promise about things not yet published.
-    expect(violation("Anything we publish as part of this effort, code, tooling and designs, is Apache-2.0, forever", rule)).toBeNull();
-    // A licence NAME as a task term.
+  // The F21 review (2026-10-02) found the inverted rule blind to phrasings that shipped: /trust's
+  // own Hard Questions answer ("the code is closed", "the repositories are private"), the docs
+  // ("today it is private", "will be published", "(coming) the escrow blueprint source", "being
+  // opened") and the old /trust and /bug-bounty conditionals ("once the source is public").
+  it("stale-private-claim fires on the phrasings the first inversion missed", () => {
+    const rule = ruleFor("stale-private-claim");
+    const fires: [string, string][] = [
+      // trust/page.tsx Hard Questions, before the F21 fix (verbatim).
+      ["You say \"verify, don't vouch\" — but the code is closed.", "code is closed"],
+      ["the package on the ledger is compiled code, and the repositories are private.", "repositories are private"],
+      ["Until the blueprint's source is published, \"verify\" here means verifying what it does, not what it says.", "Until the blueprint's source is published"],
+      // trust/page.tsx Known Issues and /lifecycle, before the flip (verbatim).
+      ["finished by a pull request to the Guild's code repository, which is private.", "code repository, which is private"],
+      ["the escrow blueprint is a private build until then.", "private build"],
+      ["the client and escrow blueprint are private until then.", "private until then"],
+      ["Posted as real on-chain Guild tasks once the source is public", "once the source is public"],
+      ["The source is private while the platform is tested", "source is private"],
+      // SECURITY.md, GOVERNANCE.md, docs/AUDITOR-GUIDE.md, docs/HOW-IT-WORKS.md (verbatim).
+      ["Why this repo is not fully open yet", "repo is not fully open"],
+      // Since the second F21 review (2026-10-03) "being made public" fires too, and it comes first.
+      ["Part of this repository is on a path to being made public; today it is private.", "being made public"],
+      ["Today it is private.", "Today it is private"],
+      ["whose source is being opened, so that trust in the operator is not required", "source is being opened"],
+      ["the escrow blueprint source will be published with reproducible-build verification", "source will be published"],
+      ["Component addresses, configuration, and (coming) the escrow blueprint source.", "(coming) the escrow blueprint source"],
+      ["The source code is not yet public.", "source code is not yet public"],
+    ];
+    for (const [sentence, hit] of fires) expect(violation(sentence, rule), sentence).toBe(hit);
+  });
+
+  // The second F21 review (2026-10-03): plain negations and futures the list still let through.
+  it("stale-private-claim fires on the phrasings the second review found missing", () => {
+    const rule = ruleFor("stale-private-claim");
+    const fires: [string, string][] = [
+      ["The source is not public.", "source is not public"],
+      ["The code isn't public yet.", "code isn't public"],
+      ["The code isn’t public yet.", "code isn’t public"],
+      ["The client isn't open source.", "isn't open source"],
+      ["Part of this repository is being made public.", "being made public"],
+      ["The code will be public at launch.", "code will be public"],
+      ["The source will be made public after the beta.", "source will be made public"],
+    ];
+    for (const [sentence, hit] of fires) expect(violation(sentence, rule), sentence).toBe(hit);
+  });
+
+  it("stale-private-claim leaves the true sentences legal", () => {
+    const rule = ruleFor("stale-private-claim");
+    expect(violation("The source code is public on GitHub.", rule)).toBeNull();
+    expect(violation("Apache-2.0 licensed • Built on Radix", rule)).toBeNull();
+    expect(violation("The escrow blueprint is licensed under the Apache licence.", rule)).toBeNull();
     expect(violation("Licence: Apache-2.0", rule)).toBeNull();
-    expect(violation("The code is not public yet.", rule)).toBeNull();
-    // src/app/trust/page.tsx verbatim — the live probe fired on this before the `allow` existed.
-    expect(violation("Posted as real on-chain Guild tasks once the source is public — the pot is provably funded", rule)).toBeNull();
+    // The flip's own sentences, one word away from the second review's additions (2026-10-03).
+    expect(violation("The code is public at https://github.com/radixguild/guild (Apache-2.0).", rule)).toBeNull();
+    expect(violation("The client is open source under Apache-2.0.", rule)).toBeNull();
+    // A key stays private: only claims about the code's visibility are banned.
+    expect(violation("Your agent's private key never leaves your machine.", rule)).toBeNull();
+    // True after the flip, and one word away from a banned form ("will be published", "once ... is public").
+    expect(violation("The escrow blueprint source is published at github.com/radixguild/guild.", rule)).toBeNull();
+    expect(violation("Next, now that the source is public: posted as real on-chain Guild tasks.", rule)).toBeNull();
+    // "closed" and "private" about something other than the code (shipped copy, verbatim).
+    expect(violation("The dice game is closed. Its bonus XP was never applied and does not count anywhere.", rule)).toBeNull();
+    expect(violation("The caller-routed drain this page used to warn about is closed on the deployed blueprint", rule)).toBeNull();
+    expect(violation("message @bigdev_xrd privately on Telegram with the task number and transaction id.", rule)).toBeNull();
+    expect(violation("Not open yet", rule)).toBeNull();
+    expect(violation("Once the package is published on npm, the install line changes.", rule)).toBeNull();
+  });
+
+  it("stale-private-claim's regex is the exported STALE_PRIVATE_CLAIM (one list to share)", () => {
+    expect(ruleFor("stale-private-claim").re).toBe(STALE_PRIVATE_CLAIM);
   });
 
   it("onchain-xp-never-written fires on all four sentences that shipped", () => {

@@ -97,7 +97,8 @@ process.on("uncaughtException", (err) => {
 
 const PORTAL = process.env.PORTAL_URL || "https://radixguild.com";
 // The source-status answer lives in services/copy.js (sourceStatus). Until 2026-09-20 it
-// claimed an Apache-2.0 public repo; the repo is private and the link 404'd.
+// claimed an Apache-2.0 public repo while the repo was private and the link 404'd; since the
+// open-source flip it names the public one, github.com/radixguild/guild.
 const HOURS = 72;
 const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK_URL || "";
 

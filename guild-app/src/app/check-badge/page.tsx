@@ -200,8 +200,8 @@ function CheckBadgeContent() {
             and XP fields that are not your score. Your trust record is not on it at all.
           </p>
           <p className="leading-relaxed">
-            <span className="font-semibold">Source audit:</span> opens at launch, and no date is set
-            — the build is private until then.
+            <span className="font-semibold">Source:</span> public at github.com/radixguild/guild; a
+            reproducible build that ties that source to the deployed package is still planned.
           </p>
         </CardContent>
       </Card>

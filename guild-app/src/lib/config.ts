@@ -86,21 +86,20 @@ export const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL ||
   "https://radixguild.com";
 
-// Whether the code is public yet (published as a fresh repository in the radixguild
-// org; its name is not ruled yet). False until the open-source flip actually happens — bump this in
-// the SAME change that flips GitHub's visibility, never ahead of it.
+// Whether the code is public: true since the open-source flip (radixguild/guild, REPO_URL
+// below), set in the first change deployed after GitHub's visibility flip.
 //
-// Every surface below reads this instead of hardcoding "the repo is private", the
-// same way src/components/tasks/private-repo-note.tsx derives its own claim from
-// PRIVATE_REPO_TASK_IDS rather than restating it in prose per call site (finding,
-// 2026-09-30 — no flip-day tripwire existed before this for the repo-visibility
-// claim, unlike that one). tests/unit/agents-selfserve-honesty.test.ts's "the
-// 'repository is private' claim moves with REPO_IS_PUBLIC" block fails if any of
-// them stop importing it, or if flipping it to `true` here is not matched by the
-// hand-written public draft that also asserts "is private" in plain prose
-// (publish/STATE.public.md) — that can't branch on a TS constant, so the test is
-// the tripwire for it.
-export const REPO_IS_PUBLIC = false;
+// Until then four surfaces (/agents, /trust, the cold-start limits and the kit card)
+// branched on this to say the repository was private; the flip change removed those
+// branches with the rest of the "not public yet" copy. What still reads it are the tests
+// that hold the copy to it in both directions: tests/unit/agents-selfserve-honesty.test.ts
+// and tests/unit/repo-visibility-flip.test.ts.
+export const REPO_IS_PUBLIC = true;
+
+/** The public repository (Apache-2.0): the app, the bot, the agent kits and the Scrypto
+ *  source — escrow/ (guild-marketplace-escrow: the task escrow and NftSwap blueprints;
+ *  guild-escrow, deprecated, kept for reference), badge-manager/ and blueprints/. */
+export const REPO_URL = "https://github.com/radixguild/guild";
 
 // Bring Your Agent: where the kit tarball is served (design §2.4, ruling D1
 // 2026-09-24 — tarball on this domain now, npm later). The one-liner the app

@@ -293,7 +293,7 @@ export const WHAT_THIS_IS_NOT = {
     "Not a fund, not custody, not a token, and nothing to buy. If you delegate, your XRD stays in your wallet.",
     "XRD pays no dividend. The 2018 token sale terms gave holders no right to dividends, profits or distributions. Nothing here is a claim on future income.",
     "We are not raising money, taking payment, or selling anything alongside this page.",
-    "Licensing is not decided; nothing is published yet. The Radix node and Gateway software carries its own licence, described above, which already lets anyone run, modify and fork it.",
+    "For this shared-infrastructure effort, licensing is not decided and nothing is published yet; the Guild's own code is public under Apache-2.0. The Radix node and Gateway software carries its own licence, described above, which already lets anyone run, modify and fork it.",
   ],
 }
 

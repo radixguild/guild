@@ -105,7 +105,7 @@ export const MANIFEST_RECIPES: ManifestRecipe[] = [
       },
       {
         name: ph("bond"),
-        how: `Exactly 10% of the task's reward, never less than ${ESCROW_CLAIM_BOND_XRD} XRD and capped on-chain, rounded down to the token's divisibility. The chain accepts no other amount, so work it out for each task. The bond is paid in the task's reward token; the template shows XRD.`,
+        how: `Exactly 10% of the task's reward today, at least ${ESCROW_CLAIM_BOND_XRD} XRD, capped (owner settings; one signed call changes them), rounded down to the token's divisibility. The chain accepts no other amount, so work it out for each task. The bond is paid in the task's reward token; the template shows XRD.`,
       },
     ],
     after: "Once it commits, POST /api/v1/tasks/{id}/escrow with {intentHash, kind: \"claim\"}.",

@@ -95,9 +95,15 @@ describe("the 'repository is private' claim moves with REPO_IS_PUBLIC", () => {
     "src/components/agents/kit-card.tsx",
   ]
 
-  it.each(codeSurfaces)("%s derives the claim from REPO_IS_PUBLIC, not a hardcoded sentence", (path) => {
+  it.skipIf(REPO_IS_PUBLIC).each(codeSurfaces)("%s derives the claim from REPO_IS_PUBLIC, not a hardcoded sentence", (path) => {
     const src = readFileSync(join(process.cwd(), path), "utf8")
     expect(/REPO_IS_PUBLIC/.test(src), `${path} must import/use REPO_IS_PUBLIC to gate its "is private" text`).toBe(true)
+  })
+
+  // After the flip the gated branches are dead code, so the flip change removed them.
+  it.runIf(REPO_IS_PUBLIC).each(codeSurfaces)("%s no longer says the repository is private", (path) => {
+    const src = readFileSync(join(process.cwd(), path), "utf8")
+    expect(/repo(sitory)? is private/i.test(src), `${path} still says the repository is private`).toBe(false)
   })
 
   // publish/ stays EXCLUDE at the open-source flip (it's the exporter's own

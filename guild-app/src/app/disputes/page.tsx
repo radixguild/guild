@@ -352,10 +352,10 @@ function DisputesContent() {
             </p>
           </div>
           <div>
-            <div className="text-xs font-semibold text-primary mb-1">Source audit</div>
+            <div className="text-xs font-semibold text-primary mb-1">Source</div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Opens at launch, and no date is set — the escrow blueprint is private until then. No
-              repo link here yet by design.
+              The escrow blueprint source is public at github.com/radixguild/guild. A reproducible
+              build that ties it to the deployed package is still planned.
             </p>
           </div>
         </CardContent>

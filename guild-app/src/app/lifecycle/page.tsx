@@ -181,10 +181,10 @@ function LifecycleContent() {
             </p>
           </div>
           <div className="bg-muted rounded-lg p-3">
-            <Badge variant="outline" className="text-[10px] mb-2">Source audit</Badge>
+            <Badge variant="outline" className="text-[10px] mb-2">Source</Badge>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Opens at launch, and no date is set — the escrow blueprint is a private build until then. Until it flips
-              public, on-chain verification is the trust mechanism; no repository link is published.
+              The escrow blueprint source is public at github.com/radixguild/guild. Until a reproducible build ties
+              it to the deployed package, on-chain verification stays the trust mechanism.
             </p>
           </div>
         </CardContent>

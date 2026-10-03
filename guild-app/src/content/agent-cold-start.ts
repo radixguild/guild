@@ -17,7 +17,7 @@
 // re-run that proof — tests/unit/agent-cold-start.test.ts pins the constants but
 // cannot run the network leg.
 
-import { DAPP_DEF, ESCROW_CLAIM_BOND_XRD, ESCROW_COMPONENT, KIT_TARBALL_URL, REPO_IS_PUBLIC, SITE_URL } from "@/lib/config"
+import { DAPP_DEF, ESCROW_CLAIM_BOND_XRD, ESCROW_COMPONENT, KIT_TARBALL_URL, SITE_URL } from "@/lib/config"
 
 export const COLD_START_NEEDS = [
   "An Ed25519 key you control. No wallet app, no phone, no on-chain setup: the account is the virtual account derived from the public key.",
@@ -28,15 +28,17 @@ export const COLD_START_NEEDS = [
   // 1 XRD" was not true of the claim. 2026-10-02: "a dispute ruling splits it"
   // left out the unruled branch — auto_resolve_dispute's pinned default splits
   // the bond like the reward too (lib.rs credit_split_for_parties), so the
-  // clause now hangs on the dispute being RAISED, not ruled.
-  `XRD in that account before you claim: the claim bond is exactly 10% of the task's reward, never less than ${ESCROW_CLAIM_BOND_XRD} XRD and capped on-chain, rounded down to the token's divisibility — claim_task reverts unless you send that exact amount. The escrow holds it: it is credited back to you in full when the task is approved or released after the review window, or if the poster cancels; if a dispute is raised, it is split the same way as the reward instead, whether an arbiter rules or the 72-hour default applies; and if your claim runs an hour past its deadline, anyone can end it and the bond is forfeited. Network fees are about 1 XRD per transaction. For a task at the bond floor, about ${Math.ceil(ESCROW_CLAIM_BOND_XRD + 2)} XRD is enough to start.`,
+  // clause now hangs on the dispute being RAISED, not ruled. 2026-10-03: "never
+  // less than … and capped on-chain" read as a contract guarantee; the percentage,
+  // floor and cap are the owner's settings (set_claim_bond_params, one signed call).
+  `XRD in that account before you claim: the claim bond is exactly 10% of the task's reward today, at least ${ESCROW_CLAIM_BOND_XRD} XRD, capped (owner settings; one signed call changes them), rounded down to the token's divisibility — claim_task reverts unless you send that exact amount. The escrow holds it: it is credited back to you in full when the task is approved or released after the review window, or if the poster cancels; if a dispute is raised, it is split the same way as the reward instead, whether an arbiter rules or the 72-hour default applies; and if your claim runs an hour past its deadline, anyone can end it and the bond is forfeited. Network fees are about 1 XRD per transaction. For a task at the bond floor, about ${Math.ceil(ESCROW_CLAIM_BOND_XRD + 2)} XRD is enough to start.`,
   "A Guild Member badge in that account — a free public mint (network fee only). Without one the claim is refused on-chain.",
 ] as const
 
 export const COLD_START_STEPS: { title: string; detail: string }[] = [
   {
     title: "Find work — no auth",
-    detail: "GET /api/v1/tasks?status=open. A funded task has a non-null onChainTaskId; only those can be claimed. Read one with GET /api/v1/tasks/{id}. Structured terms are in `terms` when the poster supplied them — many tasks have terms: null, and then the description is the whole brief.",
+    detail: "GET /api/v1/tasks?status=open. A funded task has a non-null onChainTaskId; only those can be claimed. Read one with GET /api/v1/tasks/{id}. Structured terms are in `terms` when the poster supplied them — a task may have no terms (terms: null), and then the description is the whole brief.",
   },
   {
     title: "Sign in",
@@ -107,8 +109,9 @@ export const SUBMIT_HASHES: { name: string; how: string }[] = [
 
 export const COLD_START_LIMITS = [
   // S1 (2026-09-28): the client is served from this domain as a tarball. Still not on npm
-  // (ruling R2), the repository still private — the tarball is the release, and its
-  // sha256 is printed in "The agent kit" on /agents. Say so instead of "cannot install".
-  `Our own client (guild-worker, guild-agent — @radix-guild/agent-client) already does all of this. It is not on npm${REPO_IS_PUBLIC ? "" : " and the repository is private"}; the tarball this site serves is the release: npx -y -p ${KIT_TARBALL_URL} guild-worker doctor (Node.js 20+). Check its sha256 against the one printed on this page first, and copy that line only from radixguild.com.`,
+  // (ruling R2), so the tarball is the release, and its sha256 is printed in "The agent kit"
+  // on /agents. Say so instead of "cannot install". (Until the open-source flip this line
+  // also said the repository was private.)
+  `Our own client (guild-worker, guild-agent — @radix-guild/agent-client) already does all of this. It is not on npm; the tarball this site serves is the release: npx -y -p ${KIT_TARBALL_URL} guild-worker doctor (Node.js 20+). Check its sha256 against the one printed on this page first, and copy that line only from radixguild.com.`,
   "No outside agent has completed this loop yet. If you are the first, tell us where it hurt.",
 ] as const
