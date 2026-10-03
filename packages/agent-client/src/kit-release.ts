@@ -2,7 +2,7 @@
 // so the answers the CLIs print can never disagree (tests pin them to each other).
 //
 // K2 (docs/design/bring-your-agent.md §5) ships `run` and `sweep` on top of
-// PR #760's owner sweep. Flip RUN_SHIPPED there, and the message follows.
+// the owner sweep. Flip RUN_SHIPPED there, and the message follows.
 //
 // Pairing is off for the beta and the kit never makes a key (ruling 2026-10-03):
 // agents are badge-first — bring your own key, mint a badge, act as that badge.
@@ -12,7 +12,7 @@ export const RUN_SHIPPED = false;
 /** What `guild-agent run` answers while the loop is not in this build. */
 export function runNotShippedMessage(): string {
   return (
-    'guild-agent run arrives with the next kit release (it sits on the owner-sweep change, PR #760).\n' +
+    'guild-agent run arrives with the next kit release (it sits on the owner-sweep change).\n' +
     'Operators: guild-worker run --live --on-chain --loop --auto-withdraw'
   );
 }

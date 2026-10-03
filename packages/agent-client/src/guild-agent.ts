@@ -6,7 +6,7 @@
 //   status                  doctor + pairing state (--json for machines)
 //   stop                    ask a running loop to exit at its next cycle boundary
 //   sweep                   return money above the float to the pinned owner (agent.json + Gateway only)
-//   run                     the loop — arrives with the next kit release (K2, on PR #760)
+//   run                     the loop — arrives with the next kit release (K2, on the owner sweep)
 //
 // Key custody: the agent BRINGS its own key (GUILD_AGENT_KEY_FILE or GUILD_AGENT_PRIVATE_KEY).
 // No verb here creates, writes or prints one: pairing is off for the beta and agents are

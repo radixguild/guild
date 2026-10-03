@@ -537,7 +537,9 @@ export async function runDoctor(options: {
       label: 'escrow component',
       status: 'fail',
       detail: `${config.escrowComponent} not readable as a guild escrow component`,
-      hint: 'Check GUILD_ESCROW_COMPONENT — a stale/superseded component burns claim bonds (claim pin will refuse anyway).',
+      // Until kit 0.7.2 this hint said a stale component costs claimers their bond. It
+      // does not: a claim that reverts moves no bond (escrow lib.rs claim_task), only its fee.
+      hint: 'Check GUILD_ESCROW_COMPONENT — it must name the live escrow component: every claim, submit and withdrawal this client signs goes to the component it names.',
     });
   }
 
@@ -556,7 +558,7 @@ export async function runDoctor(options: {
           label: 'work function',
           status: 'warn',
           detail: 'GUILD_DOWORK_CMD is not set',
-          hint: 'worker --live refuses without it — point it at a command that reads a task brief on stdin and writes the submission to stdout.',
+          hint: 'guild-worker run --live refuses without it — point it at a command that reads a task brief on stdin and writes the submission to stdout.',
         }
   );
 

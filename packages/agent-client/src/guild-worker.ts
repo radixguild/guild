@@ -114,8 +114,11 @@ usage: guild-worker <command> [flags]
                    present the Member badge you claimed with; --reason is
                    required and becomes the on-chain evidence commitment
                  dispute resolve <taskId>
-                   permissionless auto-resolve after the 72h window — pays
-                   the component's own default ruling; you receive nothing
+                   permissionless auto-resolve after the 72h window — applies
+                   the default ruling pinned when the dispute was raised (the
+                   reward and the claim bond split the same way). The call
+                   pays its caller nothing; each side collects its share with
+                   its own withdraw
                Production stays MOCK-ONLY: --live refuses against the live
                escrow (or a retired one) unless GUILD_ALLOW_LIVE_DISPUTE=1 is
                set on purpose.
@@ -438,8 +441,9 @@ export async function main(argv: string[] = process.argv.slice(2), overrides: Pa
       console.error(
         result.dryRun
           ? 'Dry-run only — nothing signed.'
-          : 'Auto-resolve triggered. The component applied its own default ruling — the caller ' +
-              '(you) receives nothing; auto_resolve_dispute pays no one directly.'
+          : 'Auto-resolve triggered. The component applied the default ruling pinned when the dispute ' +
+              'was raised, crediting each side its share (the reward and the claim bond split the same way). ' +
+              'auto_resolve_dispute pays no one directly: each side collects its share with its own withdraw.'
       );
       console.log(`RESULT ${JSON.stringify(result)}`);
       return 0;

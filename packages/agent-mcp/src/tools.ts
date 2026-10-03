@@ -167,8 +167,10 @@ const RESOURCE_RE = /^resource_rdx1[0-9a-z]+$/;
  * A one-line, honest reading of claimability from the DB view + live chain state —
  * the same pin the worker's claim loop applies (worker.ts): only `Open` on the
  * configured escrow component is safe to bond; `null` is UNKNOWN (never "gone");
- * any other known state would revert the blueprint's must-be-Open assert and burn
- * the bond. It reports on-chain claimability ONLY — not this agent's eligibility.
+ * any other known state fails the blueprint's must-be-Open assert, and a claim
+ * that reverts moves no bond — only its network fee is spent (escrow lib.rs
+ * `claim_task`). It reports on-chain claimability ONLY — not this agent's
+ * eligibility.
  */
 function stateNote(
   dbStatus: string,
@@ -188,8 +190,9 @@ function stateNote(
     return 'Open on the configured escrow component — a claim is safe to bond now.';
   }
   const base =
-    `On-chain state is ${chainState} — not Open; claiming would revert the ` +
-    "blueprint's must-be-Open assert and burn the claim bond.";
+    `On-chain state is ${chainState} — not Open; a claim would fail the ` +
+    "blueprint's must-be-Open assert: the transaction reverts, moves no bond and " +
+    'still costs the network fee.';
   return dbStatus === 'open'
     ? `${base} ⚠ The board still shows this task open (DB↔chain divergence).`
     : base;

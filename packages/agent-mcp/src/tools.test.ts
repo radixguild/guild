@@ -345,13 +345,21 @@ describe('task_chain_state', () => {
     });
   });
 
-  test('funded but not Open → not claimable, warns of a bond burn + divergence', async () => {
+  test('funded but not Open → not claimable; a claim would revert (no bond moves, the fee is spent) + divergence', async () => {
     const { deps } = fakeDeps({ readTaskState: async () => 'Claimed' });
     const res = await invokeTool(tool(deps, 'task_chain_state'), { id: 5 });
     const out = jsonOf(res) as ChainStateOut;
     expect(out.chainState).toBe('Claimed');
     expect(out.claimable).toBe(false);
-    expect(out.note).toContain('burn');
+    // escrow lib.rs claim_task: a claim that fails the must-be-Open assert reverts
+    // whole — the bond never leaves the claimer; only the network fee is spent.
+    // Until MCP kit 0.3.2 this note said the claim would "burn the claim bond".
+    expect(out.note).toBe(
+      "On-chain state is Claimed — not Open; a claim would fail the blueprint's must-be-Open assert: " +
+        'the transaction reverts, moves no bond and still costs the network fee. ' +
+        '⚠ The board still shows this task open (DB↔chain divergence).'
+    );
+    expect(out.note).not.toMatch(/burn/i);
     // FAKE_TASK.status is 'open' while chain says Claimed → divergence surfaced.
     expect(out.note).toContain('divergence');
   });

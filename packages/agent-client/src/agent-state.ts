@@ -6,8 +6,8 @@
 //   ~/.radix-guild/stop         `guild-agent stop` touches it; the loop exits
 //                               at its next cycle boundary when it is present
 //
-// The owner account recorded here is the ONLY sweep destination (PR #760's
-// rule, carried over): once pinned, a different owner from the API is a
+// The owner account recorded here is the ONLY sweep destination (the owner
+// sweep's rule, carried over): once pinned, a different owner from the API is a
 // stop-the-loop condition (`owner-mismatch`), never something to follow. The
 // value is validated as an account address on EVERY write — the first pin
 // included — and can never be changed by this client once set.
