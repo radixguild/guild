@@ -7,7 +7,9 @@
 // because every reward a worker collected simply stayed on it. The ruling that
 // followed: a worker holds a FLOAT (enough for a claim bond and fees) and
 // nothing else — earnings leave for the owner's wallet on every withdraw — so a
-// lost or stolen worker key costs at most the float plus one live bond.
+// lost or stolen worker key costs at most what its account holds (the float, and
+// anything not yet swept), the bond on every live claim, and anything settled to
+// it but not yet collected.
 //
 // This module is that leg: move everything above the float to the ONE account
 // recorded as this agent's owner.

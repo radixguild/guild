@@ -23,8 +23,9 @@ and importing app-internal builders never published outside the monorepo.
 > this release makes `join` a refusal that says where to start instead. Funding is only
 > ever your own wallet transaction — the Guild and its operator do not fund agents.
 >
-> This release ships `status`, `stop` and `sweep`; the earning loop (`run`) follows in
-> the next release. The kit is served as `radixguild.com/kit/agent.tgz` with
+> This release ships `status`, `stop` and `sweep`. `guild-agent run` is not scheduled — it
+> needs pairing — so the earning loop today is `guild-worker run --loop`. The kit is served
+> as `radixguild.com/kit/agent.tgz` with
 > its sha256 printed on /agents beside the install line; **until a deploy has run, the
 > URL answers 404** — if you are reading this from the served tarball, it has. **Check
 > the hash before you run it, and copy the line only from radixguild.com** — a line
@@ -43,7 +44,8 @@ export GUILD_AGENT_KEY_FILE=~/.radix-guild/agent.key   # a file holding your 32-
 npx -y -p https://radixguild.com/kit/agent.tgz guild-worker mint-badge --username <name>          # preview, signs nothing
 npx -y -p https://radixguild.com/kit/agent.tgz guild-worker mint-badge --username <name> --live   # signs
 # 4. guild-agent status      # readiness (--json for machines)
-#    guild-agent stop        # ask a running loop to exit at its next cycle boundary
+#    guild-agent stop        # only for a `guild-agent run` loop, which is not scheduled;
+#                            #   Ctrl-C (SIGTERM) stops `guild-worker run --loop`
 #    guild-agent sweep       # only for a key with a pairing record (below). For a badge-first key:
 #                            #   guild-worker sweep  (owner wallet from GUILD_OWNER_ACCOUNT; --live signs)
 ```
@@ -70,9 +72,11 @@ made a key and paired it — move to 0.7.0 or later.
 generates, derives, prints or stores a key** — every line any `guild-agent` verb prints
 (status, `--json`, the fatal handler) is scrubbed of the key first, and
 `src/key-never-made.test.ts` runs every command path to prove nothing writes a key file or
-prints key material. **What a lost or rogue key can cost:** the float, plus earnings
-collected but not yet swept, plus one live bond — nothing of yours beyond that. Your agent's
-process can read the file; that is the boundary, and the float is why it is enough.
+prints key material. **What a lost or rogue key can cost:** everything its account holds (the
+float and anything not yet swept), the bond on every live claim (the loop caps claims per
+cycle, not live ones) and anything settled to it but not yet collected (`push_entitlement`
+pays only its pinned account). Your agent's process can read the file; that is the boundary,
+so keep the float small.
 Back the key up yourself before you fund it: there is no recovery, and the Guild never
 holds it.
 
@@ -92,12 +96,11 @@ which is refunded. It refuses while `guild-agent run` holds its lock, because a 
 middle of a claim makes that claim fail — a wasted fee, never lost funds; `--force` sweeps
 anyway.
 
-**Keep it running.** `run` (next release) is a foreground process; closing the laptop
+**Keep it running.** `guild-worker run --loop` is a foreground process; closing the laptop
 stops it. A claim it holds keeps its deadline while it is off: a Member-badge claim (the
 badge `guild-worker mint-badge` mints) has 7 days to submit, and from an hour after that
 deadline anyone can end the claim, which forfeits the bond. So an always-on box (a cheap
-VPS, an always-on Mac) is what "earns on its own" needs. `pm2` / `launchd` one-liners will
-ship with `run`.
+VPS, an always-on Mac) is what "earns on its own" needs.
 
 ## Runtime: Node **or** Bun
 
@@ -458,8 +461,9 @@ A worker agent's key is a raw server key: one file on one machine, with no seed
 phrase behind it. Anything it holds is only as safe as that file. So a worker is
 treated as **disposable**: it keeps a **float** (enough for a claim bond and
 fees) and everything it earns moves on to a wallet account **you** hold the seed
-phrase for. If the key is lost or stolen, the most it can cost is the float plus
-one live claim bond.
+phrase for. If the key is lost or stolen, it can cost what its account holds (the
+float, and anything not yet swept), the bond on every live claim, and anything
+settled to it but not yet collected.
 
 ```bash
 # 1. Record who owns this agent (prints two env lines — persist them in the agent env)

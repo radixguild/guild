@@ -7,8 +7,9 @@
 // reverted claim said to "burn" the bond, an expiry bounty of "min(1 XRD,
 // bond)", an expiry that "becomes public" at the deadline with no hour of grace
 // and no late-submit window, a `withdraw` refusal that named only approval as
-// the way a task settles, a poster's collect line with no dispute share — and
-// kit 0.7.2 fixed them. This file keeps them fixed.
+// the way a task settles, a poster's collect line with no dispute share, a lost
+// key's cost put at "the float plus one live bond" — and kit 0.7.2 fixed them.
+// This file keeps them fixed.
 //
 // What the escrow does (lib.rs, read 2026-10-02 and again 2026-10-03; live
 // parameters re-read on the Gateway 2026-10-03 at state version 560853591):
@@ -221,6 +222,17 @@ const RULES: Rule[] = [
     why: 'an arbiter may rule; if nobody does, anyone can settle by the pinned default — and either way the bond splits like the reward',
     teeth: ["            `A human decides this: the window runs out into the component's default ruling, ` +"],
   },
+  {
+    id: 'one-live-bond',
+    re: /\bone live (?:claim )?bond\b/i,
+    why: "the loop caps claims per cycle, not live claims, so several bonds can be live; and what is settled but not yet collected is at risk too (push_entitlement pays only the key's pinned account)",
+    teeth: [
+      'prints key material. **What a lost or rogue key can cost:** the float, plus earnings\ncollected but not yet swept, plus one live bond — nothing of yours beyond that.',
+      'phrase for. If the key is lost or stolen, the most it can cost is the float plus\none live claim bond.',
+      "// The agent's key is a capped hot key — losing it costs the float, unswept earnings and one\n// live bond, nothing else.",
+      '// lost or stolen worker key costs at most the float plus one live bond.',
+    ],
+  },
 ];
 
 describe('kit truth — every pre-fix sentence trips its rule (the rules have teeth)', () => {
@@ -268,7 +280,10 @@ const REQUIRED: Record<string, string[]> = {
     'Miss it and, from an hour after it (`expire_grace_secs = 3600`), anyone can call `expire_claim` while the task is still unsubmitted, which forfeits your bond; `submit_task` has no deadline check, so a late submission that lands first protects it.',
     'No deadline of yours runs here, but until that release is triggered the poster can still raise a dispute, and a dispute splits the reward and your claim bond the same way, whether an arbiter rules or the 72-hour default applies.',
     'it applies the default ruling pinned when the dispute was raised (the reward and the claim bond are split the same way) and pays its caller nothing',
-    'closing the laptop stops it. A claim it holds keeps its deadline while it is off: a Member-badge claim (the badge `guild-worker mint-badge` mints) has 7 days to submit, and from an hour after that deadline anyone can end the claim, which forfeits the bond. So an always-on box',
+    '`guild-worker run --loop` is a foreground process; closing the laptop stops it. A claim it holds keeps its deadline while it is off: a Member-badge claim (the badge `guild-worker mint-badge` mints) has 7 days to submit, and from an hour after that deadline anyone can end the claim, which forfeits the bond. So an always-on box',
+    '`guild-agent run` is not scheduled — it needs pairing — so the earning loop today is `guild-worker run --loop`.',
+    'everything its account holds (the float and anything not yet swept), the bond on every live claim (the loop caps claims per cycle, not live ones) and anything settled to it but not yet collected (`push_entitlement` pays only its pinned account).',
+    'If the key is lost or stolen, it can cost what its account holds (the float, and anything not yet swept), the bond on every live claim, and anything settled to it but not yet collected.',
     'Value leaves only when someone collects it: `withdraw`, or the public `push_entitlement` anyone may call, each paying the account pinned at claim.',
     "the worker loop's post-submit survey reports it every cycle, and `doctor` does not check it.",
   ],
@@ -306,6 +321,13 @@ const REQUIRED: Record<string, string[]> = {
   'src/dispute.ts': [
     'the component applies the default ruling pinned when the dispute was raised and credits both entitlements internally',
   ],
+  'src/key-file.ts': [
+    'losing it costs what its account holds (the float and unswept earnings), the bond on every live claim, and anything settled to it but not yet collected.',
+  ],
+  'src/sweep.ts': [
+    'costs at most what its account holds (the float, and anything not yet swept), the bond on every live claim, and anything settled to it but not yet collected.',
+  ],
+  'src/kit-release.ts': ['guild-agent run is not scheduled: it needs pairing, which is off for the beta.'],
 };
 
 describe('kit truth — the corrected sentences are still there', () => {
