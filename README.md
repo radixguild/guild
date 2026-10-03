@@ -60,15 +60,28 @@ cd guild
 ```
 
 **Dashboard** (`guild-app/`) — Next.js 16, needs the
-[Radix dApp Toolkit](https://www.npmjs.com/package/@radixdlt/radix-dapp-toolkit) and points at
-Radix Mainnet by default:
+[Radix dApp Toolkit](https://www.npmjs.com/package/@radixdlt/radix-dapp-toolkit) and a
+PostgreSQL database, and points at Radix Mainnet by default:
 
 ```bash
 cd guild-app
 bun install --frozen-lockfile
 cp .env.example .env   # fill in what you need; live-mainnet defaults are baked in
+bun run db:migrate     # applies the migrations in drizzle/ to the DATABASE_URL database
 bun run dev
 ```
+
+Two `.env` values are required and have no default in code: `DATABASE_URL`, a Postgres
+connection string (CI runs Postgres 16), and `JWT_SECRET`, which signs session cookies
+(`.env.example` says how to generate one); the app throws on the first request that needs
+either. A throwaway local database that matches the example `DATABASE_URL`:
+
+```bash
+docker run -d --name guild-pg -p 5432:5432 -e POSTGRES_PASSWORD=guild -e POSTGRES_DB=guild_dev postgres:16
+```
+
+Run `bun run db:migrate` again after pulling new migrations; `guild-app/src/db/README.md` covers
+the schema and the other `db:` scripts.
 
 `guild-app/` uses **bun** (the version CI pins in `.github/workflows/test.yml`); see
 `CONTRIBUTING.md` for why it also carries an npm lockfile.
