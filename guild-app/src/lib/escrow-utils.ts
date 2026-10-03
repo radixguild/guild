@@ -190,6 +190,68 @@ export interface HumanizedTxError {
 }
 
 /**
+ * dApp Toolkit codes for a request the toolkit could not hand to the wallet,
+ * or stopped waiting on (2026-10-03, task 70).
+ *
+ * When @radixdlt/radix-dapp-toolkit cannot hand a request to the wallet,
+ * walletApi.sendTransaction resolves err(SdkError), `{ error, interactionId,
+ * message }` in 2.2.1, and send() above JSON.stringifies it. Where each code
+ * comes from in that version's dist/index.js: "missingExtension" when the
+ * Connector extension does not acknowledge the request within the toolkit's
+ * 200 ms detection window (it is not forwarded at all while the extension
+ * reads as unavailable; a merely slow acknowledgement may still reach the
+ * wallet, which is why that line says "did not confirm", not "never received");
+ * "SupportedTransportNotFound" from getTransport when the browser has neither
+ * the extension path nor the mobile relay; "FailedToSendDappRequest" when the
+ * mobile relay's deep link to the wallet app fails; "canceledByUser" when the
+ * pending request is cancelled from the Connect button or by disconnecting.
+ *
+ * Until this map existed every one of them reached the page as "Transaction
+ * failed — open the error details below.": task 70's poster pressed Cancel
+ * twice, the wallet showed nothing, and the one line that said why was folded
+ * into an expando. The raw payload stays in `detail` (it carries the
+ * interactionId, which is what matches a report to the toolkit's own logs).
+ *
+ * Read from the payload's own top-level `error` field only, never from a word
+ * inside an engine message: a message like that DID reach the wallet.
+ */
+const TOOLKIT_UNDELIVERED = new Map<string, string>([
+  [
+    "missingExtension",
+    "The Radix Connector browser extension did not confirm it received this transaction, so this page stopped waiting for your wallet. If the wallet shows no request, check that the extension is installed, enabled and linked to your Radix Wallet, reload the page, and try again.",
+  ],
+  [
+    "SupportedTransportNotFound",
+    "Your wallet never received this transaction: this browser has no way to reach the Radix Wallet. Use a desktop browser with the Radix Connector extension, or open this page on the phone that has the wallet, and try again.",
+  ],
+  [
+    "FailedToSendDappRequest",
+    "Your wallet never received this transaction: this page could not open the Radix Wallet app. Open the wallet, reconnect with the Connect button at the top of the page, and try again.",
+  ],
+  [
+    "canceledByUser",
+    "The request was cancelled before your wallet answered (from the Connect button, or by disconnecting), so this page stopped waiting for your wallet. If the wallet still shows the request, reject it there, then try again.",
+  ],
+])
+
+/** The toolkit's own error code — the top-level `error` field of a JSON
+ *  payload — or null when the payload is not a JSON object carrying one. */
+function toolkitErrorCode(raw: string): string | null {
+  if (!raw.trimStart().startsWith("{")) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    // A brace-led engine dump rather than JSON: there is no toolkit code to
+    // read, and the signature cases in humanizeTxError handle it.
+    return null
+  }
+  if (parsed === null || typeof parsed !== "object") return null
+  const code = (parsed as { error?: unknown }).error
+  return typeof code === "string" ? code : null
+}
+
+/**
  * Map a raw wallet/Gateway error to a short human line. The wallet SDK
  * surfaces failures as JSON.stringify'd objects and the engine as assertion
  * dumps — neither belongs raw on the page (mainnet-smoke finding: errors
@@ -202,6 +264,12 @@ export function humanizeTxError(raw: string): HumanizedTxError {
   if (/rejectedByUser/i.test(raw)) {
     return { summary: "Cancelled in the wallet — no transaction was sent." }
   }
+  // RDT never got the request to the wallet (or stopped waiting for it). Say
+  // so: a wallet that shows nothing is otherwise indistinguishable from a
+  // page that did nothing.
+  const code = toolkitErrorCode(raw)
+  const undelivered = code === null ? undefined : TOOLKIT_UNDELIVERED.get(code)
+  if (undelivered) return { summary: undelivered, detail: raw }
   // Not enough XRD in the connected account to cover what the manifest tries
   // to withdraw — the deposit (reward + insurance) on create_task, the claim
   // bond on claim_task, or just the network fee. Confirmed against
