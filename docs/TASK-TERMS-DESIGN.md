@@ -34,8 +34,8 @@ than the app exposes. Capability inventory:
 |---|---|---|
 | Multi-token rewards (whitelist + per-token min + freeze) | `add/remove_accepted_token`, `freeze/unfreeze_token`, `create_task(reward: Bucket, …)` | ❌ XRD hardcoded |
 | Per-task arbiter fee (capped by config) | `create_task(arbiter_fee_pct)`, `resolve_dispute` | ❌ |
-| Arbiter resolution path (badge-gated) | `resolve_dispute` | ❌ in the app — but ⚠️ **"no arbiter badge instantiated" is FALSE, corrected 2026-08-15.** The §8b cutover minted one: `arbiter_badge_resource` = `resource_rdx1nf229dxv…kn3`, supply 1, guild-held, and **distinct from the member badge** (`ESCROW-ADDRESSES.md:64`, gateway-verified 2026-08-09). ⚠️ *Corrected 2026-08-29:* the trailing "and the dispute UI is compiled OFF in production" is false — **disputes shipped LIVE 2026-08-29** (PR #465), arbiter path included, and the launch gate was inverted to fail a disputes-OFF build |
-| Auto-resolve default: FavorDisputeRaiser / SplitEvenly / ReturnToPoster | `instantiate(dispute_auto_resolve_default)` | Deployed = **`SplitEvenly`** (chain-verified, `ESCROW-ADDRESSES.md`:70 — **not** FavorDisputeRaiser, as this cell said until 2026-08-09) |
+| Arbiter resolution path (badge-gated) | `resolve_dispute` | ❌ in the app — but ⚠️ **"no arbiter badge instantiated" is FALSE, corrected 2026-08-15.** The §8b cutover minted one: `arbiter_badge_resource` = `resource_rdx1nf229dxv…kn3`, supply 1, guild-held, and **distinct from the member badge** (`ESCROW-ADDRESSES.md`, kept in the private operations repository; gateway-verified 2026-08-09). ⚠️ *Corrected 2026-08-29:* the trailing "and the dispute UI is compiled OFF in production" is false — **disputes shipped LIVE 2026-08-29** (PR #465), arbiter path included, and the launch gate was inverted to fail a disputes-OFF build |
+| Auto-resolve default: FavorDisputeRaiser / SplitEvenly / ReturnToPoster | `instantiate(dispute_auto_resolve_default)` | Deployed = **`SplitEvenly`** (chain-verified, recorded in `ESCROW-ADDRESSES.md` — **not** FavorDisputeRaiser, as this cell said until 2026-08-09) |
 | Claim liveness: deadline + public expiry (⚠️ the paid-heartbeat half is REMOVED — DB-3, 2026-08-06) | `expire_claim`, `claim_deadline` | ❌ |
 | Human vs agent submit deadlines | `instantiate(human/agent_submit_deadline_secs)`, `claimer_is_agent` | ❌ |
 | Configurable insurance fraction + claim bond | `instantiate(min_insurance_fraction, claim_bond_xrd)` | Fixed-rate UI only |
@@ -92,7 +92,7 @@ review window was machine-enforced.
 | 19 | Project assignment | App | With PR B |
 | 20 | Milestone split (generate N linked tasks) | App | Projects v2 — escrow stays one-task-one-payout; the project is the milestone container |
 
-### Wizard UX (per docs/ux-simplification-research-2026-06-07.md — still the law)
+### Wizard UX (per docs/ux-simplification-research-2026-06-07.md, kept in the private operations repository — still the law)
 - **Step 1** What needs doing: title, description, deliverable type (10), repo/links (11).
 - **Step 2** Reward & terms: 1–3 + due date (8) visible; "Advanced terms" collapsed with
   the rest, all prefilled from the deliverable-type defaults. One goal per screen; smart

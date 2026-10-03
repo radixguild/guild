@@ -20,7 +20,10 @@
 > 2026-06-12 · The deep version of `HOW-IT-WORKS.md`. Everything here is checkable;
 > where it isn't yet, it says so. Addresses + deployed config: `ESCROW-ADDRESSES.md`.
 > Parameters + planned changes: `ESCROW-PARAMETER-SHEET.md`. Design rationale:
-> `DESIGN-REVIEW-2027.md` (Parts I–II) and `design/intent-settlement-design.md`.
+> `DESIGN-REVIEW-2027.md` (Parts I–II) and `design/intent-settlement-design.md`. Those four
+> are the operator's records, kept in the private operations repository; in this repository the
+> addresses the live site uses are the defaults in `guild-app/src/lib/config.ts`, and the
+> deployed config can be read off the component itself on the Radix Gateway.
 > **In-app twin:** radixguild.com/auditor-guide
 > (`guild-app/src/app/auditor-guide/page.tsx`) — keep the two in sync.
 
@@ -203,8 +206,9 @@ disclosure. No trustee is retained.
   to match. *(re-checked 2026-08-23)*
 - **The dispute UI is LIVE in production** — ⚠️ *inverted 2026-08-29, and the inversion is
   the point:* this line read "compiled OFF" for months and was gated that way. PR #465
-  shipped disputes ON (`e36e3df`), and **`scripts/launch-check.sh` CHECK 1/2 were INVERTED
-  with it — a disputes-OFF build now FAILS the deploy.** The app exposes dispute-raising and
+  shipped disputes ON (`e36e3df`), and **`scripts/launch-check.sh` (the deploy gate, kept in
+  the private operations repository) CHECK 1/2 were INVERTED with it — a disputes-OFF build
+  now FAILS the deploy.** The app exposes dispute-raising and
   the arbiter path. What an auditor should check instead: the settled terms are SplitEvenly
   50/50 of the reward only, insurance returns whole to the poster, arbiter fee 0, 72h
   auto-resolve, and the poster-stonewall asymmetry (worker loses, poster ends better off than

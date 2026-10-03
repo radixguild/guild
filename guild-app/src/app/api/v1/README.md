@@ -45,9 +45,9 @@ Next.js Route Handlers under `/api/v1`. Authentication via ROLA wallet challenge
 ### ⚠️ `POST /tasks` is DB-FIRST — required order for headless posters
 
 Call `POST /api/v1/tasks` to create the DB row **before** funding the task on-chain. The
-proven sequence — `guild-app/scripts/post-micro-tasks.mjs:116-120`,
-`guild-app/scripts/gate1-e2e.mjs:76,85,92`, and `packages/agent-client/src/guild-poster.ts`'s
-`post` verb (`runPost`, same file, lines 245-321) — is:
+proven sequence — the operator scripts `post-micro-tasks.mjs` and `gate1-e2e.mjs` (kept in the
+private operations repository), and `packages/agent-client/src/guild-poster.ts`'s `post` verb
+(`runPost`, same file, lines 245-321) — is:
 
 1. `POST /api/v1/tasks` — create the DB row (`status: "open"`, unfunded).
 2. Fund on-chain (`create_task`), hashing **this response's own** stored

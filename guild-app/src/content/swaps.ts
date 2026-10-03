@@ -4,16 +4,19 @@
 // live on mainnet 2026-09-15 23:08Z and the P7 project card on the public
 // board names "/swaps is live on radixguild.com" as one of its done-when
 // criteria — with three P7 tasks already paid. Until the listing UI lands
-// (board task 92 / catalogue P7-03), a visitor clicking through from those
-// tasks got a 404, which reads as broken rather than as unfinished. This page
-// states exactly what is on chain, what is not built yet, and where the work
-// is tracked. It is REPLACED, not extended, by task 92's DB-backed grid.
+// (catalogue P7-03), a visitor clicking through from those tasks got a 404,
+// which reads as broken rather than as unfinished. This page states exactly
+// what is on chain and what is not built yet. It is REPLACED, not extended,
+// by the DB-backed grid once that is built. The board tasks posted for the
+// grid and the headless legs (92 and 93) were cancelled and refunded on
+// 2026-10-03; STATUS.tracked says so, without the numbers.
 //
 // Copy lives here rather than in the page so it is testable independently —
 // same split as src/content/lights-on.ts. Every claim below is either read
 // from the chain-verified registry (docs/ESCROW-ADDRESSES.md) or is a
 // statement about what the blueprint does, taken from docs/design/nft-swap.md
-// §3–§6 and the rulings recorded there.
+// §3–§6 and the rulings recorded there — both kept in the private operations
+// repository.
 
 export const SWAPS_HEADER = {
   title: "Swaps",
@@ -76,5 +79,5 @@ export const STATUS = {
   notBuilt:
     "The part you would use — a page that lists what is for sale, and the wallet flows to list, fill and cancel — is not built. There is nothing to browse here yet.",
   tracked:
-    "The work is posted on the Guild's own board and funded in escrow like any other task, so you can watch it land.",
+    "The two tasks posted on the Guild's board to build it were cancelled and refunded on-chain on 2026-10-03.",
 } as const

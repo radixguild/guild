@@ -36,7 +36,7 @@ All `*_updater` roles are `deny_all` — the role configuration is permanently l
 cargo build --release --target wasm32-unknown-unknown
 ```
 
-⚠️ **macOS users**: this hits the bulk-memory WASM issue on Rust >= 1.82 (see the repo `CLAUDE.md` §Scrypto — ledger builds/tests run on Linux CI only). Build on Linux (or a Docker container with `rust:1.81-bookworm`). The old `docs/operations/scrypto-build-matrix.md` link died in guild-public's 2026-08-12 history scrub.
+⚠️ **macOS users**: this hits the bulk-memory WASM issue on Rust >= 1.82 (the operator's `CLAUDE.md` §Scrypto, kept in the private operations repository, has the details — ledger builds/tests run on Linux CI only). Build on Linux (or a Docker container with `rust:1.81-bookworm`).
 
 ## Test
 
