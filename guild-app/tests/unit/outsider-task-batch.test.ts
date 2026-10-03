@@ -2,9 +2,11 @@
  * The outsider task batches — drafts/outsider-tasks/batch.json (Wave A, "no
  * repository access needed"), drafts/outsider-tasks/batch-wave-b.json
  * (Wave B, a pull request against the public Guild repository, posted only
- * after the open-source flip) and drafts/outsider-tasks/batch-agent.json (the
+ * after the open-source flip), drafts/outsider-tasks/batch-agent.json (the
  * agent batch A1–A8, no repository access either, five of its rows at a reward
- * where the claim-bond floor applies) — against the REAL gates.
+ * where the claim-bond floor applies) and drafts/outsider-tasks/batch-guild-mainnet.json
+ * (the ten Guild-priority mainnet tasks G1–G10, no repository access, one row at 500 XRD
+ * where the floor applies) — against the REAL gates.
  *
  * WHY THIS IS A TEST AND NOT A ONE-OFF CHECK. Each batch is drafted on one day
  * and posted by the operator on another. The rule tables move in between (six
@@ -26,12 +28,15 @@
  * keeps its draft's 500 XRD rows, so for those five the copy must say the floor
  * applies, and must not say a flat 10%.
  *
- * THE AGENT BATCH, three checks of its own. Its README section carries the exact
- * posting commands and the escrow totals for each wave, and the 2026-09-28 draft
- * it came from got its own total wrong (a 5,060 XRD header over rows that summed
- * to 4,795 in rewards), so this file recomputes every figure that README states
- * and parses every command it gives. It also pins which drafted row ids (A1–A8)
- * are present, and which rows wait on something before they may be posted.
+ * THE AGENT BATCH AND THE MAINNET BATCH, three checks of their own. Each one's README
+ * section carries the exact posting commands and the escrow totals for each wave, and the
+ * 2026-09-28 draft the agent batch came from got its own total wrong (a 5,060 XRD header
+ * over rows that summed to 4,795 in rewards), so this file recomputes every figure that
+ * README states and parses every command it gives, per batch. It also pins which drafted
+ * row ids (A1–A8, G1–G10) are present, which rows wait on something before they may be
+ * posted, and that the README says so for each of them. The mainnet batch's rows sit in
+ * posting order, not draft order, and its wave 1 holds one row behind the kit deploy, so
+ * its waves are pinned explicitly instead of read off `post_after`.
  *
  * WAVE A vs WAVE B, the one deliberate difference. Wave A's whole point is that a
  * claimer needs no repository access at all — every row promises that, in words,
@@ -63,9 +68,9 @@ type Row = {
   description: string
   reward_xrd: string
   terms: Record<string, unknown>
-  /** Agent batch only: the 2026-09-28 draft's row id (A1–A8), so the operator's cross-reference holds. */
+  /** Agent and mainnet batches only: the draft's row id (A1–A8, G1–G10), so the operator's cross-reference holds. */
   ref?: string
-  /** Agent batch only: null when the row may be posted now, otherwise what has to happen first. */
+  /** Agent and mainnet batches only: null when the row may be posted now, otherwise what has to happen first. */
   post_after?: string | null
 }
 type Rule = { label: string; re: RegExp; allow?: RegExp[] }
@@ -160,13 +165,27 @@ type BatchSpec = {
    */
   cleanTenPercentBond: boolean
   /**
-   * Agent batch only: the drafted row ids in batch order, and the rows ruled to wait
-   * (ref → what its `post_after` must name). Every other row carries `post_after: null`.
+   * Agent and mainnet batches only: the drafted row ids in batch order, and the rows ruled to wait
+   * (ref → what its `post_after` must name, and what the README's per-row table must say too).
+   * Every other row carries `post_after: null`.
    */
-  drafted?: { refs: string[]; holds: Record<string, RegExp> }
+  drafted?: {
+    refs: string[]
+    holds: Record<string, RegExp>
+    /** The README `## ` heading that opens this batch's section; the section runs to the next `## `. */
+    heading: string
+    /**
+     * ref → wave, for a batch whose waves are not just "held or not": the mainnet batch's wave 1
+     * holds G2 behind the kit deploy. Absent: wave 1 is every row with `post_after: null`, wave 2 the held rows.
+     */
+    waves?: Record<string, 1 | 2>
+    /** Rows that can never be posted (their README line must say "can never post"); they stay in the batch so indexes hold. */
+    neverPost?: string[]
+  }
 }
 
 const AGENT_BATCH = "batch-agent.json"
+const MAINNET_BATCH = "batch-guild-mainnet.json"
 
 const BATCHES: BatchSpec[] = [
   { file: "batch.json", requiresNoRepoAccess: true, cleanTenPercentBond: true },
@@ -175,15 +194,37 @@ const BATCHES: BatchSpec[] = [
     file: AGENT_BATCH,
     requiresNoRepoAccess: true,
     cleanTenPercentBond: false,
-    // A2, the end-to-end machine loop, is postable only after #790 ships
-    // `guild-agent run` (ruled 2026-10-01).
-    drafted: { refs: ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8"], holds: { A2: /#790\b/ } },
+    // A2, the end-to-end machine loop, was postable only after #790 ships
+    // `guild-agent run` (ruled 2026-10-01). #790 was closed on 2026-10-03, so A2 can never post: the
+    // row and its `post_after` stay as they were (the indexes in the commands depend on it) and the
+    // README says so.
+    drafted: {
+      heading: "## Agent batch",
+      refs: ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8"],
+      holds: { A2: /#790\b/ },
+      neverPost: ["A2"],
+    },
+  },
+  {
+    file: MAINNET_BATCH,
+    requiresNoRepoAccess: true,
+    // One 500 XRD row (G9): the 76.45 floor applies there, and the shared bond-copy test makes it say so.
+    cleanTenPercentBond: false,
+    // Posting order (the checker's, 2026-10-03), not draft order: wave 1 is G1, G3, G4 and then G2, which
+    // goes after the kit deploy; wave 2 is G9, G10, G7, G8, G6 and last G5, which posts only on bigdev's go.
+    drafted: {
+      heading: "## Guild mainnet batch",
+      refs: ["G1", "G3", "G4", "G2", "G9", "G10", "G7", "G8", "G6", "G5"],
+      holds: { G2: /\bkit deploy\b/, G5: /bigdev's go/ },
+      waves: { G1: 1, G3: 1, G4: 1, G2: 1, G9: 2, G10: 2, G7: 2, G8: 2, G6: 2, G5: 2 },
+    },
   },
 ]
 
-// drafts/outsider-tasks/** stays private at the open-source flip (drafts/** is
-// EXCLUDE — publish/MANIFEST.md) — skip in the public export, throw in the
-// private tree if it ever goes missing (tests/support/private-input.ts).
+// drafts/outsider-tasks/** stayed private at the open-source flip (drafts/** is
+// EXCLUDE — publish/MANIFEST.md): it lives in the private ops repo, which lays it
+// over this tree for the composed check. Skip here, where it is absent; throw under
+// GUILD_REQUIRE_PRIVATE_INPUTS=1 if it ever goes missing (tests/support/private-input.ts).
 const PRIV = privateInputs(
   ...BATCHES.map((b) => join("drafts", "outsider-tasks", b.file)),
   join("drafts", "outsider-tasks", "README.md"),
@@ -295,6 +336,13 @@ for (const batch of PRIV.skip ? [] : BATCHES) {
         if (hold) expect(r.post_after ?? "").toMatch(hold)
         else expect(r.post_after).toBeNull()
       })
+
+      if (batch.drafted.waves) {
+        it("pins a wave, 1 or 2, for every row and for no other id", () => {
+          expect(Object.keys(batch.drafted!.waves!).sort()).toEqual([...refs].sort())
+          expect(Object.values(batch.drafted!.waves!).every((w) => w === 1 || w === 2)).toBe(true)
+        })
+      }
     }
   })
 
@@ -367,7 +415,7 @@ for (const batch of PRIV.skip ? [] : BATCHES) {
   })
 }
 
-// ── Across batches, and the agent batch's README section ──────────────────────
+// ── Across batches, and the README sections of the agent batch and the mainnet batch ──────
 
 /** 4233 → "4,233 XRD": a fixed format, with no dependence on the runtime's locale data. */
 const xrd = (n: number) => `${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",")} XRD`
@@ -391,11 +439,24 @@ const locksOf = (r: Row) => Number(r.reward_xrd) + insuranceOf(r)
 const TOP_UP_FEE_PER_POST = 2
 const topUpFor = (rs: Row[]) => Math.ceil((sum(rs.map(locksOf)) + rs.length * TOP_UP_FEE_PER_POST) / 50) * 50
 
-const AGENT_HEADING = "## Agent batch"
 const HELD_COMMANDS_HEADING = "### Commands — wave 2"
 
+type Wave = 1 | 2
+type Drafted = NonNullable<BatchSpec["drafted"]>
+
+/** The wave a row is posted in: pinned by the batch's spec, or else wave 2 exactly when the row is held. */
+const waveOfFor = (spec: Drafted) => (r: Row): Wave => (spec.waves ? spec.waves[r.ref ?? ""] : r.post_after === null ? 1 : 2)
+
+/** One batch's README section: from its `## ` heading to the next `## ` heading (or the end); "" when absent. */
+function sectionOf(readme: string, heading: string): string {
+  const at = readme.indexOf(heading)
+  if (at === -1) return ""
+  const next = readme.indexOf("\n## ", at + heading.length)
+  return next === -1 ? readme.slice(at) : readme.slice(at, next + 1)
+}
+
 /** Every way the section's per-row and per-wave tables disagree with the batch; [] when they agree. */
-function figureProblems(rows: Row[], section: string): string[] {
+function figureProblems(rows: Row[], section: string, waveOf: (r: Row) => Wave): string[] {
   const lines = section.split("\n")
   const starting = (prefix: string) => lines.filter((l) => l.startsWith(prefix))
   const problems: string[] = []
@@ -406,8 +467,8 @@ function figureProblems(rows: Row[], section: string): string[] {
     if (found.length !== 1 || !found[0].includes(key)) problems.push(`${r.ref}: want one table row with ${key} … ${amounts}`)
   }
   const waves = [
-    { label: "| Wave 1", rows: rows.filter((r) => r.post_after === null), listsRefs: true },
-    { label: "| Wave 2", rows: rows.filter((r) => r.post_after !== null), listsRefs: true },
+    { label: "| Wave 1", rows: rows.filter((r) => waveOf(r) === 1), listsRefs: true },
+    { label: "| Wave 2", rows: rows.filter((r) => waveOf(r) === 2), listsRefs: true },
     { label: "| Both waves", rows, listsRefs: false },
   ]
   for (const w of waves) {
@@ -436,7 +497,7 @@ function commandRow(rows: Row[], line: string): { i: number; r: Row } | string {
  * row needs exactly one dry-run and one --live command, both reading this batch at that row's
  * index, with that row's reward and its own terms file.
  */
-function commandProblems(rows: Row[], section: string): string[] {
+function commandProblems(rows: Row[], section: string, batchFile: string): string[] {
   const problems: string[] = []
   const seen = rows.map(() => ({ dry: 0, live: 0 }))
   for (const line of section.split("\n").filter((l) => l.includes("guild-poster.ts post"))) {
@@ -449,7 +510,7 @@ function commandProblems(rows: Row[], section: string): string[] {
     const files = [...new Set([...line.matchAll(/outsider-tasks\/(batch[a-z-]*\.json)/g)].map((m) => m[1]))]
     const reward = /--reward (\S+)/.exec(line)?.[1]
     const termsKey = /\/terms-([a-z0-9-]+)\.json/.exec(line)?.[1]
-    if (files.length !== 1 || files[0] !== AGENT_BATCH) problems.push(`${r.ref}: reads ${files.join(", ") || "no batch"}`)
+    if (files.length !== 1 || files[0] !== batchFile) problems.push(`${r.ref}: reads ${files.join(", ") || "no batch"}`)
     if (reward !== r.reward_xrd) problems.push(`${r.ref}: --reward ${reward}, the batch says ${r.reward_xrd}`)
     if (termsKey !== r.key) problems.push(`${r.ref}: terms-${termsKey}.json, the batch key is ${r.key}`)
     if (/ --live'?$/.test(line.trim())) seen[i].live++
@@ -463,8 +524,8 @@ function commandProblems(rows: Row[], section: string): string[] {
   return problems
 }
 
-/** A held row's commands may only come after the held heading, and a postable row's only before it. */
-function heldOrderProblems(rows: Row[], section: string): string[] {
+/** A wave-2 row's commands may only come after the wave-2 heading, and a wave-1 row's only before it. */
+function heldOrderProblems(rows: Row[], section: string, waveOf: (r: Row) => Wave): string[] {
   const at = section.indexOf(HELD_COMMANDS_HEADING)
   if (at === -1) return [`no "${HELD_COMMANDS_HEADING}" heading`]
   const problems: string[] = []
@@ -472,7 +533,7 @@ function heldOrderProblems(rows: Row[], section: string): string[] {
     for (const line of part.split("\n").filter((l) => l.includes("guild-poster.ts post"))) {
       const found = commandRow(rows, line)
       if (typeof found === "string") continue // commandProblems reports it
-      if ((found.r.post_after !== null) !== wantHeld) {
+      if ((waveOf(found.r) === 2) !== wantHeld) {
         problems.push(`${found.r.ref}: its command sits ${wantHeld ? "under" : "above"} the held heading`)
       }
     }
@@ -489,58 +550,87 @@ if (!PRIV.skip) {
     })
   })
 
-  describe("drafts/outsider-tasks/README.md — the agent batch's figures and commands", () => {
-    const rows: Row[] = JSON.parse(readFileSync(join(DIR, AGENT_BATCH), "utf8"))
+  // The README sections of every drafted batch (the agent batch, the mainnet batch), each one read only
+  // within its own `## ` section, so nothing in another batch's section can satisfy a check here.
+  for (const batch of BATCHES.filter((b): b is BatchSpec & { drafted: Drafted } => b.drafted !== undefined)) {
+    const { heading, holds, neverPost = [] } = batch.drafted
+    const waveOf = waveOfFor(batch.drafted)
+    const rows: Row[] = JSON.parse(readFileSync(join(DIR, batch.file), "utf8"))
     const readme = readFileSync(join(DIR, "README.md"), "utf8")
-    const at = readme.indexOf(AGENT_HEADING)
-    // The agent section only, so nothing in Wave A's or Wave B's sections can satisfy a check here.
-    const section = at === -1 ? "" : readme.slice(at)
+    const section = sectionOf(readme, heading)
 
-    it("has the section, with two poster commands per row (vacuous-pass guard)", () => {
-      expect(at).toBeGreaterThan(-1)
-      expect(section.split("\n").filter((l) => l.includes("guild-poster.ts post"))).toHaveLength(rows.length * 2)
+    describe(`drafts/outsider-tasks/README.md — ${batch.file}'s figures and commands`, () => {
+      it("has the section, with two poster commands per row (vacuous-pass guard)", () => {
+        expect(section).not.toBe("")
+        expect(section.split("\n").filter((l) => l.includes("guild-poster.ts post"))).toHaveLength(rows.length * 2)
+      })
+
+      it("every reward, insurance, lock and top-up figure is what the poster's own rule gives", () => {
+        expect(figureProblems(rows, section, waveOf)).toEqual([])
+      })
+
+      it("every command posts the row it names: index, reward and terms file agree, one dry-run and one --live each", () => {
+        expect(commandProblems(rows, section, batch.file)).toEqual([])
+      })
+
+      it("a wave-2 row's commands sit only under the wave-2 heading, and a wave-1 row's only above it", () => {
+        expect(heldOrderProblems(rows, section, waveOf)).toEqual([])
+      })
+
+      it.each(rows.filter((r) => holds[r.ref ?? ""]).map((r) => [r.ref ?? r.key, r] as const))(
+        "%s: the README's per-row tables say what it waits for",
+        (_k, r) => {
+          const lines = section.split("\n").filter((l) => l.startsWith(`| ${r.ref} |`))
+          expect(lines.length).toBeGreaterThan(0)
+          for (const line of lines) expect(line, line.slice(0, 80)).toMatch(holds[r.ref ?? ""])
+        },
+      )
+
+      it.each(neverPost.map((ref) => [ref] as const))("%s: the README says it can never post, under the heading and in each of its table rows", (ref) => {
+        // The banner sits right under the section heading; a note buried further down would not do.
+        expect(section.slice(0, 1200)).toContain(`${ref} can never post`)
+        const rowLines = section.split("\n").filter((l) => l.startsWith(`| ${ref} |`))
+        expect(rowLines.length).toBeGreaterThan(0)
+        for (const line of rowLines) expect(line, line.slice(0, 80)).toMatch(/\bnever\b/)
+      })
     })
 
-    it("every reward, insurance, lock and top-up figure is what the poster's own rule gives", () => {
-      expect(figureProblems(rows, section)).toEqual([])
-    })
+    describe(`controls (README.md, ${batch.file}) — each check above fires on a planted defect`, () => {
+      const [first, second] = rows
+      const firstLive = section.split("\n").find((l) => l.includes(`.[0].title`) && / --live'$/.test(l.trim())) ?? ""
 
-    it("every command posts the row it names: index, reward and terms file agree, one dry-run and one --live each", () => {
-      expect(commandProblems(rows, section)).toEqual([])
-    })
+      it("figures: a re-priced row is caught in its own line and in its wave's totals", () => {
+        const repriced = rows.map((r, i) => (i === 0 ? { ...r, reward_xrd: r.reward_xrd === "765" ? "500" : "765" } : r))
+        const problems = figureProblems(repriced, section, waveOf)
+        expect(problems.some((p) => p.startsWith(`${first.ref}:`))).toBe(true)
+        expect(problems.some((p) => p.startsWith(`Wave ${waveOf(first)}`))).toBe(true)
+        expect(problems.some((p) => p.startsWith("Both waves"))).toBe(true)
+      })
 
-    it("a held row's commands sit only under the held heading, and a postable row's only above it", () => {
-      expect(heldOrderProblems(rows, section)).toEqual([])
-    })
-  })
+      it("commands: another row's terms file, a wrong reward, the wrong batch, and a lost --live are each caught", () => {
+        expect(firstLive).not.toBe("")
+        // Function replacers: the command text is full of `$(…)`, and a string replacer reads `$` specially.
+        const swap = (from: string, to: string) => section.replace(firstLive, () => firstLive.replace(from, () => to))
+        expect(commandProblems(rows, swap(`terms-${first.key}.json`, `terms-${second.key}.json`), batch.file)).not.toEqual([])
+        expect(commandProblems(rows, swap(`--reward ${first.reward_xrd} `, "--reward 5000 "), batch.file)).not.toEqual([])
+        // The description's batch path, whatever directory it is read from: since the split the box reads
+        // the ops repo's checkout, not this one's, and a dry-run may read a local clone instead.
+        expect(
+          commandProblems(rows, swap(`outsider-tasks/${batch.file})" --reward`, `outsider-tasks/batch.json)" --reward`), batch.file),
+        ).not.toEqual([])
+        expect(commandProblems(rows, swap(" --live'", "'"), batch.file)).not.toEqual([])
+      })
 
-  describe("controls (README.md, agent batch) — each check above fires on a planted defect", () => {
-    const rows: Row[] = JSON.parse(readFileSync(join(DIR, AGENT_BATCH), "utf8"))
-    const readme = readFileSync(join(DIR, "README.md"), "utf8")
-    const section = readme.slice(readme.indexOf(AGENT_HEADING))
-    const [first, second] = rows
-    const firstLive = section.split("\n").find((l) => l.includes(`.[0].title`) && / --live'$/.test(l.trim())) ?? ""
+      it("held order: a wave-1 row's command moved under the wave-2 heading is caught", () => {
+        expect(waveOf(first)).toBe(1)
+        expect(heldOrderProblems(rows, section + "\n" + firstLive, waveOf)).not.toEqual([])
+      })
 
-    it("figures: a re-priced row is caught in its own line and in its wave's totals", () => {
-      const repriced = rows.map((r, i) => (i === 0 ? { ...r, reward_xrd: "765" } : r))
-      const problems = figureProblems(repriced, section)
-      expect(problems.some((p) => p.startsWith(`${first.ref}:`))).toBe(true)
-      expect(problems.some((p) => p.startsWith("Wave 1"))).toBe(true)
-      expect(problems.some((p) => p.startsWith("Both waves"))).toBe(true)
+      it("section bounds: the section stops at the next `## ` heading, so no other batch's heading is inside it", () => {
+        const others = BATCHES.filter((b) => b.drafted && b.file !== batch.file)
+        expect(others.length).toBeGreaterThan(0)
+        for (const other of others) expect(section.includes(other.drafted!.heading)).toBe(false)
+      })
     })
-
-    it("commands: another row's terms file, a wrong reward, the wrong batch, and a lost --live are each caught", () => {
-      expect(firstLive).not.toBe("")
-      // Function replacers: the command text is full of `$(…)`, and a string replacer reads `$` specially.
-      const swap = (from: string, to: string) => section.replace(firstLive, () => firstLive.replace(from, () => to))
-      expect(commandProblems(rows, swap(`terms-${first.key}.json`, `terms-${second.key}.json`))).not.toEqual([])
-      expect(commandProblems(rows, swap(`--reward ${first.reward_xrd} `, "--reward 5000 "))).not.toEqual([])
-      expect(commandProblems(rows, swap(`.[0].description" /opt/guild-saas/drafts/outsider-tasks/${AGENT_BATCH}`, `.[0].description" /opt/guild-saas/drafts/outsider-tasks/batch.json`))).not.toEqual([])
-      expect(commandProblems(rows, swap(" --live'", "'"))).not.toEqual([])
-    })
-
-    it("held order: a postable row's command moved under the held heading is caught", () => {
-      expect(heldOrderProblems(rows, section + "\n" + firstLive)).not.toEqual([])
-    })
-  })
+  }
 }
