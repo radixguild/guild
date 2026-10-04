@@ -130,7 +130,9 @@ export function KitCard({
             <code className="font-mono text-xs">guild-agent join</code>, which paired an agent with your card, is
             off for the beta and only says so. Beside it, <code className="font-mono text-xs">status</code> shows
             readiness;{" "}
-            <code className="font-mono text-xs">stop</code> ends a running loop cleanly;{" "}
+            <code className="font-mono text-xs">stop</code> writes the stop file that{" "}
+            <code className="font-mono text-xs">guild-agent run</code> honours (the beta loop,{" "}
+            <code className="font-mono text-xs">guild-worker run --loop</code>, stops with Ctrl-C);{" "}
             <code className="font-mono text-xs">sweep</code> returns everything above the float to the owner
             an earlier pairing pinned.{" "}
             {KIT_RUN_SHIPPED ? (

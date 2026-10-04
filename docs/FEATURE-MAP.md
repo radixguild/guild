@@ -153,7 +153,7 @@ That doc is a June-2026 overhaul tracker; the governing plan is now
 - xUSDC/xUSDT unregistered on live component · ~~lint frozen-red 13~~ (clear since — see §A's lint note, 2026-10-03) · submissions "attachments coming soon" stub
 - CV2 reads only — writes have never been enabled (ABI unverified, audit CRITICAL-1) and CV2 is PARKED 2026-07-31 pending the guild-saas-dao · escrow owner badge = single-badge SPOF (no AccessController)
 
-## ⚠️ Cross-doc contradictions (resolve before open-up)
+## ⚠️ Cross-doc contradictions (recorded before the repository went public on 2026-10-03; still open)
 
 1. **Three agent-auth models** coexist: API-key bot API (agent-api.md) vs x402 no-key (GUILD-VISION) vs ROLA-session badges (agent-auth-design.md, **ACCEPTED** — the other docs need deprecation banners).
 2. **Arbiter economics**: docs sell a paid arbiter market; deployment is 0%-fee auto-resolve-only. Re-instantiation + TASK-TERMS arbiter fee is the convergence path.
