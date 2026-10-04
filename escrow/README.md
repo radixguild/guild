@@ -10,11 +10,9 @@ Scrypto blueprints for Guild marketplace escrow.
 
 - **[`scrypto/guild-escrow/`](scrypto/guild-escrow/)** — Pre-scan single-token escrow. Two high-severity findings from the 2026-05-23 in-house scrypto scan (worker role `allow_all`, arbiter accepts any badge). See its [`README.md`](scrypto/guild-escrow/README.md) for migration guidance. Do not modify; do not add as a dependency.
 
-## Sibling-repo legacy (not in this tree)
+## Predecessor-repository legacy (not in this tree)
 
-The Wave 2 deprecation also covers two blueprints living in the `guild-public` repository, not in this one:
-
-- `badge-manager/scrypto/task-escrow-v3/`
-- `badge-manager/scrypto/task-escrow/`
-
-A follow-up PR in that repo will mark them as superseded by `guild-marketplace-escrow` and point migrators here.
+The Wave 2 deprecation also covered two earlier blueprints, `task-escrow` and `task-escrow-v3`, that lived in a
+predecessor repository rather than in this one. That repository was archived on 2026-10-04 and is not maintained;
+both blueprints are superseded by `guild-marketplace-escrow`, nothing in this tree builds or deploys them, and no
+follow-up is planned there. Migrators should start from this directory.

@@ -1,9 +1,10 @@
 # @radix-guild/settlement-credential
 
-**Status: draft slice, built as a DRAFT PR so it costs nothing to decline.** This
-implements decision 6 of the 2026-09-04 "Guild Reality Check" (`decision doc, private
-artifact 56bc2f4c…`): *build the credential slice*. It has not been reviewed or
-approved — nobody has clicked anything yet.
+**Status: draft slice. It sits in the tree as an unwired package so it costs nothing to
+decline: nothing imports it and no page or API uses it.** It implements decision 6 of the
+2026-09-04 "Guild Reality Check" (an operator decision record, kept in the private
+operations repository): *build the credential slice*. It has not been reviewed or approved
+for use — nobody has issued or verified a credential with it outside its own tests.
 
 ## What this is
 

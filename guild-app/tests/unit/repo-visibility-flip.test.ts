@@ -70,6 +70,11 @@ const MUST_CATCH = [
   "The code isn't public yet.",
   "the client isn't open source",
   "the code will be public at launch",
+  // Added 2026-10-05 (post-flip backlog): the "published" phrasings the regex missed.
+  "source not yet published",
+  "The source is not published.",
+  "the code is not yet published, so verify behaviour",
+  "the repository isn't published",
 ]
 
 const MUST_PASS = [
