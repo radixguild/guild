@@ -76,9 +76,12 @@ function AboutContent() {
                   "reputation is non-transferable by guild policy" described a
                   policy nothing implements: XP and reputation are columns on the
                   ACCOUNT's row (src/db/schema/users.ts), credited only by task
-                  settlement (awardTaskCompletion), so they never follow a badge. */}
+                  settlement (awardTaskCompletion), so today they do not follow a badge.
+                  Whether a record SHOULD follow the badge or the wallet is an open
+                  community decision (2026-10-03 ruling 3; E3, 2026-10-04), so the copy
+                  states the mechanics and names the question, not a model. */}
               <div className="font-semibold text-sm mb-1">Membership Badge</div>
-              <div className="text-xs text-muted-foreground">A free badge NFT (network fee only) that lets you claim tasks. It records membership, not identity. XP and trust come from completed tasks and belong to your account, not the badge. The tier on a badge gates nothing.</div>
+              <div className="text-xs text-muted-foreground">A free badge NFT (network fee only) that lets you claim tasks. It records membership, not identity. XP and trust come from completed tasks; today the Guild keeps that record against the account that did the work, so moving the badge does not move it. Whether a record should follow the badge or the wallet is an open question for the community to decide. The tier on a badge gates nothing.</div>
             </div>
             <div className="bg-muted rounded-lg p-3">
               <div className="font-semibold text-sm mb-1">Community Votes</div>

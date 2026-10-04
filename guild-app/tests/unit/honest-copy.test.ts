@@ -1911,8 +1911,8 @@ describe("the 2026-09-23 copy-audit family — six claims the evidence refutes (
         "Reputation is non-transferable by guild policy — the badge NFT itself can technically be moved.",
       ],
       quiet: [
-        "The NFT itself is transferable. Your XP and trust record belong to your account in the Guild's records, not to the badge, so moving the badge does not move them.",
-        "XP and trust come from completed tasks and belong to your account, not the badge.",
+        "The NFT itself is transferable. Today the Guild keeps your XP and trust record against your account in its own records, not on the badge, so moving the badge does not move them. Whether a record should follow the badge or the account that did the work is an open question the community will decide; nothing gates a claim on it yet.",
+        "XP and trust come from completed tasks; today the Guild keeps that record against the account that did the work, so moving the badge does not move it. Whether a record should follow the badge or the wallet is an open question for the community to decide.",
       ],
     },
   ]
