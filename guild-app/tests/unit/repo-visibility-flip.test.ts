@@ -57,6 +57,10 @@ const MUST_CATCH = [
   "Part of this repository is on a path to being made public; today it is private.",
   "The code is not public yet.",
   "the source, which is not yet public",
+  "The code goes public at launch.",
+  "the repository will go public after the audit",
+  "our source becomes open-source next quarter",
+  "The code is going public with the beta.",
   "a pull request to the Guild's private code repository",
   "the client is not yet open source",
   "Until the blueprint's source is published, verify what it does.",
@@ -88,6 +92,8 @@ const MUST_PASS = [
   "Not open yet", // a funding pool's draft label (src/lib/funding-display.ts)
   "The code is public at https://github.com/radixguild/guild (Apache-2.0).",
   "The client is open source under Apache-2.0.",
+  "The code is public, Apache-2.0: github.com/radixguild/guild.",
+  "the badge goes public on the ledger the moment it is minted",
 ]
 
 const COPY_ROOTS = ["guild-app/src", "guild-app/public", "bot"]
