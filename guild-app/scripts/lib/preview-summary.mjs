@@ -187,7 +187,7 @@ export function formatSummary(summary, { labels = {}, allEvents = false } = {}) 
         '  This is a SIGNATURE mismatch, not a state problem. The manifest passes an',
         '  argument the blueprint does not accept; no wallet, epoch or retry fixes it.',
         '  Compare the call against the scraped ABI:',
-        '      cd guild-app && bun scripts/gen-method-inventory.mjs',
+        '      docs/ESCROW-METHOD-INVENTORY.md (generated from the blueprint source)',
       )
     }
     return out.join('\n')

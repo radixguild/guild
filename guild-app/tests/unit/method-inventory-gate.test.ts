@@ -123,7 +123,7 @@ describe("scrapeMethods against the real blueprint", () => {
 })
 
 describe("the committed doc matches the source", () => {
-  it("is in sync — run `bun scripts/gen-method-inventory.mjs --write` if this fails", () => {
+  it("is in sync — regenerate with gen-method-inventory.mjs --write (private operations repository) if this fails", () => {
     const doc = readFileSync(DOC, "utf8")
     expect(doc).toBe(spliceBlock(doc, renderTable(scrapeMethods(LIB_RS))))
   })
@@ -219,7 +219,7 @@ describe("scrapeMethods against the NftSwap blueprint", () => {
 })
 
 describe("the committed NftSwap doc block matches the source", () => {
-  it("is in sync — run `bun scripts/gen-method-inventory.mjs --write` if this fails", () => {
+  it("is in sync — regenerate with gen-method-inventory.mjs --write (private operations repository) if this fails", () => {
     const doc = readFileSync(DOC, "utf8")
     expect(doc).toBe(
       spliceBlock(doc, renderTable(scrapeMethods(NFT_SWAP_RS)), NFT_SWAP_BEGIN, NFT_SWAP_END)

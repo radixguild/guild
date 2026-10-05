@@ -177,7 +177,7 @@ describe("formatSummary", () => {
   it("says plainly that a signature mismatch will not fix itself", () => {
     const out = formatSummary(summarizePreview(FAILED))
     expect(out).toContain("SIGNATURE mismatch, not a state problem")
-    expect(out).toContain("gen-method-inventory.mjs")
+    expect(out).toContain("ESCROW-METHOD-INVENTORY.md")
   })
 
   it("does not offer that advice on a state failure, where retrying IS valid", () => {
