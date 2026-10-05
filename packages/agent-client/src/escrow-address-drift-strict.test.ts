@@ -1,5 +1,5 @@
 // The strict switch in escrow-address-drift.test.ts's inlined private-input
-// guard (GUILD_REQUIRE_PRIVATE_INPUTS=1, docs/design/post-flip-topology.md §5.6,
+// guard (GUILD_REQUIRE_PRIVATE_INPUTS=1, post-flip topology note §5.6, private operations repository,
 // F16). That guard runs at module scope, so the only honest test of it is to run
 // the file: each case below runs `bun test` on it in a child process with exactly
 // the switches it names, and inherits none from this run.

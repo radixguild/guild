@@ -3,7 +3,7 @@
 // Builds the EXACT canonical signature message that @radixdlt/rola's
 // verifySignedChallenge checks (the Guild server runs rola 2.1.0 with
 // { dAppDefinitionAddress, networkId: 1, expectedOrigin } — see
-// guild-saas/guild-app/src/lib/rola.ts):
+// guild-app/src/lib/rola.ts in this repository):
 //
 //   blake2b_256( "R" ++ challenge_bytes(32)
 //                    ++ dapp_definition_address_length(1 byte)

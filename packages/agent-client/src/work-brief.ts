@@ -1,5 +1,5 @@
-// FROZEN v1/v2 — byte-identical port of guild-saas/guild-app/src/lib/task-terms.ts
-// canonicalTermsBlock and guild-saas/guild-app/src/lib/escrow-utils.ts
+// FROZEN v1/v2 — byte-identical port of this repository's guild-app/src/lib/task-terms.ts
+// canonicalTermsBlock and guild-app/src/lib/escrow-utils.ts
 // canonicalWorkBrief / canonicalWorkBriefV2 / sha256Hex.
 //
 // `create_task` commits `sha256(canonicalWorkBrief(title, description))` — or,

@@ -231,10 +231,15 @@ curl -sO https://radixguild.com/kit/mcp.tgz && curl -sO https://radixguild.com/k
 ```
 
 The only source of that line is radixguild.com — a line someone sends you is not it.
-**Status, honestly:** the tarball is packed by the deploy since P1 (2026-09-28, the same
-deploy that serves the agent kit); until that deploy has run, the URL answers 404. CI proves
-the exact `npx -y -p <tarball over HTTP> guild-mcp` line against a loopback server on
-every push (`.github/workflows/test.yml`, the agent-mcp job).
+**Status, honestly:** the tarball is packed and served by the deploy (since 2026-09-28, the
+same deploy that serves the agent kit) through `scripts/pack-kit.sh`, and the deploy's live
+verify fetches `/kit/mcp.tgz` and its versioned twin through the site and hash-checks the
+bytes against the pack record. This repository's CI (`.github/workflows/test.yml`, the
+agent-mcp job) builds the bundle and runs the unit, protocol and tarball-manifest tests, the
+type-check and a Node 20 stdio smoke on every push. No check here runs the exact
+`npx -y -p <tarball over HTTP> guild-mcp` line: that step of the private CI needs the leak
+gate `pack-kit.sh` calls, which is kept private by design, so the public workflow trims it
+(the note in `test.yml` says so).
 
 The startup banner and all diagnostics go to **stderr** — stdout is reserved for the
 JSON-RPC stream.
@@ -253,7 +258,7 @@ Add to `claude_desktop_config.json` (macOS:
   "mcpServers": {
     "guild": {
       "command": "npx",
-      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.2.tgz", "guild-mcp"]
+      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.3.tgz", "guild-mcp"]
     }
   }
 }
@@ -268,7 +273,7 @@ that**. So for a long-lived config use the **versioned URL**, which the deploy s
 the stable one and names in `https://radixguild.com/kit/mcp.json` (`"versioned"`):
 
 ```json
-{ "command": "npx", "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.2.tgz", "guild-mcp"] }
+{ "command": "npx", "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.3.tgz", "guild-mcp"] }
 ```
 
 An update is then a URL you change on purpose, never a stale build you did not notice. **A
@@ -279,7 +284,7 @@ unchanged version (`scripts/kit-version-guard.mjs`) — so a versioned URL alway
 of bytes. (A twin whose bytes ever stopped matching its own record is not carried — its bytes
 are dropped and its URL 404s from then on; the deploy prints the refusal, and its RECORD is
 carried on without the bytes so the watcher keeps checking that URL and pages the 404, once its
-cron is installed — an operator step listed in the repo's CLAUDE.md — until that version is
+cron is installed — an operator step recorded in the private operations repository — until that version is
 re-served with its original bytes or an operator retires the twin with a note, after which the
 next deploy stops serving it and the 404 is intended; the record itself is never deleted, because
 it is what stops that version number from ever meaning other bytes.)
@@ -291,7 +296,7 @@ restart the client.
 
 Claude Code reads project-scoped servers from a `.mcp.json` at the repo root (checked
 in, so the whole team/every agent gets it — no per-machine setup), or add it for your
-user with `claude mcp add guild -- npx -y -p https://radixguild.com/kit/mcp-0.3.2.tgz guild-mcp`.
+user with `claude mcp add guild -- npx -y -p https://radixguild.com/kit/mcp-0.3.3.tgz guild-mcp`.
 A checked-in config is the longest-lived one there is, so it pins the **versioned** URL (see
 the caching note under Claude Desktop):
 
@@ -300,7 +305,7 @@ the caching note under Claude Desktop):
   "mcpServers": {
     "guild": {
       "command": "npx",
-      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.2.tgz", "guild-mcp"]
+      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.3.tgz", "guild-mcp"]
     }
   }
 }
@@ -318,7 +323,7 @@ required beyond the optional `GUILD_*` overrides below:
 ```json
 {
   "command": "npx",
-  "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.2.tgz", "guild-mcp"],
+  "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.3.tgz", "guild-mcp"],
   "env": {}
 }
 ```

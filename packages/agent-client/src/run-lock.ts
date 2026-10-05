@@ -1,4 +1,4 @@
-// run-lock.ts — one `guild-agent run` per agent (docs/design/bring-your-agent.md §2.3).
+// run-lock.ts — one `guild-agent run` per agent (Bring Your Agent design note §2.3, private operations repository).
 //
 //   ~/.radix-guild/run.lock   the pid of the running loop, beside the key
 //
