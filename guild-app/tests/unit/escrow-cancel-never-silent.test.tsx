@@ -8,10 +8,10 @@
  * Dashboard a minute later, committed.
  *
  * What the code shows: pressing Cancel reaches rdt.walletApi.sendTransaction
- * through exactly one gate, ensureSession(), and the bundle served that day
- * baked the right component and receipt resource (checked against the public
- * chunks). So when the wallet never prompts, the request either stopped at
- * sign-in or was never delivered by the dApp toolkit. In both cases the page
+ * through exactly one gate, ensureSessionDetailed(), and the bundle served that
+ * day baked the right component and receipt resource (checked against the
+ * public chunks). So when the wallet never prompts, the request either stopped
+ * at sign-in or was never delivered by the dApp toolkit. In both cases the page
  * was mute or vague:
  *
  *   1. a failed sign-in said "Approve the wallet signature to continue." —
@@ -24,6 +24,12 @@
  *   3. a request the wallet never answers left the button on "Cancelling..."
  *      forever, with no word on what to check.
  *
+ * 2026-10-06 (the money-buttons lane) added what the gate now reports — the
+ * cause, in words — and the chain-truth method choice: the DB row's phase can
+ * lag the escrow, and cancel_task on a Claimed task only reverts and burns the
+ * fee. The other buttons' versions of cases 1–3 live in
+ * escrow-money-buttons-never-silent.test.tsx.
+ *
  * Each case below must end in a sentence that says what happened and what to
  * do, and every new sentence clears the real honest-copy rule table.
  */
@@ -31,6 +37,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react"
 import "@testing-library/jest-dom/vitest"
 import { BANNED, PULL_BANNED, violation } from "../../scripts/honest-copy.mjs"
+import { sessionFailure } from "@/lib/session-outcome"
 
 const POSTER = "account_rdx12poster70000000000000000000000000000000000000000000000"
 const ON_CHAIN_TASK_ID = 6
@@ -41,21 +48,23 @@ vi.mock("@/lib/config", async (importOriginal) => ({
   isEscrowDeployed: () => true,
 }))
 
-const W = vi.hoisted(() => ({ ensureSession: vi.fn() }))
+const W = vi.hoisted(() => ({ gate: vi.fn() }))
 vi.mock("@/hooks/useWallet", () => ({
   useWallet: () => ({
     account: POSTER,
     rdt: {},
-    ensureSession: W.ensureSession,
+    ensureSessionDetailed: W.gate,
+    ensureSession: vi.fn(async () => (await W.gate()).ok),
     sessionMismatch: false,
   }),
 }))
 
 vi.mock("@/lib/api-fetch", () => ({ apiFetch: vi.fn() }))
+const G = vi.hoisted(() => ({ readEscrowTaskState: vi.fn() }))
 vi.mock("@/lib/gateway", () => ({
   loadUserBadge: vi.fn(),
   findClaimReceiptId: vi.fn(),
-  readEscrowTaskState: vi.fn(),
+  readEscrowTaskState: G.readEscrowTaskState,
   outstandingForParty: vi.fn(),
 }))
 
@@ -76,7 +85,10 @@ import {
   EscrowCancelButton,
   CANCEL_SIGN_IN_INCOMPLETE,
   CANCEL_WALLET_WAIT_HINT,
+  CANCEL_NOT_CANCELLABLE,
   WALLET_WAIT_HINT_MS,
+  SIGN_IN_LEAD,
+  TX_BACKSTOP,
 } from "@/components/tasks/escrow-actions"
 import { humanizeTxError } from "@/lib/escrow-utils"
 import { settlementCopy } from "@/lib/settlement-copy"
@@ -87,7 +99,7 @@ import { settlementCopy } from "@/lib/settlement-copy"
 const toolkitError = (error: string, message = "") =>
   JSON.stringify({ error, interactionId: "c0ffee00-0000-4000-8000-000000000006", message })
 
-function renderCancel(phase: "open" | "claimed" = "open") {
+function renderCancel(phase: "open" | "claimed" = "open", onSuccess?: (txId: string) => void) {
   return render(
     <EscrowCancelButton
       taskDbId={70}
@@ -95,18 +107,26 @@ function renderCancel(phase: "open" | "claimed" = "open") {
       posterId={POSTER}
       workerId={null}
       phase={phase}
+      onSuccess={onSuccess}
     />,
   )
 }
 
-const cancelButton = () =>
-  screen.getByRole("button", { name: new RegExp(settlementCopy("cancelButtonOpen")!.replace(/[()]/g, "\\$&"), "i") })
+const cancelButton = (phase: "open" | "claimed" = "open") =>
+  screen.getByRole("button", {
+    name: new RegExp(
+      settlementCopy(phase === "open" ? "cancelButtonOpen" : "cancelButtonClaimed")!.replace(/[()]/g, "\\$&"),
+      "i",
+    ),
+  })
 
 describe("EscrowCancelButton — pressing Cancel is never a silent no-op", () => {
   beforeEach(() => {
     cleanup()
     vi.clearAllMocks()
-    W.ensureSession.mockResolvedValue(true)
+    W.gate.mockResolvedValue({ ok: true })
+    // The chain is unreadable by default (a Gateway hiccup): the row's phase decides.
+    G.readEscrowTaskState.mockResolvedValue(null)
     mockConfirmEscrowTx.mockResolvedValue({ ok: true })
     mockResyncEscrowTask.mockResolvedValue({ ok: true, applied: 0, pending: [] })
   })
@@ -129,15 +149,32 @@ describe("EscrowCancelButton — pressing Cancel is never a silent no-op", () =>
     await waitFor(() => expect(mockConfirmEscrowTx).toHaveBeenCalledWith(70, "cancel", "txid_rdx1cancel"))
   })
 
-  it("says no transaction was sent when sign-in does not complete — not 'approve the wallet signature'", async () => {
-    W.ensureSession.mockResolvedValue(false)
+  it("says no transaction was sent, and why, when the person declines the sign-in — not 'approve the wallet signature'", async () => {
+    W.gate.mockResolvedValue(sessionFailure("wallet-declined"))
     renderCancel()
     fireEvent.click(cancelButton())
     const alert = await screen.findByRole("alert")
-    expect(alert).toHaveTextContent(CANCEL_SIGN_IN_INCOMPLETE)
+    expect(alert).toHaveTextContent(SIGN_IN_LEAD.cancel)
     expect(alert).toHaveTextContent(/no cancel transaction was sent/i)
+    expect(alert).toHaveTextContent(/declined the sign-in request in your wallet/i)
     expect(alert).not.toHaveTextContent(/approve the wallet signature/i)
     expect(mockSendCancelTx).not.toHaveBeenCalled()
+    expect(cancelButton()).not.toBeDisabled()
+  })
+
+  it("keeps the gate's detail (the network error) under the expando when /verify was unreachable", async () => {
+    W.gate.mockResolvedValue(sessionFailure("unreachable", "TypeError: Failed to fetch"))
+    renderCancel()
+    fireEvent.click(cancelButton())
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent(/could not reach the site to verify it/i)
+    expect(alert).toHaveTextContent("Failed to fetch")
+    expect(mockSendCancelTx).not.toHaveBeenCalled()
+  })
+
+  it("the generic form still exists for a gate that reported nothing", () => {
+    expect(CANCEL_SIGN_IN_INCOMPLETE).toMatch(/no cancel transaction was sent/i)
+    expect(CANCEL_SIGN_IN_INCOMPLETE).toMatch(/didn't get through/i)
   })
 
   it("says the Connector extension never confirmed the transaction (missingExtension) instead of a generic failure", async () => {
@@ -196,6 +233,20 @@ describe("EscrowCancelButton — pressing Cancel is never a silent no-op", () =>
     expect(screen.getByRole("alert")).toHaveTextContent(/stopped waiting for your wallet/i)
   })
 
+  it("covers the sign-in request too: a wallet that never answers the ROLA prompt gets the same hint", async () => {
+    vi.useFakeTimers()
+    W.gate.mockReturnValue(new Promise(() => {}))
+    renderCancel()
+    await act(async () => {
+      fireEvent.click(cancelButton())
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(WALLET_WAIT_HINT_MS)
+    })
+    expect(screen.getByText(CANCEL_WALLET_WAIT_HINT)).toHaveAttribute("role", "status")
+    expect(mockSendCancelTx).not.toHaveBeenCalled()
+  })
+
   it("keeps the wait hint off the post-wallet confirm — it is about the wallet, not the server", async () => {
     // The wallet signs at once; the DB confirm then takes longer than the hint
     // threshold (confirmEscrowTx retries for up to ~16 s on its own). Telling
@@ -214,18 +265,78 @@ describe("EscrowCancelButton — pressing Cancel is never a silent no-op", () =>
     expect(screen.queryByText(CANCEL_WALLET_WAIT_HINT)).toBeNull()
   })
 
-  it("does not spin forever when sign-in THROWS — it says no transaction was sent and shows what threw", async () => {
-    // signIn's /verify fetch has no catch of its own, so a network drop
-    // there rejects ensureSession(). Before the fix the handler died after
-    // setLoading(true): "Cancelling..." for good, button disabled, no text.
-    W.ensureSession.mockRejectedValue(new TypeError("Failed to fetch"))
+  it("does not spin forever when the gate THROWS — the backstop says what is and is not known, and shows what threw", async () => {
+    // The real gate never throws any more (useWallet.tsx); this is the guard's
+    // own catch, for anything that still does. Before the fix the handler died
+    // after setLoading(true): "Cancelling..." for good, button disabled, no text.
+    W.gate.mockRejectedValue(new TypeError("Failed to fetch"))
     renderCancel()
     fireEvent.click(cancelButton())
     const alert = await screen.findByRole("alert")
-    expect(alert).toHaveTextContent(CANCEL_SIGN_IN_INCOMPLETE)
+    expect(alert).toHaveTextContent(TX_BACKSTOP)
     expect(alert).toHaveTextContent("Failed to fetch") // the detail, behind the expando
     expect(mockSendCancelTx).not.toHaveBeenCalled()
     expect(cancelButton()).not.toBeDisabled()
+  })
+})
+
+describe("EscrowCancelButton — the chain, not the DB row, decides which cancel applies (2026-10-06)", () => {
+  beforeEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+    W.gate.mockResolvedValue({ ok: true })
+    mockConfirmEscrowTx.mockResolvedValue({ ok: true })
+    mockResyncEscrowTask.mockResolvedValue({ ok: true, applied: 0, pending: [] })
+    mockSendCancelTx.mockResolvedValue({ ok: true, txId: "txid_rdx1cancel" })
+  })
+
+  it("DB says open, chain says Claimed → sends cancel_task_by_poster_after_claim, not the method that would revert", async () => {
+    // The lag case: a claim whose confirm was lost leaves the row "open".
+    G.readEscrowTaskState.mockResolvedValue("Claimed")
+    renderCancel("open")
+    fireEvent.click(cancelButton())
+    await waitFor(() => expect(mockSendCancelTx).toHaveBeenCalledTimes(1))
+    expect(mockSendCancelTx.mock.calls[0][0]).toMatchObject({ phase: "claimed", taskId: ON_CHAIN_TASK_ID })
+    expect(G.readEscrowTaskState).toHaveBeenCalledWith(ON_CHAIN_TASK_ID, expect.any(String))
+  })
+
+  it("DB says claimed, chain says Open → cancel_task", async () => {
+    G.readEscrowTaskState.mockResolvedValue("Open")
+    renderCancel("claimed")
+    fireEvent.click(cancelButton("claimed"))
+    await waitFor(() => expect(mockSendCancelTx).toHaveBeenCalledTimes(1))
+    expect(mockSendCancelTx.mock.calls[0][0]).toMatchObject({ phase: "open" })
+  })
+
+  it("chain says Submitted → no transaction, the DB is pulled forward, and the page says the cancel no longer applies", async () => {
+    G.readEscrowTaskState.mockResolvedValue("Submitted")
+    renderCancel("open")
+    fireEvent.click(cancelButton())
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent(CANCEL_NOT_CANCELLABLE)
+    expect(alert).toHaveTextContent(/no cancel transaction was sent/i)
+    expect(mockSendCancelTx).not.toHaveBeenCalled()
+    expect(mockResyncEscrowTask).toHaveBeenCalledWith(70)
+    expect(cancelButton()).not.toBeDisabled()
+  })
+
+  it("chain says Refunded and the resync applies → the page re-fetches instead of showing an error", async () => {
+    G.readEscrowTaskState.mockResolvedValue("Refunded")
+    mockResyncEscrowTask.mockResolvedValue({ ok: true, applied: 1, pending: [] })
+    const onSuccess = vi.fn()
+    renderCancel("open", onSuccess)
+    fireEvent.click(cancelButton())
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith(""))
+    expect(mockSendCancelTx).not.toHaveBeenCalled()
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  it("chain unreadable (null) → the row's phase decides, fail open — the on-chain assert stays the backstop", async () => {
+    G.readEscrowTaskState.mockResolvedValue(null)
+    renderCancel("claimed")
+    fireEvent.click(cancelButton("claimed"))
+    await waitFor(() => expect(mockSendCancelTx).toHaveBeenCalledTimes(1))
+    expect(mockSendCancelTx.mock.calls[0][0]).toMatchObject({ phase: "claimed" })
   })
 })
 
@@ -255,11 +366,12 @@ describe("humanizeTxError — dApp toolkit codes for a request the wallet did no
   })
 })
 
-describe("the new cancel-path copy clears the real honest-copy rule table", () => {
+describe("the cancel-path copy clears the real honest-copy rule table", () => {
   const ALL_RULES = [...BANNED, ...PULL_BANNED]
   const texts = [
     CANCEL_SIGN_IN_INCOMPLETE,
     CANCEL_WALLET_WAIT_HINT,
+    CANCEL_NOT_CANCELLABLE,
     ...["missingExtension", "SupportedTransportNotFound", "FailedToSendDappRequest", "canceledByUser"].map(
       (c) => humanizeTxError(toolkitError(c)).summary,
     ),

@@ -2,6 +2,14 @@
 import { useEffect, useRef, useState, useCallback, createContext, useContext, useMemo } from "react";
 import { RadixDappToolkit, RadixNetwork, DataRequestBuilder } from "@radixdlt/radix-dapp-toolkit";
 import { apiFetch } from "@/lib/api-fetch";
+import {
+  type SessionOutcome,
+  SESSION_OK,
+  sessionFailure,
+  explainSignInRequestError,
+  explainSignInThrow,
+  explainVerifyRefusal,
+} from "@/lib/session-outcome";
 import { DAPP_DEF, BADGE_NFT } from "@/lib/constants";
 import { loadUserBadgeResult } from "@/lib/gateway";
 import type { BadgeInfo } from "@/lib/types";
@@ -146,10 +154,18 @@ interface WalletState {
    * only persists when the sign-in proof was given for an unshared account.
    */
   sessionMismatch: boolean;
-  /** Run the ROLA sign-in: wallet signature → POST /verify → set the session. False on cancel/failure. */
+  /** Run the ROLA sign-in: wallet signature → POST /verify → set the session. False on cancel/failure; never throws. */
   signIn: () => Promise<boolean>;
-  /** Ensure a session before a protected DB write — no-op if already authed, else signs in. */
+  /** Ensure a session before a protected DB write — no-op if already authed, else signs in. Never throws. */
   ensureSession: () => Promise<boolean>;
+  /**
+   * The same sign-in, reported: `ok: false` names its cause (the wallet's own
+   * code, /verify's refusal, a network drop, an unshared account) in a
+   * sentence a button can show. Never throws.
+   */
+  signInDetailed: () => Promise<SessionOutcome>;
+  /** The same gate as ensureSession, reported the same way. Never throws. */
+  ensureSessionDetailed: () => Promise<SessionOutcome>;
   /** Clear the server session cookie and local auth state. */
   signOut: () => Promise<void>;
 }
@@ -162,6 +178,8 @@ const WalletContext = createContext<WalletState>({
   authed: false, user: null, sessionMismatch: false,
   signIn: async () => false,
   ensureSession: async () => false,
+  signInDetailed: async () => sessionFailure("no-wallet"),
+  ensureSessionDetailed: async () => sessionFailure("no-wallet"),
   signOut: async () => {},
 });
 
@@ -351,68 +369,105 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, [hydrateSession, publishAccount, publishUser]);
 
   /**
-   * Request a fresh signed proof from the connected wallet. The wallet
-   * prompts the user, signs a server-issued nonce with the account key,
-   * and returns a SignedChallenge ready to ship as the `proof` field on
-   * a ROLA-protected POST. Returns null on user-cancel or error.
+   * Ask the wallet for a one-time account proof over a server-issued ROLA
+   * challenge. Reported, never thrown: the toolkit's own error code (the
+   * request not delivered, cancelled, declined, the challenge not fetched)
+   * comes back as a SessionFailure a button can show.
    */
-  const signChallenge = useCallback(async (): Promise<SignedChallenge | null> => {
-    if (!rdt) return null;
-    const result = await rdt.walletApi.sendOneTimeRequest(
-      DataRequestBuilder.accounts().exactly(1).withProof(),
-    );
+  const requestProof = useCallback(async (): Promise<{ ok: true; proof: SignedChallenge } | Extract<SessionOutcome, { ok: false }>> => {
+    if (!rdt) return sessionFailure("no-wallet");
+    let result: Awaited<ReturnType<RadixDappToolkit["walletApi"]["sendOneTimeRequest"]>>;
+    try {
+      result = await rdt.walletApi.sendOneTimeRequest(
+        DataRequestBuilder.accounts().exactly(1).withProof(),
+      );
+    } catch (e) {
+      // The toolkit rejects (rather than resolving err) when its challenge
+      // generator throws — fetchChallenge above, on a dead network.
+      console.error("signChallenge: request threw", e);
+      return explainSignInThrow(e);
+    }
     if (result.isErr()) {
       console.error("signChallenge: wallet rejected", result.error);
-      return null;
+      return explainSignInRequestError(result.error);
     }
     // RDT 2.x returns proofs at the top level of WalletData. For an account
     // request with .withProof(), proofs[0].type === "account" and its shape
     // already matches @radixdlt/rola's SignedChallenge.
     const proof = result.value.proofs?.[0];
-    if (!proof || proof.type !== "account") return null;
+    if (!proof || proof.type !== "account") {
+      return sessionFailure("wallet-error", "the wallet's answer carried no account proof");
+    }
     return {
-      address: proof.address,
-      type: "account",
-      challenge: proof.challenge,
-      proof: proof.proof,
+      ok: true,
+      proof: {
+        address: proof.address,
+        type: "account",
+        challenge: proof.challenge,
+        proof: proof.proof,
+      },
     };
   }, [rdt]);
 
   /**
-   * Establish a session: prompt a one-time wallet signature, POST the proof to
-   * /verify, and store the returned user. Returns false on user-cancel or
-   * verification failure. This is the single ROLA sign-in path.
+   * Request a fresh signed proof from the connected wallet. The wallet
+   * prompts the user, signs a server-issued nonce with the account key,
+   * and returns a SignedChallenge ready to ship as the `proof` field on
+   * a ROLA-protected POST. Returns null on user-cancel or error (the reason
+   * is requestProof's; this shape is kept for callers that only need the proof).
    */
-  const signIn = useCallback(async (): Promise<boolean> => {
-    const proof = await signChallenge();
-    if (!proof) return false;
-    const res = await apiFetch("/api/v1/auth/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ signed_challenge: proof }),
-    });
+  const signChallenge = useCallback(async (): Promise<SignedChallenge | null> => {
+    const r = await requestProof();
+    return r.ok ? r.proof : null;
+  }, [requestProof]);
+
+  /**
+   * Establish a session: prompt a one-time wallet signature, POST the proof to
+   * /verify, and store the returned user. This is the single ROLA sign-in
+   * path. Never throws: a failure says which step did not complete and why.
+   */
+  const signInDetailed = useCallback(async (): Promise<SessionOutcome> => {
+    const r = await requestProof();
+    if (!r.ok) return r;
+    let res: Response;
+    try {
+      res = await apiFetch("/api/v1/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signed_challenge: r.proof }),
+      });
+    } catch (e) {
+      // Until 2026-10-06 this fetch had no catch: a network drop here rejected
+      // ensureSession() and left every escrow button spinning with no text.
+      console.error("signIn: verify unreachable", e);
+      return sessionFailure("unreachable", e instanceof Error ? e.message : String(e));
+    }
     const body = await res.json().catch(() => ({}));
     if (!res.ok || !body?.ok) {
       console.error("signIn: verify failed", body?.error);
-      return false;
+      return explainVerifyRefusal(res.status, body?.error);
     }
     publishUser(body.data.user as AuthUser);
-    return true;
-  }, [signChallenge, publishUser]);
+    return SESSION_OK;
+  }, [requestProof, publishUser]);
+
+  /** signInDetailed as a boolean, for callers that only branch on it. */
+  const signIn = useCallback(async (): Promise<boolean> => (await signInDetailed()).ok, [signInDetailed]);
 
   /**
-   * Gate a protected DB write. No-op (returns true) if already authed FOR AN
-   * ACCOUNT THE WALLET SHARES; otherwise re-checks the server once (a cookie
-   * may exist before state hydrated — dropped if its account isn't shared),
-   * and only then prompts a signature. Call this right before a withAuth'd
-   * request.
+   * Gate a protected DB write. No-op (ok) if already authed FOR AN ACCOUNT THE
+   * WALLET SHARES; otherwise re-checks the server once (a cookie may exist
+   * before state hydrated — dropped if its account isn't shared), and only
+   * then prompts a signature. Call this right before a withAuth'd request.
+   * Never throws: the escrow buttons show its failure sentence.
    */
-  const ensureSession = useCallback(async (): Promise<boolean> => {
+  const ensureSessionDetailed = useCallback(async (): Promise<SessionOutcome> => {
     const shared = sharedAccountsRef.current;
     const u = userRef.current;
-    if (u && (shared.length === 0 || shared.includes(u.id))) return true;
-    if (await hydrateSession()) return true;
-    if (!(await signIn())) return false;
+    if (u && (shared.length === 0 || shared.includes(u.id))) return SESSION_OK;
+    if (await hydrateSession()) return SESSION_OK;
+    const signed = await signInDetailed();
+    if (!signed.ok) return signed;
     // The wallet lets the user sign the proof with ANY of its accounts —
     // every one it currently shares is a legitimate identity (verify just
     // made the session, and `account`, follow it). But a proof for an
@@ -423,8 +478,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     // while the wallet prompt was open.
     const sharedNow = sharedAccountsRef.current;
     const fresh = userRef.current;
-    return sharedNow.length === 0 || (!!fresh && sharedNow.includes(fresh.id));
-  }, [hydrateSession, signIn]);
+    if (sharedNow.length === 0 || (!!fresh && sharedNow.includes(fresh.id))) return SESSION_OK;
+    return sessionFailure(
+      "account-mismatch",
+      fresh ? `signed in as ${fresh.id}; the wallet shares ${sharedNow.join(", ")}` : "no session user after verify",
+    );
+  }, [hydrateSession, signInDetailed]);
+
+  /** ensureSessionDetailed as a boolean, for callers that only branch on it. */
+  const ensureSession = useCallback(async (): Promise<boolean> => (await ensureSessionDetailed()).ok, [ensureSessionDetailed]);
 
   /** Clear the server session cookie and local auth state. */
   const signOut = useCallback(async (): Promise<void> => {
@@ -440,8 +502,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<WalletState>(() => ({
     account, connected: !!account, rdt, badge, badgeLoading, badgeError,
     refreshBadge, signChallenge,
-    authed: !!user, user, sessionMismatch, signIn, ensureSession, signOut,
-  }), [account, rdt, badge, badgeLoading, badgeError, refreshBadge, signChallenge, user, sessionMismatch, signIn, ensureSession, signOut]);
+    authed: !!user, user, sessionMismatch, signIn, ensureSession, signInDetailed, ensureSessionDetailed, signOut,
+  }), [account, rdt, badge, badgeLoading, badgeError, refreshBadge, signChallenge, user, sessionMismatch, signIn, ensureSession, signInDetailed, ensureSessionDetailed, signOut]);
 
   return (
     <WalletContext.Provider value={value}>
