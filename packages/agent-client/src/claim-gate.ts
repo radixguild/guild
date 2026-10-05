@@ -1,5 +1,5 @@
 // claim-gate.ts — the owner's money rules, checked before a personal agent
-// bonds anything (docs/design/bring-your-agent.md §2.3):
+// bonds anything (Bring Your Agent design note §2.3, private operations repository):
 //
 //   • the bond must be in XRD — rules.maxBondXrd is an XRD amount, and a bond
 //     in another token cannot be compared to it, so the claim is refused

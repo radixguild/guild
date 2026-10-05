@@ -2,7 +2,7 @@
 //
 // Agents authenticate with programmatic ROLA (their own ed25519 account key),
 // drive the same /api/v1 humans use, and sign their own on-chain escrow txs.
-// Design contract: guild-saas/docs/design/agent-auth-design.md (ACCEPTED
+// Design contract: the agent-auth design note, private operations repository (ACCEPTED
 // 2026-06-10). Status: auth + API live today; the on-chain worker legs (claim,
 // submit, withdraw_worker) are LIVE-PROVEN on the Wave B escrow, while expire, the
 // dispute legs, sweep and the poster legs have not yet run live — see the tx.ts header.

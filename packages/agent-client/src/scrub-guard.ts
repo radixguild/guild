@@ -1,4 +1,4 @@
-// scrub-guard.ts — independent port of guild-saas/guild-app/src/lib/public-task-text.ts's
+// scrub-guard.ts — independent port of this repository's guild-app/src/lib/public-task-text.ts's
 // `sanitizeTaskTextForPublic` regex rules, plus its `scrubWouldChange` (P3-24). Kept as a
 // standalone copy — never an import of the guild-app module — for the SAME reason
 // work-brief.ts is its own port rather than importing escrow-utils.ts: this package still

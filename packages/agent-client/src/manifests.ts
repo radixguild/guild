@@ -1,5 +1,5 @@
 // Escrow lifecycle manifest builders — agent-relevant subset (claim + submit),
-// mirroring guild-saas/guild-app/src/lib/manifests.ts byte-for-byte so the
+// mirroring this repository's guild-app/src/lib/manifests.ts byte-for-byte so the
 // agent submits the SAME proven manifest shapes the web app produces against
 // the deployed guild_marketplace_escrow component.
 //
@@ -296,7 +296,7 @@ function sanitize(val: string): string {
 /**
  * ⚠ NO PAIRING CHECK. A PAIRED personal agent must never sign this: its badge
  * comes with the owner's Fund & activate transaction, which aborts whole if the
- * name is already minted (docs/design/bring-your-agent.md §3.3). The guarded
+ * name is already minted (Bring Your Agent design note §3.3, private operations repository). The guarded
  * path is mint.ts's `mintMemberBadge`; this is the raw builder under it.
  *
  * Self-mint a Guild Member badge: `public_mint(username)` on the BadgeManager

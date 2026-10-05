@@ -1,5 +1,5 @@
 // claim-quota.ts — the day quota on a personal agent's claims
-// (docs/design/bring-your-agent.md §2.3, rules.maxClaimsPerDay).
+// (Bring Your Agent design note §2.3, private operations repository; rules.maxClaimsPerDay).
 //
 //   ~/.radix-guild/claims.json   [{ "taskId": 99, "at": "2026-09-27T02:00:00.000Z" }, …]
 //

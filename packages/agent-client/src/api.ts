@@ -5,7 +5,7 @@
 // hold the guild_session JWT cookie for the session lifetime (7 days server
 // side; re-authenticate() freely, it is idempotent and cheap).
 //
-// Endpoint contracts mirror guild-saas/guild-app/src/app/api/v1/** routes and
+// Endpoint contracts mirror this repository's guild-app/src/app/api/v1/** routes and
 // src/app/api/v1/README.md. Every response uses the JSON envelope
 // { ok, data?, error? }.
 
@@ -82,7 +82,7 @@ export interface GuildSubmission {
   createdAt: string;
 }
 
-// ── Bring Your Agent — pairing (docs/design/bring-your-agent.md §3.2) ───────
+// ── Bring Your Agent — pairing (design note §3.2, private operations repository) ───────
 //
 // Wire shape is camelCase like every other /api/v1 payload. The server half is
 // the A1 PR; these are the contract the kit's `join` verb was written against (it now

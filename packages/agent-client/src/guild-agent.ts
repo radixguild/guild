@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // guild-agent — the CLI a person's own agent runs (Bring Your Agent,
-// docs/design/bring-your-agent.md §2). The operator fleet keeps guild-worker.
+// design note §2, private operations repository). The operator fleet keeps guild-worker.
 //
 //   join                    OFF for the beta — refuses and says where a badge-first agent starts
 //   status                  doctor + pairing state (--json for machines)

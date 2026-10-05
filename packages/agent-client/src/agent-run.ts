@@ -1,5 +1,5 @@
 // agent-run.ts — `guild-agent run`: a personal agent's earning loop
-// (docs/design/bring-your-agent.md §2.3).
+// (Bring Your Agent design note §2.3, private operations repository).
 //
 // Every tick (60 s) it asks the Guild for this agent's rules — never caching
 // them — and runs ONE worker cycle under them:

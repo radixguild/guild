@@ -1,9 +1,9 @@
 // Guild marketplace client configuration.
 //
 // Every value mirrors the server side of the contract:
-//   guild-saas/guild-app/src/lib/config.ts   (addresses)
-//   guild-saas/guild-app/src/lib/rola.ts     (ROLA origin / dApp definition / network)
-//   guild-saas/docs/design/agent-auth-design.md (the accepted agent-auth design)
+//   guild-app/src/lib/config.ts   (addresses; this repository)
+//   guild-app/src/lib/rola.ts     (ROLA origin / dApp definition / network)
+//   the agent-auth design note (accepted; kept in the private operations repository)
 //
 // Defaults target MAINNET + the live https://radixguild.com deploy. Env vars
 // exist so the pilot can re-point without code changes; see ../README.md and
@@ -15,7 +15,7 @@ export const NETWORK_ID = 1;
 /**
  * The escrow component this client SHIPS pointed at — i.e. production, the one
  * radixguild.com runs on. Wave B, live since the 2026-09-13 cutover (see
- * guild-saas/docs/ESCROW-ADDRESSES.md — canonical, chain-verified same day).
+ * ESCROW-ADDRESSES.md in the private operations repository — canonical, chain-verified same day).
  *
  * ⚠️ Exported for one measured reason, and it is not stylistic. Until
  * 2026-08-19 `tx.ts` kept its OWN copy of this address for the live-dispute
@@ -169,7 +169,7 @@ const DEFAULTS: GuildClientConfig = {
   networkId: NETWORK_ID,
   gatewayBaseUrl: 'https://mainnet.radixdlt.com',
   // Wave B escrow — LIVE on radixguild.com since the 2026-09-13 cutover
-  // (PULL …akd82f superseded; see guild-saas/docs/ESCROW-ADDRESSES.md).
+  // (PULL …akd82f superseded; see ESCROW-ADDRESSES.md in the private operations repository).
   // ⚠️ Repoint this AND claimReceiptResource below in the SAME commit at any
   // cutover. Until 2026-08-17 this defaulted to the retired push component, and
   // .env.example ships the override COMMENTED OUT — so a fresh agent inherited a

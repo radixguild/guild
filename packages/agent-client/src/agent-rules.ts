@@ -1,6 +1,6 @@
 // agent-rules.ts — the kit's copy of the rule constants the Guild enforces
 // for a personal agent (guild-app/src/lib/agent-rules.ts;
-// docs/design/bring-your-agent.md §2.3, §3.5). Vendored, not imported: this
+// Bring Your Agent design note §2.3, §3.5, private operations repository). Vendored, not imported: this
 // package ships standalone. agent-rules.parity.test.ts pins each value to the
 // server's source, so the two cannot drift silently.
 

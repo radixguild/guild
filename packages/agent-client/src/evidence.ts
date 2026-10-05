@@ -1,4 +1,4 @@
-// FROZEN v1 — byte-identical to guild-saas/guild-app/src/lib/escrow-utils.ts
+// FROZEN v1 — byte-identical to guild-app/src/lib/escrow-utils.ts (this repository)
 // canonicalSubmissionEvidence + sha256Hex. The worker's on-chain submit_task
 // commits this hash as `evidence_hash`; the guild-app server re-derives the
 // same hash from the STORED submission content when it confirms kind=submit, so
@@ -17,7 +17,7 @@ export async function evidenceHash(content: string): Promise<string> {
     .join('');
 }
 
-// FROZEN v1 — byte-identical to guild-saas/guild-app/src/lib/dispute-evidence.ts
+// FROZEN v1 — byte-identical to guild-app/src/lib/dispute-evidence.ts (this repository)
 // (DISPUTE_EVIDENCE_DOMAIN + normalizeDisputeEvidence + disputeEvidenceHash). A
 // SEPARATE domain from SUBMISSION_PREFIX_V1 above — this is what `raise_dispute`
 // commits as its optional evidence hash, not what `submit_task` commits. guild-app
