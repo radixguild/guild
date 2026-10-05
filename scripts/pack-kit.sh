@@ -11,13 +11,16 @@
 #   <name>-<version>.tgz (+ .sha256)  the same bytes under a URL that changes with the version —
 #                       for long-lived configs, because npx caches an install by URL (see step 5)
 #
-# ONE IMPLEMENTATION, TWO CALLERS. scripts/deploy.sh runs this on the box into
-# /opt/guild-saas/kit-candidate (swapped into /opt/guild-saas/kit in the same command that
-# swaps the app build — docs/design/bring-your-agent.md §2.4). CI (.github/workflows/test.yml,
-# the agent-client job) runs the SAME script, serves the result over loopback HTTP and runs the
-# exact one-liner a person pastes: `npx -y -p http://…/agent.tgz guild-agent --help`, then
-# `sha256sum -c` on the served pair. So what CI proves installable is what the box serves — a
-# second, hand-rolled pack step in either place is how the two drift apart.
+# ONE IMPLEMENTATION, TWO CALLERS. The deploy script (kept in the private operations
+# repository) runs this on the box into /opt/guild-saas/kit-candidate (swapped into
+# /opt/guild-saas/kit in the same command that swaps the app build — Bring Your Agent design
+# note §2.4, private operations repository). The private CI ran the SAME script, served the
+# result over loopback HTTP and ran the exact one-liner a person pastes:
+# `npx -y -p http://…/agent.tgz guild-agent --help`, then `sha256sum -c` on the served pair.
+# This repository's workflow (.github/workflows/test.yml) trims that step — it needs the leak
+# gate below, which stays private — and keeps a plain `npm pack` + scratch-consumer install.
+# So what the box serves is what this one script packs — a second, hand-rolled pack step in
+# either place is how the two drift apart.
 #
 # WHAT IT GUARDS, IN ORDER:
 #   1. `npm run build` in the package — dist/ is rebuilt from the checked-out source, never

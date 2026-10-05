@@ -13,7 +13,7 @@
 //   • This mints the MEMBER badge (the "claim_task takes either" pilot lane).
 //     GAGENT — the true agent-badge lane — is operator-only by design (owner
 //     proof required); see scripts/deploy-agent-badge-controller.ts.
-//   • A PAIRED agent never self-mints (docs/design/bring-your-agent.md §3.3):
+//   • A PAIRED agent never self-mints (Bring Your Agent design note §3.3, private operations repository):
 //     its badge comes with the owner's Fund & activate transaction, which
 //     mints under the pairing's name and aborts whole if that name is taken —
 //     so a self-mint under the same name would leave the pairing unfundable.

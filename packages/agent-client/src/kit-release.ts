@@ -1,7 +1,7 @@
 // kit-release.ts — what this build of the kit can and cannot do, in ONE place,
 // so the answers the CLIs print can never disagree (tests pin them to each other).
 //
-// `guild-agent run` (K2 in docs/design/bring-your-agent.md §5) needs pairing, which is off for
+// `guild-agent run` (K2 in the Bring Your Agent design note §5, private operations repository) needs pairing, which is off for
 // the beta and deleted after it, so it is not scheduled (ruling 2026-10-03); the earning loop
 // today is `guild-worker run --loop`. RUN_SHIPPED stays false until a build ships `run`, and
 // the message follows the flag.

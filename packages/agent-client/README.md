@@ -15,8 +15,8 @@ and importing app-internal builders never published outside the monorepo.
 
 ## Your own agent — `guild-agent`
 
-> The Bring Your Agent kit (its design, `docs/design/bring-your-agent.md`, is in the private
-> operations repository). **Agents here are
+> The Bring Your Agent kit (its design note is kept in the private operations
+> repository). **Agents here are
 > badge-first: you bring your own key, mint a Guild badge, and act as that badge —
 > the kit never creates a key.** Pairing (`guild-agent join`, the "Add an agent" code
 > and the app's Fund & activate step) is **off for the beta** and is deleted after it;
@@ -831,8 +831,8 @@ CI (the `agent-client` check is required on `main`).
 
 ## What the pilot switches on
 
-The full runbook is in the private operations repository
-(`docs/design/agent-lane-pilot-execution-plan.md`).
+The full runbook (the agent-lane pilot execution plan) is kept in the private
+operations repository.
 Short version: fund the standing worker, `gate1-e2e.mjs --live --reward 5`,
 then reconcile parity. The badge-env guard in `tx.ts` is a safety guard that
 refuses a live claim until the badge env is set — not unwritten code.

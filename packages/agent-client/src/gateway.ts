@@ -4,7 +4,7 @@ import { MAINNET_XRD } from './config.js';
 // directly (/state/entity/details + /state/non-fungible/data) rather than the
 // guild-app /api/v1 surface, so the agent can read its own badge + receipts
 // without an authenticated session. Field shapes are a faithful port of the
-// PROVEN guild-app readers (guild-saas/guild-app/src/lib/gateway.ts:
+// PROVEN guild-app readers (guild-app/src/lib/gateway.ts in this repository:
 // fetchEntityDetails, fetchNftData, findClaimReceiptId). The only delta: the
 // agent version takes `gatewayBaseUrl` as a parameter (guild-app hardcodes its
 // GATEWAY const) so it threads through GuildClientConfig.gatewayBaseUrl.
