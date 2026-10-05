@@ -82,7 +82,7 @@ const ALL = {
 };
 
 // Each of these SHIPPED in this bot and was false on 2026-09-20. The website's copy is
-// gated by guild-saas's honest-copy rules; this is the bot's own, smaller gate.
+// gated by guild-app's honest-copy rules (guild-app/scripts/honest-copy.mjs); this is the bot's own, smaller gate.
 const BANNED = [
   // Until the open-source flip these two banned "open source"/"apache" and every github.com link
   // (both repos were private; the link 404'd). The code is public now (radixguild/guild, F21):

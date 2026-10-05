@@ -13,7 +13,7 @@
 //   - "minting is free (0 XRD)" — there is a network fee;
 //   - the badge as "your governance identity" — it is transferable and anyone can
 //     mint one; it records membership.
-// The website's copy is gated by guild-saas's honest-copy rules. This bot's was
+// The website's copy is gated by guild-app's honest-copy rules (guild-app/scripts/honest-copy.mjs). This bot's was
 // gated by nothing, which is how it drifted. Text lives here so that
 // test/copy.test.js can read ALL of it, and so the next edit happens in one place.
 //
