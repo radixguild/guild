@@ -46,7 +46,7 @@ const CONFIG = loadConfig();
 // private-input.ts: a missing doc THROWS in every tree, exporter or not. The ops
 // repo's composed tree (the public tree plus the private files) has no publish/,
 // so without it this file would skip there and the composed check would pass
-// having checked nothing (docs/design/post-flip-topology.md §5.6, F16). "1" turns
+// having checked nothing (post-flip topology note §5.6, private operations repository, F16). "1" turns
 // it on; unset, "" and "0" leave it off; any other value throws, so a typo cannot
 // leave it off. GUILD_NO_SIBLING reads no doc at all, so the two together are
 // refused rather than allowed to pass vacuously.

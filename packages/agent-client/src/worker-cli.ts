@@ -8,7 +8,7 @@
 // bond + submit) and confirms them — decoupled from `--live` on purpose so a
 // `--live` off-chain run can never accidentally sign a tx. Full money path =
 // `--live --on-chain` (real XRD; the claim and submit legs are LIVE-PROVEN —
-// see the tx.ts header + docs/design/agent-lane-pilot-execution-plan.md).
+// see the tx.ts header + the agent-lane pilot execution plan, private operations repository).
 //
 // `--auto-withdraw` is a THIRD, separate opt-in: every cycle's post-submit
 // survey reports settled-but-uncollected entitlements (`uncollectedTaskIds`)
