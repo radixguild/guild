@@ -89,6 +89,24 @@ test("step 1's Cancel button closes the wizard", async () => {
   assert.equal(handleText({ from: { id: 603 }, message: { text: "anything" }, reply: () => {} }), false);
 });
 
+test("REGRESSION (2026-10-06): Submit re-checks the badge, so tapping through a wizard without one creates nothing", async () => {
+  const bot = fakeBot();
+  let created = 0;
+  const db = { createProposal: () => { created++; return 1; }, getUser: () => ({ radix_address: "account_rdx1claimed" }) };
+  const handleText = setupWizard(bot, db, async () => null, () => null, () => null, () => "", () => ({}));
+  setupSkipDesc(bot, pendingProposals);
+  const log = [];
+  // No /propose: the type button works for anyone who can see a wizard message.
+  await tap(bot, "wizard_type_yesno", 604, log);
+  say(handleText, 604, "Borrowed badge proposal", log);
+  await tap(bot, "wizard_skip_desc", 604, log);
+  await tap(bot, "wizard_duration_24", 604, log);
+  assert.equal(pendingProposals.get(604).step, "confirm");
+  await tap(bot, "wizard_submit", 604, log);
+  assert.equal(created, 0);
+  assert.equal(pendingProposals.has(604), false);
+});
+
 test("every button the wizard offers has a handler", () => {
   const { bot } = wire();
   const src = fs.readFileSync(path.join(__dirname, "..", "wizard.js"), "utf8");

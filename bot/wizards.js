@@ -85,7 +85,8 @@ function setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward) {
     }
     const user = await requireBadge(ctx);
     if (!user) return;
-    wizardStates.set(ctx.from.id, { wizard: "bounty_create", step: "amount", category: "general", difficulty: "medium", deadline: null });
+    // Keep the wallet the gate checked: creatorAddress is what escrow funding matches deposits against.
+    wizardStates.set(ctx.from.id, { wizard: "bounty_create", step: "amount", category: "general", difficulty: "medium", deadline: null, address: user.radix_address });
     await ctx.editMessageText(
       "Create a Task\n\n" +
       "Step 1/5: How much XRD reward?\n\n" +
@@ -183,9 +184,10 @@ function setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward) {
       return;
     }
     const id = parseInt(ctx.match[1]);
-    const user = db.getUser(ctx.from.id);
+    // Same gate as /bounty claim (until 2026-10-06 this button had none).
+    const user = await requireBadge(ctx);
     if (!user) {
-      await ctx.answerCallbackQuery({ text: "Register first!", show_alert: true });
+      await ctx.answerCallbackQuery();
       return;
     }
     const result = db.assignBounty(id, ctx.from.id, user.radix_address);
@@ -301,14 +303,13 @@ function setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward) {
       await ctx.answerCallbackQuery({ text: "No active task wizard.", show_alert: true });
       return;
     }
-    const user = db.getUser(ctx.from.id);
     const id = db.createBounty(state.title, state.amount, ctx.from.id, {
       category: state.category || "general",
       difficulty: state.difficulty || "medium",
       deadline: state.deadline || null,
-      creatorAddress: user?.radix_address || null,
+      creatorAddress: state.address || null,
     });
-    queueXpReward(user.radix_address, "propose");
+    if (state.address) queueXpReward(state.address, "propose");
     wizardStates.delete(ctx.from.id);
 
     const fee = (state.amount * 0.025).toFixed(1);

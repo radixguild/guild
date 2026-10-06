@@ -188,6 +188,22 @@ function createVerify(options = {}) {
     return reply(copy.verifyUsernameNotTeam({ username: arg.replace(/^@/, ""), members }));
   }
 
+  // ── which wallet speaks for a Telegram user at the badge gates (2026-10-06) ──
+  // requireBadge (/propose, /temp, /poll, bounties, milestones) and the vote buttons
+  // used to trust the `users` row, so anyone could /register a badge holder's wallet and
+  // propose or vote with that badge. With /link on, only a PROVEN wallet counts. With
+  // /link off there is nothing to prove a wallet with, so the claimed address still
+  // answers (today's behaviour) — switching /link on is what closes the gap.
+  /** @returns {{ ok: true, address: string, proven: boolean } | { ok: false, reason: "unlinked" | "unregistered" }} */
+  function memberAddress(tgId) {
+    if (linkEnabled) {
+      const link = db.getWalletLink(tgId);
+      return link ? { ok: true, address: link.radix_address, proven: true } : { ok: false, reason: "unlinked" };
+    }
+    const user = db.getUser(tgId);
+    return user ? { ok: true, address: user.radix_address, proven: false } : { ok: false, reason: "unregistered" };
+  }
+
   async function handleLink(ctx) {
     const arg = (ctx.match || "").trim();
     if (ctx.chat.type !== "private") {
@@ -205,10 +221,13 @@ function createVerify(options = {}) {
     const res = checkCode(arg, ctx.from.id);
     if (!res.ok) return ctx.reply(copy.linkFailed({ reason: res.reason }));
     if (!db.recordWalletLink(ctx.from.id, res.address, res.nonce)) return ctx.reply(copy.linkFailed({ reason: "used" }));
+    // Point the `users` row at the proven wallet too, so bounty claims and XP
+    // (which read users.radix_address) credit the same wallet the gates now trust.
+    db.registerUser(ctx.from.id, res.address, ctx.from.username || ctx.from.first_name || null);
     return ctx.reply(copy.linkDone({ last8: last8(res.address) }));
   }
 
-  return { handleVerify, handleLink, makeTicket, checkCode, linkEnabled };
+  return { handleVerify, handleLink, makeTicket, checkCode, linkEnabled, memberAddress };
 }
 
 module.exports = { createVerify, encodeToken, decodeToken };
