@@ -5,7 +5,7 @@
 // the browser (the account's holdings are the viewer's own business, and the
 // component is public); nothing is written anywhere but the ledger.
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Trash2, Wallet } from "lucide-react"
 import { NFT_SWAP_COMPONENT } from "@/lib/config"
@@ -50,7 +50,10 @@ type Holdings =
 async function readHoldings(acct: string): Promise<Holdings> {
   const read = await readAccountNonFungibles(acct)
   if (!read) return { state: "failed" }
-  const res = (await readResourceDisplay(read.groups.map((g) => g.resource))) ?? new Map<string, ResourceDisplay>()
+  // Fail the whole read, not just the names: the resource read is what says
+  // an NFT cannot be withdrawn, and without it the picker would offer one.
+  const res = await readResourceDisplay(read.groups.map((g) => g.resource))
+  if (!res) return { state: "failed" }
   const nfts = new Map<string, NftDisplay>()
   let budget = PICKER_DISPLAY_CAP
   for (const g of read.groups) {
@@ -83,6 +86,11 @@ export function ListNftForm() {
   const [ledgerNow, setLedgerNow] = useState<number | null>(null)
   const [componentOk, setComponentOk] = useState<boolean | null>(null)
   const [after, setAfter] = useState<string | null>(null)
+  // From the first press until the listing id is read back (or the form is
+  // disarmed). tx.busy covers only the wallet leg; around it are two ledger
+  // reads, and a second press during either would send a second list.
+  const submitGuard = useRef(false)
+  const [submitting, setSubmitting] = useState(false)
 
   // The component (validates the address and gives the ledger clock).
   useEffect(() => {
@@ -156,33 +164,42 @@ export function ListNftForm() {
   }, [askRes])
 
   const submit = async () => {
-    if (!picked || !canList) return
-    setAfter(null)
-    tx.reset()
-    // Re-read the ledger clock right before signing: the 30-day ceiling is
-    // measured from the clock when the transaction executes.
-    const fresh = await readSwapComponentState(NFT_SWAP_COMPONENT)
-    if (!fresh) {
-      setAfter("The swap component could not be read just now, so nothing was sent. Try again shortly.")
-      return
+    if (!picked || !canList || submitGuard.current) return
+    submitGuard.current = true
+    setSubmitting(true)
+    try {
+      setAfter(null)
+      tx.reset()
+      // Re-read the ledger clock right before signing: the 30-day ceiling is
+      // measured from the clock when the transaction executes.
+      const fresh = await readSwapComponentState(NFT_SWAP_COMPONENT)
+      if (!fresh) {
+        setAfter("The swap component could not be read just now, so nothing was sent. Try again shortly.")
+        return
+      }
+      const expiresAt = expiryForDays(fresh.ledgerNow, days)
+      const txId = await tx.send((acct) =>
+        listSwapManifest(NFT_SWAP_COMPONENT, acct, picked.resource, picked.id, asks.map(normalizeAsk), expiresAt),
+      )
+      if (!txId) return
+      // Disarm at once: the NFT has left this account, and a second press
+      // would only send a failing list.
+      setPicked(null)
+      setAfter("Listed. Reading the listing id back from the ledger…")
+      const listingId = await readListedListingId(txId, NFT_SWAP_COMPONENT)
+      if (listingId) {
+        router.push(`/swaps/${listingId}?listed=1`)
+        return
+      }
+      // Listed, but the id is not readable yet: re-read the account so the
+      // picker shows what is really there.
+      setLoaded(null)
+      setHoldingsKey((k) => k + 1)
+      setAfter("Listed. The listing id could not be read back yet — it will appear on the board shortly.")
+    } finally {
+      submitGuard.current = false
+      setSubmitting(false)
     }
-    const expiresAt = expiryForDays(fresh.ledgerNow, days)
-    const txId = await tx.send((acct) =>
-      listSwapManifest(NFT_SWAP_COMPONENT, acct, picked.resource, picked.id, asks.map(normalizeAsk), expiresAt),
-    )
-    if (!txId) return
-    const listingId = await readListedListingId(txId, NFT_SWAP_COMPONENT)
-    if (listingId) {
-      router.push(`/swaps/${listingId}?listed=1`)
-      return
-    }
-    // Listed, but the id is not readable yet. Disarm the form — the NFT has
-    // left this account, and a second press would only send a failing list —
-    // and re-read the account so the picker shows what is really there.
-    setPicked(null)
-    setLoaded(null)
-    setHoldingsKey((k) => k + 1)
-    setAfter("Listed. The listing id could not be read back yet — it will appear on the board shortly.")
   }
 
   const setAsk = (i: number, next: SwapAsk) => setAsks((xs) => xs.map((a, j) => (j === i ? next : a)))
@@ -397,9 +414,9 @@ export function ListNftForm() {
           )}
           <p className="text-xs text-muted-foreground">{LIST_COPY.receiptNote}</p>
           <p className="text-xs text-muted-foreground">{LIST_COPY.noRoyalty}</p>
-          <Button onClick={() => void submit()} disabled={!canList || tx.busy}>
+          <Button onClick={() => void submit()} disabled={!canList || tx.busy || submitting}>
             <Wallet className="mr-2 h-4 w-4" />
-            {tx.busy ? "Check your wallet…" : "Open my wallet to list"}
+            {tx.busy ? "Check your wallet…" : submitting ? "Reading the ledger…" : "Open my wallet to list"}
           </Button>
           <TxErrorLine error={tx.error} />
           {after && (

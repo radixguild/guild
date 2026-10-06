@@ -37,7 +37,7 @@ export const HOW_IT_WORKS: readonly { term: string; detail: string }[] = [
   {
     term: "Proceeds are pulled, not pushed",
     detail:
-      "A fill credits the payment to a per-listing vault. It is withdrawn against the listing receipt, so a buyer can never be blocked by a seller account that refuses third-party deposits. The withdrawal always pays the seller account named in the listing, whoever presents the receipt; this site names the account that signs the listing.",
+      "A fill credits the payment to a per-listing vault. It is withdrawn against the listing receipt, so a buyer can never be blocked by a seller account that refuses third-party deposits. The withdrawal always pays the account the listing names, whoever presents the receipt. That account is an argument of the listing call: a listing made on this site names the account that signed it, and one built by hand can name any account, so it is not proof of who listed.",
   },
   {
     term: "Every listing expires",
@@ -85,7 +85,12 @@ export const BOARD_COPY = {
     "The swap component could not be read from the Radix Gateway just now, so nothing is shown rather than an empty board. Try again shortly.",
   truncated:
     "Only the most recent listings were read. Older ones are still on chain; the Radix Gateway has every one.",
-  mine: "My listings",
+  /** A filter answered from a truncated read: say what it searched. */
+  truncatedFiltered: (cap: number) =>
+    `This filter searched only the newest ${cap.toLocaleString("en-US")} listings, so an older listing that matches is not shown here. It is still on chain; the Radix Gateway has every one.`,
+  /** Filters on the account the listing pays (the API's `seller`), which the
+   *  lister names: it is not "listings I made". */
+  mine: "Pays my account",
   hiddenCard: "Hidden by the operator",
   unreadableListings: (n: number) =>
     `${n} listing${n === 1 ? "" : "s"} on the ledger could not be read by this site, so nothing is shown here rather than a board that may be incomplete. The listings are still on chain; the Radix Gateway has every one.`,
@@ -107,12 +112,16 @@ export const DETAIL_COPY = {
   burnedAsk: "That NFT has been burned, so this alternative can never be filled.",
   waiting: "Waiting for the ledger read to show your transaction…",
   ownListing:
-    "You made this listing. Filling it yourself is allowed: you pay yourself, and the network fee and any fill fee are spent.",
+    "This listing pays your account. Filling it is still allowed: your payment becomes this listing's proceeds, and the network fee and any fill fee are spent.",
+  payeeCaption:
+    "The account this listing pays. A listing made on this site names the account that signed it; one built by hand can name any account.",
+  behind:
+    "Actions are paused: this page may not show your latest transaction yet, and acting on an old view would only send a transaction that fails.",
   sellerHeading: "Your listing",
   sellerIntro:
     "Your account holds this listing's receipt — the credential for everything below. Keep it: whoever holds it can cancel, extend or collect.",
   proceedsTo:
-    "Proceeds always go to the seller account named in the listing, whoever presents the receipt:",
+    "Proceeds always go to the account this listing pays, whoever presents the receipt:",
   burnHint:
     "Nothing is left behind this receipt. Burning it is optional housekeeping and removes it from your wallet.",
   receiptElsewhere:
