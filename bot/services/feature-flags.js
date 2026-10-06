@@ -19,9 +19,23 @@ function escrowSurfaceEnabled(env = process.env) {
   return env.FEATURE_ESCROW === "true";
 }
 
-/** The bot's legacy in-Telegram bounty board, wizard and milestones. Default off. */
+/**
+ * The bot's legacy in-Telegram bounty board, wizard and milestones, and (since 2026-10-06)
+ * the agent API's claim, submit and project-breakdown legs, which write only that board's
+ * table. Default off.
+ */
 function legacyBountyBoardEnabled(env = process.env) {
   return env.FEATURE_LEGACY_BOUNTY === "true";
+}
+
+/**
+ * The agent API's POST /api/agent/proposals/temp-check (2026-10-06). It always answered 500
+ * until that day's fix; once it worked, any proposals:create key could put proposals in
+ * front of the Telegram groups and, when they closed, the Discord feed. No shipped client
+ * calls it, so it stays off until someone decides agents should propose. Default off.
+ */
+function agentProposalsEnabled(env = process.env) {
+  return env.FEATURE_AGENT_PROPOSALS === "true";
 }
 
 /** Opt-in DMs to subscribers when a task is funded on-chain (#119). Default off. */
@@ -29,4 +43,4 @@ function taskAlertsEnabled(env = process.env) {
   return env.FEATURE_TASK_ALERTS === "true";
 }
 
-module.exports = { escrowSurfaceEnabled, legacyBountyBoardEnabled, taskAlertsEnabled };
+module.exports = { escrowSurfaceEnabled, legacyBountyBoardEnabled, agentProposalsEnabled, taskAlertsEnabled };

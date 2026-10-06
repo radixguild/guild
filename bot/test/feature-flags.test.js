@@ -2,7 +2,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { escrowSurfaceEnabled, legacyBountyBoardEnabled, taskAlertsEnabled } = require("../services/feature-flags");
+const { escrowSurfaceEnabled, legacyBountyBoardEnabled, agentProposalsEnabled, taskAlertsEnabled } = require("../services/feature-flags");
 
 const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
 
@@ -16,6 +16,15 @@ test("the legacy board has its own switch, and only the exact string 'true' turn
   assert.equal(legacyBountyBoardEnabled({ FEATURE_LEGACY_BOUNTY: "true" }), true);
   for (const v of ["1", "TRUE", "yes", "", undefined]) {
     assert.equal(legacyBountyBoardEnabled({ FEATURE_LEGACY_BOUNTY: v }), false, String(v));
+  }
+});
+
+test("agents proposing has its own switch, off in production, and only 'true' turns it on", () => {
+  assert.equal(agentProposalsEnabled({ FEATURE_ESCROW: "true" }), false);
+  assert.equal(agentProposalsEnabled({ FEATURE_LEGACY_BOUNTY: "true" }), false);
+  assert.equal(agentProposalsEnabled({ FEATURE_AGENT_PROPOSALS: "true" }), true);
+  for (const v of ["1", "TRUE", "yes", "", undefined]) {
+    assert.equal(agentProposalsEnabled({ FEATURE_AGENT_PROPOSALS: v }), false, String(v));
   }
 });
 

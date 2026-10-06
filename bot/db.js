@@ -704,7 +704,19 @@ function init() {
     CREATE INDEX IF NOT EXISTS idx_users_address ON users(radix_address);
     CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status, ends_at);
     CREATE INDEX IF NOT EXISTS idx_votes_proposal ON votes(proposal_id);
+    CREATE INDEX IF NOT EXISTS idx_wallet_links_address ON wallet_links(radix_address);
   `);
+
+  // The badge NFT a vote was cast with (2026-10-06). The badge is transferable, so
+  // deduping on the wallet alone let one badge vote again from every wallet it was
+  // moved to. Rows from before this column have badge_id NULL and are not compared;
+  // the partial unique index backs recordVote's check against a concurrent insert.
+  try {
+    db.exec("ALTER TABLE votes ADD COLUMN badge_id TEXT");
+  } catch (e) {
+    if (!/duplicate column/i.test(e.message)) throw e; // already migrated is the only expected failure
+  }
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_votes_proposal_badge ON votes(proposal_id, badge_id) WHERE badge_id IS NOT NULL");
 
   return db;
 }
@@ -721,7 +733,29 @@ function getVotesByAddress(radixAddress) {
 }
 
 function getUserByAddress(radixAddress) {
-  return db.prepare("SELECT * FROM users WHERE radix_address = ?").get(radixAddress);
+  return userForAddress(db, radixAddress);
+}
+
+// Who speaks for a wallet, given a database handle (services/escrow-watcher.js passes its
+// own). A Telegram account that PROVED the wallet with /link (wallet_links) wins; the
+// `users` row, which /register fills with any address anyone types, answers only when no
+// proven link exists. Until 2026-10-06 the `users` row always answered, so a squatter who
+// had /register-ed someone else's wallet received that wallet's task DMs. Nothing is
+// deleted: the squatter's row stays, it just no longer answers for a proven wallet.
+function userForAddress(handle, radixAddress) {
+  let proven = null;
+  try {
+    proven = handle.prepare(
+      "SELECT tg_id FROM wallet_links WHERE radix_address = ? ORDER BY verified_at DESC, tg_id DESC LIMIT 1"
+    ).get(radixAddress);
+  } catch (e) {
+    if (!/no such table/i.test(e.message)) throw e; // a database from before /link existed
+  }
+  if (proven) {
+    const row = handle.prepare("SELECT * FROM users WHERE tg_id = ?").get(proven.tg_id);
+    return { ...(row || { username: null }), tg_id: proven.tg_id, radix_address: radixAddress };
+  }
+  return handle.prepare("SELECT * FROM users WHERE radix_address = ?").get(radixAddress);
 }
 
 function registerUser(tgId, radixAddress, username) {
@@ -764,11 +798,13 @@ function createProposal(title, creatorTgId, opts = {}) {
     minVotes = 3,
     parentId = null,
     round = 1,
+    stage = null, // null = the column default ('standalone')
+    category = null,
   } = opts;
   const endsAt = Math.floor(Date.now() / 1000) + daysActive * 86400;
   const result = db.prepare(
-    "INSERT INTO proposals (title, type, options, creator_tg_id, ends_at, min_votes, parent_id, round) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(title, type, options ? JSON.stringify(options) : null, creatorTgId, endsAt, minVotes, parentId, round);
+    "INSERT INTO proposals (title, type, options, creator_tg_id, ends_at, min_votes, parent_id, round, stage, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'standalone'), ?)"
+  ).run(title, type, options ? JSON.stringify(options) : null, creatorTgId, endsAt, minVotes, parentId, round, stage, category);
   return result.lastInsertRowid;
 }
 
@@ -814,21 +850,37 @@ function getAmendments(parentId) {
 // One wallet, one vote. The key is (proposal_id, tg_id), so until 2026-10-06 one badge
 // voted once per Telegram account that had /register-ed its wallet (and once per call
 // on the web path, which mints a fresh negative tg_id for an unknown address).
-function recordVote(proposalId, tgId, radixAddress, vote) {
+// badgeId (2026-10-06) is the badge NFT's local id from getBadgeResult (data.id): the
+// badge is transferable, so without it one badge moved across wallets voted from each.
+// A vote recorded without a badge id (old rows, or a caller that has none) is not
+// compared on the badge.
+function recordVote(proposalId, tgId, radixAddress, vote, badgeId = null) {
   try {
     return db.transaction(() => {
+      // This account's own earlier vote first: the badge index below would otherwise
+      // answer a plain re-vote with badge_already_voted.
+      if (db.prepare("SELECT 1 FROM votes WHERE proposal_id = ? AND tg_id = ?").get(proposalId, tgId)) {
+        return { ok: false, error: "already_voted" };
+      }
       const prior = db.prepare(
         "SELECT tg_id FROM votes WHERE proposal_id = ? AND radix_address = ?"
       ).get(proposalId, radixAddress);
       if (prior && prior.tg_id !== tgId) return { ok: false, error: "wallet_already_voted" };
+      if (badgeId) {
+        const byBadge = db.prepare(
+          "SELECT tg_id FROM votes WHERE proposal_id = ? AND badge_id = ?"
+        ).get(proposalId, badgeId);
+        if (byBadge && byBadge.tg_id !== tgId) return { ok: false, error: "badge_already_voted" };
+      }
       db.prepare(
-        "INSERT INTO votes (proposal_id, tg_id, radix_address, vote) VALUES (?, ?, ?, ?)"
-      ).run(proposalId, tgId, radixAddress, vote);
+        "INSERT INTO votes (proposal_id, tg_id, radix_address, vote, badge_id) VALUES (?, ?, ?, ?, ?)"
+      ).run(proposalId, tgId, radixAddress, vote, badgeId || null);
       return { ok: true };
     })();
   } catch (e) {
     if (e.message.includes("UNIQUE constraint")) {
-      return { ok: false, error: "already_voted" };
+      // The (proposal_id, badge_id) index fires only when another account's insert won a race.
+      return { ok: false, error: e.message.includes("badge_id") ? "badge_already_voted" : "already_voted" };
     }
     return { ok: false, error: e.message };
   }
@@ -1777,7 +1829,7 @@ function getBoardStats(radixAddress) {
 
 module.exports = {
   init,
-  getUser, getUserByAddress, getVotesByAddress, registerUser,
+  getUser, getUserByAddress, userForAddress, getVotesByAddress, registerUser,
   recordWalletLink, getWalletLink, getOtherWalletLink,
   createProposal, updateProposalMessage, getProposal,
   getActiveProposals, closeExpiredProposals, closeProposal, getAmendments,
@@ -2074,9 +2126,12 @@ module.exports.listBanned = function () {
   return db.prepare("SELECT tg_id, reason, banned_at FROM banned_users ORDER BY banned_at DESC").all();
 };
 // tg_ids of all registered, non-banned users — for admin /broadcast fan-out.
+// Positive ids only: a Telegram user id is always positive. The negative ones are
+// placeholder rows (web voters, web proposers, API agents), and a negative id names a
+// group CHAT to the Bot API, so a broadcast must never send to one.
 module.exports.listUserTgIds = function () {
   return db.prepare(
-    "SELECT tg_id FROM users WHERE tg_id NOT IN (SELECT tg_id FROM banned_users)"
+    "SELECT tg_id FROM users WHERE tg_id > 0 AND tg_id NOT IN (SELECT tg_id FROM banned_users)"
   ).all().map((r) => r.tg_id);
 };
 
