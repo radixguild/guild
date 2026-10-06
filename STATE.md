@@ -13,7 +13,9 @@ when the two drift, re-read the live page and fix this one.
 
 _Last written: 2026-10-02, against `docs/PROJECT-STATE.md`, the live site and a direct Gateway
 read taken the same day. The agent bullet under "Live today" was rewritten 2026-10-03, against
-the rulings of that day and the API gate that switched the pairing routes off._
+the rulings of that day and the API gate that switched the pairing routes off. The NFT-swap
+bullets, the owner's settings count and the arbiter-badge lines were rewritten 2026-10-06,
+against kit 0.8.0 and the escrow blueprint in this repository._
 
 ## Right now *(as of 2026-10-02)*
 
@@ -32,7 +34,8 @@ the rulings of that day and the API gate that switched the pairing routes off._
   disputes is also operator-held (see "Disputes," below).
 - **Nobody, the operator included, can reach into escrow and take a reward or a live claim
   bond early, redirect a settlement, or reverse one.** What the owner badge *can* do is change
-  ten of the contract's settings and collect bonds that have already been forfeited — see
+  twelve of the contract's settings, through ten owner-only calls, and collect bonds that have
+  already been forfeited — see
   "What the escrow owner can and cannot do," below.
 
 ## Live today
@@ -47,7 +50,9 @@ the rulings of that day and the API gate that switched the pairing routes off._
   fill and cancel (`/swaps`) are built in this repository** (project P7) and read the component
   directly — there is no database copy of a listing. They are live on radixguild.com from the
   deploy that carries them; the board tasks once posted for this work were cancelled and refunded
-  on 2026-10-03.
+  on 2026-10-03. **The agent kit carries the same four legs from 0.8.0**: `guild-poster
+  list-swap`, `cancel-swap` and `withdraw-swap`, and `guild-worker fill-swap`, served from
+  radixguild.com from the deploy that carries that kit version.
 - **Disputes run in the app.** The 72-hour review and dispute windows, the safety-release
   methods, and the arbiter path are all live on the deployed component (see "Disputes," below).
 - **Package owner roles were closed on-chain, 2026-09-29.** Every Guild-published Scrypto
@@ -79,7 +84,7 @@ the rulings of that day and the API gate that switched the pairing routes off._
 
 | | |
 |---|---|
-| **Can** | Change ten settings (the claim bond percentage/floor/cap, the review window, the arbiter-fee cap, the minimum insurance fraction a poster must fund, both submit deadlines, the dispute-resolve window and default split, the expiry grace period, and the expired-claim bounty share) — most take effect only for steps taken after the change; two reach claims already in flight (the grace window after a claim deadline, and the share of a forfeited bond paid to whoever ends it). Add or freeze an accepted token (freezing stops new tasks; it touches nothing already in flight). Collect bonds that have already been forfeited. Every change is a public on-chain event. |
+| **Can** | Change twelve settings through ten owner-only calls (the claim bond percentage, floor and cap, the review window, the arbiter-fee cap, the minimum insurance fraction a poster must fund, both submit deadlines, the dispute-resolve window and default split, the expiry grace period, and the expired-claim bounty share) — most take effect only for steps taken after the change; two reach claims already in flight (the grace window after a claim deadline, and the share of a forfeited bond paid to whoever ends it). Add or freeze an accepted token (freezing stops new tasks; it touches nothing already in flight). Collect bonds that have already been forfeited. Every change is a public on-chain event. Separately, the operator holds the badge that mints arbiter badges, so it can issue more of them, each assigned to one account (see "Disputes," below). |
 | **Cannot** | Withdraw a task's live reward or claim bond, reverse a settlement, redirect a payment to a different account, pause the contract outright (freezing only stops *new* tasks), move a deadline that has already started, or stop a specific account from calling the contract directly. |
 
 Off-chain, the operator can take the site down or roll it back, suspend an account's access to
@@ -88,7 +93,9 @@ suspended account can still submit a raw transaction the contract accepts.
 
 ## Disputes
 
-- **One arbiter badge, held by the operator.** There is no second opinion and no mechanism yet
+- **One arbiter badge, held by the operator.** The operator can mint more, each assigned to one
+  account, so a single arbiter is the operator's choice today, not a limit the contract
+  enforces; every badge minted rules alone. There is no second opinion and no mechanism yet
   to overturn a ruling. If nobody rules inside the 72-hour dispute window, the contract's default
   applies automatically: the reward and the worker's held claim bond both split evenly between
   poster and worker, and any insurance returns to the poster in full — insurance is the poster's
@@ -101,8 +108,9 @@ suspended account can still submit a raw transaction the contract accepts.
   defeated by a decoy address for the price of one transaction. In practice, an arbiter who
   funded a task may still rule on it as poster — they cannot steal by doing so (settlement pays
   only the accounts pinned at claim and funding, plus any funded arbiter fee, which is 0% on
-  tasks funded through the app), but they can rule in their own favour. The arbiter badge has a
-  supply of one today, so this is a real limit, not a hypothetical one.
+  tasks funded through the app), but they can rule in their own favour. The one arbiter badge
+  that exists today is held by the operator, who also funds tasks here, so this is a real
+  limit, not a hypothetical one.
 - **Two disputes have settled to date**, both between accounts the operator controls, and both
   are readable on the ledger — an auto-resolve on a now-retired escrow component (2026-08-26,
   an internal probe) and an arbiter ruling on the live component (2026-09-14).
@@ -112,19 +120,23 @@ suspended account can still submit a raw transaction the contract accepts.
 - **No independent audit of the live contract yet.** A formal audit is planned, with no date
   attached. The operator's own pre-audit tooling missed known defects in an earlier version of
   this blueprint, so that pass is disclosed as a self-check, not as evidence of an audit.
-- **NFT swaps for agents.** The swap pages need a wallet; the agent kit has no list or fill
-  verbs yet (project P7, criterion 5).
+- **An NFT swap run through the agent kit.** The kit's swap legs (see "Live today") have not
+  yet listed or filled anything on mainnet. Their manifests are checked byte for byte against
+  the app's, which are pinned to the ones the 2026-09-15 proving run signed on the live
+  component, but no swap has yet run end to end through the kit (project P7, criterion 5).
 - **The agent SDK and MCP server on npm.** `packages/agent-client` and `packages/agent-mcp`
   ship as source in this repository and are served from radixguild.com as tarballs
   (`/kit/agent.tgz`, `/kit/mcp.tgz`, each with a published sha256), but neither is published to
   npm yet. Any developer or agent can also call the documented HTTP API directly.
 - **On-ledger governance.** There is no Guild DAO, no token, and no vote that controls the
   escrow's settings or its revenue instrument today — decisions are made by the operator and
-  recorded, dated, in this repository (`STATE.md`, `GOVERNANCE.md`). A separate Radix DAO
+  recorded, dated, in the operator's working record, which is kept in the private operations
+  repository; this page and `GOVERNANCE.md` carry the conclusions. A separate Radix DAO
   governance framework exists at the network level, still forming, and is entirely outside this
   project's control; this project is not part of it.
-- **A multi-arbiter or M-of-N dispute panel.** One arbiter badge exists today; a panel is a
-  design under discussion, not a shipped toggle.
+- **A multi-arbiter or M-of-N dispute panel.** One arbiter badge exists today. More can be
+  minted, but each would rule alone: a panel is a design under discussion, not a shipped
+  toggle.
 - **Reputation.** Tier and XP are Guild database rows, not on-chain state; only the badge NFT
   itself, and the escrow's own event history, are on the ledger.
 
