@@ -6,7 +6,7 @@ const copy = require("./services/copy");
 
 const wizardStates = new Map();
 
-function setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward) {
+function setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward, checkClaim) {
 
   // ═══════════════════════════════════════════════════════
   // ONBOARDING WIZARD (/start in private chat)
@@ -239,14 +239,19 @@ function setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward) {
         ctx.reply("That doesn't look right. Paste your full Radix address starting with account_rdx1...");
         return true;
       }
-      db.registerUser(ctx.from.id, text, ctx.from.username || ctx.from.first_name);
+      const claim = checkClaim(ctx.from.id, text);
       wizardStates.delete(ctx.from.id);
+      if (!claim.ok) {
+        ctx.reply(claim.reason === "taken" ? copy.registerAddressTaken() : copy.registerKeepsProven({ last8: claim.last8 }));
+        return true;
+      }
+      db.registerUser(ctx.from.id, text, ctx.from.username || ctx.from.first_name);
       // Look before offering to mint, as /register does. Until 2026-09-24 this said
       // "Voting is FREE — no XRD needed. Next step: mint your badge." to every wallet,
       // including ones that already held a badge.
       getBadgeData(text)
         .catch(() => null)
-        .then((badge) => ctx.reply(copy.registered({ portal: PORTAL, hasBadge: !!badge }), {
+        .then((badge) => ctx.reply(copy.registered({ portal: PORTAL, hasBadge: !!badge, mustLink: claim.mustLink }), {
           reply_markup: badge
             ? new InlineKeyboard().url("Browse open tasks", PORTAL + "/tasks")
             : new InlineKeyboard().text("Next: Mint Badge", "onboard_mint"),

@@ -204,6 +204,20 @@ function createVerify(options = {}) {
     return user ? { ok: true, address: user.radix_address, proven: false } : { ok: false, reason: "unregistered" };
   }
 
+  // /register while /link is on (2026-10-06): a claim no longer opens any gate, so the reply
+  // has to say so, and a claim must never overwrite the wallet a member proved (the users
+  // row feeds /wallet, /badge and attribution).
+  // It also refuses a wallet another Telegram account has proven: the users row routes
+  // task DMs (escrow watcher), so a claim on someone else's proven wallet is impersonation.
+  /** @returns {{ ok: true, mustLink: boolean } | { ok: false, reason: "proven", last8: string } | { ok: false, reason: "taken" }} */
+  function checkClaim(tgId, address) {
+    if (!linkEnabled) return { ok: true, mustLink: false };
+    const link = db.getWalletLink(tgId);
+    if (link && link.radix_address !== address) return { ok: false, reason: "proven", last8: last8(link.radix_address) };
+    if (!link && db.getOtherWalletLink(address, tgId)) return { ok: false, reason: "taken" };
+    return { ok: true, mustLink: !link };
+  }
+
   async function handleLink(ctx) {
     const arg = (ctx.match || "").trim();
     if (ctx.chat.type !== "private") {
@@ -227,7 +241,7 @@ function createVerify(options = {}) {
     return ctx.reply(copy.linkDone({ last8: last8(res.address) }));
   }
 
-  return { handleVerify, handleLink, makeTicket, checkCode, linkEnabled, memberAddress };
+  return { handleVerify, handleLink, makeTicket, checkCode, linkEnabled, memberAddress, checkClaim };
 }
 
 module.exports = { createVerify, encodeToken, decodeToken };

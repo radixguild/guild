@@ -71,13 +71,16 @@ const BADGE_HOLDER_LINE =
   "You hold a Guild badge. Claiming happens on the web app and locks a bond of at least " +
   CLAIM_BOND_FLOOR_XRD + " XRD today (an owner setting).";
 
-/** @param {{ portal: string, linkedAddress?: string|null, hasBadge?: boolean }} o */
-function startDm({ portal, linkedAddress, hasBadge }) {
+/** @param {{ portal: string, linkedAddress?: string|null, hasBadge?: boolean, mustLink?: boolean }} o */
+function startDm({ portal, linkedAddress, hasBadge, mustLink = false }) {
+  // mustLink: /link is on and this wallet is only a /register claim, so it isn't "linked".
+  const label = mustLink ? "Wallet saved, not proven yet: " : "Wallet linked: ";
+  const prove = mustLink ? "\nTo propose, run temp checks or vote, prove it: send /link." : "";
   const next = !linkedAddress
     ? "Start with the task board — tap below. It is public and needs no wallet. To claim a task you will need to link your Radix wallet, mint a Guild badge and hold some XRD of your own for the claim bond."
     : !hasBadge
-      ? "Wallet linked: " + linkedAddress.slice(0, 20) + "...\nNext: mint your free Guild badge (network fee only) — you need one to claim a task."
-      : "Wallet linked: " + linkedAddress.slice(0, 20) + "...\n" + BADGE_HOLDER_LINE;
+      ? label + linkedAddress.slice(0, 20) + "...\nNext: mint your free Guild badge (network fee only) — you need one to claim a task." + prove
+      : label + linkedAddress.slice(0, 20) + "...\n" + BADGE_HOLDER_LINE + prove;
   return (
     "Welcome to Radix Guild\n\n" +
     WHAT_IT_IS + "\n\n" +
@@ -115,7 +118,7 @@ function help({ portal }) {
   return (
     "Radix Guild — commands\n\n" +
     "Get set up:\n" +
-    "/register <address> — link your Radix wallet\n" +
+    "/register <address> — tell me your Radix wallet address\n" +
     "/mint — get your free Guild badge\n" +
     "/badge — check your badge\n\n" +
     "Tasks:\n" +
@@ -156,8 +159,17 @@ function tasksNotice({ portal }) {
   );
 }
 
-/** @param {{ portal: string, hasBadge: boolean }} o */
-function registered({ portal, hasBadge }) {
+/** @param {{ portal: string, hasBadge: boolean, mustLink?: boolean }} o */
+function registered({ portal, hasBadge, mustLink = false }) {
+  // With /link on (mustLink), a /register claim opens no gate, so it isn't "linked" and
+  // nobody is "set" until they prove the wallet.
+  if (mustLink) {
+    return (
+      "Wallet saved" + (hasBadge ? " — it holds a Guild badge." : ".") + "\n\n" +
+      "To propose, run temp checks or vote, prove it's yours: open a private chat with me and send /link." +
+      (hasBadge ? "" : "\n\nNo badge yet? Mint your free Guild badge (network fee only): " + portal + "/mint")
+    );
+  }
   return hasBadge
     ? "Wallet linked — and it already holds a Guild badge. You're set.\n\n" +
       "Browse tasks: " + portal + "/tasks\n" +
@@ -183,7 +195,7 @@ function noBadge({ portal }) {
   return (
     "No Guild badge found in your linked wallet.\n\n" +
     "Just minted? Wait ~30 seconds and try /badge again.\n" +
-    "Minted to a different account? Link that one: /register <address>\n" +
+    "Minted to a different account? Register that one: /register <address>\n" +
     "Haven't minted? " + portal + "/mint"
   );
 }
@@ -433,6 +445,22 @@ function linkRequired() {
   return (
     "First prove the wallet that holds your badge: open a private chat with me and send /link. " +
     "You sign in on radixguild.com once, and from then on the badge checks use the wallet you proved."
+  );
+}
+
+// /register when this account already proved a different wallet with /link.
+function registerKeepsProven({ last8 }) {
+  return (
+    "Your proven wallet is " + last8 + ", and the badge checks use it. /register can't replace it. " +
+    "To prove a different wallet, open a private chat with me and send /link."
+  );
+}
+
+// /register of a wallet that a different Telegram account has proven with /link.
+function registerAddressTaken() {
+  return (
+    "Another Telegram account has proven that wallet, so I can't register it here. " +
+    "If it's yours, open a private chat with me and send /link to prove it from this account."
   );
 }
 
@@ -739,7 +767,7 @@ module.exports = {
   startDm, startGroup, welcomeMember, help, tasksNotice, registered, mint, noBadge, badgeCard, badgeFound,
   mintStep, faq, readme, support, feedbackUsage, feedbackSaved, feedbackGone, myStatus, FEEDBACK_SAVED, sourceStatus,
   verifyResult, verifyTeamList, verifyUsernameNotTeam, verifyNoPerson, verifySelfBot, verifyOtherBot,
-  linkInGroup, linkDisabled, linkRequired, linkRequiredShort, linkStart, linkFailed, linkDone,
+  linkInGroup, linkDisabled, linkRequired, linkRequiredShort, registerKeepsProven, registerAddressTaken, linkStart, linkFailed, linkDone,
   voteRecorded, pollClosedHeadline, pollClosed, pollStatusWords, pollResults, pollHistory, cancelReply,
   disputesOnTheWeb, cv3Parked, diceGameClosed, noGuildDao, groupsOnTheWeb, projectsOnTheWeb, milestonesOffBoard,
   cv2Parked, workSubmittedDm,

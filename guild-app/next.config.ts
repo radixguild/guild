@@ -46,8 +46,8 @@ import type { NextConfig } from "next";
 //   Google Fonts stylesheets reference via @font-face.
 // - connect-src https://radixguild.com — same-origin in production already
 //   ('self' covers it there), added explicitly for BOT_API_URL
-//   (src/lib/config.ts, "Caddy routes radixguild.com/api/* to the bot on
-//   :3003") — the one documented cross-origin client fetch target this app
+//   (src/lib/config.ts; since 2026-09-24 Caddy sends only /api/agent/* to
+//   the bot on :3003) — the one documented cross-origin client fetch target this app
 //   defines, even though nothing in src/ currently calls it client-side
 //   (grepped: only referenced in config.ts's own definition, a doc comment
 //   in api-fetch.ts, and test/script files). Kept for that documented intent

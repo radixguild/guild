@@ -1,7 +1,7 @@
 require("dotenv").config();
 const { Bot, InlineKeyboard } = require("grammy");
 const db = require("./db");
-const { hasBadge, getBadgeData, getBadgeResult } = require("./services/gateway");
+const { getBadgeData, getBadgeResult } = require("./services/gateway");
 const { queueXpReward, getXpQueue } = require("./services/xp");
 const { setupWizard, setupSkipDesc, pendingProposals } = require("./wizard");
 const { setupGuidedWizards } = require("./wizards");
@@ -148,6 +148,11 @@ function memberAddress(tgId) {
   return user ? { ok: true, address: user.radix_address, proven: false } : { ok: false, reason: "unregistered" };
 }
 
+// /register's view of /link (services/verify.js checkClaim): without verify, /link is off.
+function checkClaim(tgId, address) {
+  return verify ? verify.checkClaim(tgId, address) : { ok: true, mustLink: false };
+}
+
 async function requireBadge(ctx) {
   try {
     const who = memberAddress(ctx.from.id);
@@ -159,8 +164,11 @@ async function requireBadge(ctx) {
     // gate checked, not whatever /register last stored.
     if (!db.getUser(ctx.from.id)) db.registerUser(ctx.from.id, who.address, ctx.from.username || ctx.from.first_name || null);
     const user = { ...db.getUser(ctx.from.id), radix_address: who.address };
-    const has = await hasBadge(user.radix_address);
-    if (!has) {
+    // getBadgeResult, not hasBadge: hasBadge reads a Gateway outage as "no badge" and
+    // would tell a badge holder to go and mint one (2026-10-06).
+    const badge = await getBadgeResult(user.radix_address);
+    if (badge.error) throw new Error("badge read failed (Gateway)");
+    if (!(badge.data && badge.data.status === "active")) {
       await ctx.reply(
         "You need a Guild badge to do this.\n\n" +
         "Mint one (free): " + PORTAL + "/mint\n" +
@@ -218,7 +226,8 @@ bot.command("start", async (ctx) => {
     }
 
     ctx.reply(
-      copy.startDm({ portal: PORTAL, linkedAddress: user ? user.radix_address : null, hasBadge: !!badge }),
+      copy.startDm({ portal: PORTAL, linkedAddress: user ? user.radix_address : null, hasBadge: !!badge,
+        mustLink: !!(user && verify && verify.linkEnabled && !db.getWalletLink(ctx.from.id)) }),
       { reply_markup: kb }
     );
   } else {
@@ -237,11 +246,13 @@ bot.command("register", async (ctx) => {
   if (!address || !/^account_rdx1[a-z0-9]{40,60}$/.test(address)) {
     return ctx.reply("Invalid address format.\nUsage: /register account_rdx1...");
   }
+  const claim = checkClaim(ctx.from.id, address);
+  if (!claim.ok) return ctx.reply(claim.reason === "taken" ? copy.registerAddressTaken() : copy.registerKeepsProven({ last8: claim.last8 }));
   db.registerUser(ctx.from.id, address, ctx.from.username || ctx.from.first_name);
   // Look before telling someone to mint: until 2026-09-20 this told a wallet that
   // already held a badge to go and mint one.
   const badge = await getBadgeData(address).catch(() => null);
-  ctx.reply(copy.registered({ portal: PORTAL, hasBadge: !!badge }));
+  ctx.reply(copy.registered({ portal: PORTAL, hasBadge: !!badge, mustLink: claim.mustLink }));
 });
 
 // ── /badge ──────────────────────────────────────────────
@@ -260,7 +271,7 @@ bot.command(["badge", "badges"], async (ctx) => {
 
 const handleWizardText = setupWizard(bot, db, requireBadge, buildYesNoKeyboard, buildPollKeyboard, endsLabel, queueXpReward);
 setupSkipDesc(bot, pendingProposals);
-const handleGuidedText = setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward);
+const handleGuidedText = setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward, checkClaim);
 
 // ── /propose ────────────────────────────────────────────
 // /propose and /new are the guided wizard (wizard.js), registered above. A "quick mode"
@@ -419,8 +430,13 @@ bot.on("callback_query:data", async (ctx, next) => {
   }
 
   let has = false;
-  try { has = await hasBadge(who.address); } catch (e) {
-    console.error("[Vote] hasBadge error:", e.message);
+  // getBadgeResult keeps "the Gateway didn't answer" apart from "no badge" (hasBadge does not).
+  try {
+    const badge = await getBadgeResult(who.address);
+    if (badge.error) throw new Error("badge read failed (Gateway)");
+    has = !!(badge.data && badge.data.status === "active");
+  } catch (e) {
+    console.error("[Vote] badge read error:", e.message);
     return ctx.answerCallbackQuery({ text: "Could not verify badge. Try again in a moment.", show_alert: true });
   }
   if (!has) {

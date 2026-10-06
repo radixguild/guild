@@ -65,15 +65,54 @@ describe('index.js badge gates resolve the wallet through memberAddress', () => 
     const body = fnBody(/async function requireBadge\(ctx\)/, /\n}\n/);
     assert.match(body, /memberAddress\(ctx\.from\.id\)/);
     assert.match(body, /copy\.linkRequired\(\)/);
+    // A Gateway outage must not read as "no badge" (hasBadge swallowed the error).
+    assert.match(body, /getBadgeResult\(user\.radix_address\)/);
+    assert.match(body, /badge\.error/);
+    assert.doesNotMatch(body, /hasBadge\(/);
     assert.doesNotMatch(body, /const user = db\.getUser\(ctx\.from\.id\);\s*\n\s*if \(!user\)/);
   });
 
   it('the vote buttons check and record the memberAddress wallet', () => {
     const body = fnBody(/if \(!data\.startsWith\("vote_"\)\) return await next\(\);/, /\n}\);\n/);
     assert.match(body, /memberAddress\(ctx\.from\.id\)/);
-    assert.match(body, /hasBadge\(who\.address\)/);
+    assert.match(body, /getBadgeResult\(who\.address\)/);
+    assert.match(body, /badge\.error/);
     assert.match(body, /db\.recordVote\(proposalId, ctx\.from\.id, who\.address, voteChoice\)/);
     assert.match(body, /wallet_already_voted/);
     assert.doesNotMatch(body, /\buser\.radix_address\b/);
+  });
+});
+
+describe('/register paths ask checkClaim before writing the users row (2026-10-06)', () => {
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+
+  it('index.js /register: checkClaim, both refusals, then registerUser, then mustLink', () => {
+    const src = read('index.js');
+    const start = src.indexOf('bot.command("register"');
+    assert.ok(start >= 0);
+    const body = src.slice(start, src.indexOf('\n});\n', start));
+    const claim = body.indexOf('checkClaim(ctx.from.id, address)');
+    const write = body.indexOf('db.registerUser(');
+    assert.ok(claim >= 0 && write > claim, 'checkClaim must run before registerUser');
+    assert.match(body.slice(claim, write), /copy\.registerAddressTaken\(\)/);
+    assert.match(body.slice(claim, write), /copy\.registerKeepsProven\(/);
+    assert.match(body, /mustLink: claim\.mustLink/);
+  });
+
+  it('wizards.js onboarding: checkClaim before registerUser, and no fail-open default', () => {
+    const src = read('wizards.js');
+    assert.match(src, /function setupGuidedWizards\(bot, db, PORTAL, requireBadge, queueXpReward, checkClaim\) \{/);
+    const start = src.indexOf('state.wizard === "onboard" && state.step === "register"');
+    assert.ok(start >= 0);
+    const body = src.slice(start, start + 1500);
+    const claim = body.indexOf('checkClaim(ctx.from.id, text)');
+    const write = body.indexOf('db.registerUser(');
+    assert.ok(claim >= 0 && write > claim, 'checkClaim must run before registerUser');
+    assert.match(body.slice(claim, write), /registerKeepsProven|registerAddressTaken/);
+    assert.match(body, /mustLink: claim\.mustLink/);
+  });
+
+  it('index.js passes checkClaim to the guided wizards', () => {
+    assert.match(read('index.js'), /setupGuidedWizards\(bot, db, PORTAL, requireBadge, queueXpReward, checkClaim\)/);
   });
 });
