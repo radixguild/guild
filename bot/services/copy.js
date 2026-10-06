@@ -427,6 +427,20 @@ function linkDisabled() {
   return "Wallet linking isn't switched on yet. /verify still works.";
 }
 
+// A badge gate (propose, temp check, poll, bounty, milestone) when /link is on and this
+// Telegram account has not proven a wallet. /register alone no longer counts there.
+function linkRequired() {
+  return (
+    "First prove the wallet that holds your badge: open a private chat with me and send /link. " +
+    "You sign in on radixguild.com once, and from then on the badge checks use the wallet you proved."
+  );
+}
+
+// The same for a vote button: Telegram caps an alert at 200 characters.
+function linkRequiredShort() {
+  return "First prove your wallet: open a private chat with me and send /link.";
+}
+
 /** @param {{ url: string, tgId: number }} o */
 function linkStart({ url, tgId }) {
   return (
@@ -725,7 +739,7 @@ module.exports = {
   startDm, startGroup, welcomeMember, help, tasksNotice, registered, mint, noBadge, badgeCard, badgeFound,
   mintStep, faq, readme, support, feedbackUsage, feedbackSaved, feedbackGone, myStatus, FEEDBACK_SAVED, sourceStatus,
   verifyResult, verifyTeamList, verifyUsernameNotTeam, verifyNoPerson, verifySelfBot, verifyOtherBot,
-  linkInGroup, linkDisabled, linkStart, linkFailed, linkDone,
+  linkInGroup, linkDisabled, linkRequired, linkRequiredShort, linkStart, linkFailed, linkDone,
   voteRecorded, pollClosedHeadline, pollClosed, pollStatusWords, pollResults, pollHistory, cancelReply,
   disputesOnTheWeb, cv3Parked, diceGameClosed, noGuildDao, groupsOnTheWeb, projectsOnTheWeb, milestonesOffBoard,
   cv2Parked, workSubmittedDm,

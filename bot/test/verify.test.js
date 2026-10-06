@@ -258,5 +258,40 @@ describe('verify', () => {
       }
       assert.equal(db.getWalletLink(49), undefined);
     });
+
+    it('a redeemed code also points the users row at the proven wallet', async () => {
+      db.registerUser(50, ADMIN_ADDR, 'claimer');
+      const ctx = fakeCtx({ fromId: 50, chatType: 'private', match: code({ tg: 50 }) });
+      await makeVerify().handleLink(ctx);
+      assert.equal(db.getWalletLink(50).radix_address, USER_ADDR);
+      assert.equal(db.getUser(50).radix_address, USER_ADDR);
+    });
+  });
+
+  // 2026-10-06: the badge gates (requireBadge, vote buttons) resolve the member's wallet here.
+  describe('memberAddress (the badge gates)', () => {
+    it('REGRESSION: with /link on, a /register claim of a badge wallet does not count', () => {
+      db.registerUser(60, ADMIN_ADDR, 'borrower');
+      assert.deepEqual(makeVerify().memberAddress(60), { ok: false, reason: 'unlinked' });
+    });
+
+    it('with /link on, the proven wallet wins over whatever /register stored', async () => {
+      const ctx = fakeCtx({ fromId: 61, chatType: 'private', match: code({ tg: 61 }) });
+      await makeVerify().handleLink(ctx);
+      db.registerUser(61, ADMIN_ADDR, 'switcher');
+      assert.deepEqual(makeVerify().memberAddress(61), { ok: true, address: USER_ADDR, proven: true });
+    });
+
+    it('with /link off, the /register claim still answers (no lock-out before /link ships)', () => {
+      db.registerUser(62, USER_ADDR, 'member');
+      for (const env of [{ WALLET_LINK_ENABLED: 'false' }, { TG_LINK_SECRET: 'short' }]) {
+        assert.deepEqual(makeVerify({ env }).memberAddress(62), { ok: true, address: USER_ADDR, proven: false });
+      }
+    });
+
+    it('nobody at all: unregistered with /link off, unlinked with it on', () => {
+      assert.deepEqual(makeVerify({ env: { WALLET_LINK_ENABLED: 'false' } }).memberAddress(63), { ok: false, reason: 'unregistered' });
+      assert.deepEqual(makeVerify().memberAddress(63), { ok: false, reason: 'unlinked' });
+    });
   });
 });

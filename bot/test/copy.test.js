@@ -28,6 +28,7 @@ const ALL = {
   linkInGroup: copy.linkInGroup(), linkDisabled: copy.linkDisabled(),
   linkStart: copy.linkStart({ url: "https://radixguild.com/link-telegram?t=abc", tgId: 42 }),
   linkFailed: copy.linkFailed({ reason: "expired" }), linkDone: copy.linkDone({ last8: "…12345678" }),
+  linkRequired: copy.linkRequired(), linkRequiredShort: copy.linkRequiredShort(),
   fundedTaskAlert: copy.fundedTaskAlert({ ...o, taskId: 42, amount: "250", tokenLabel: "XRD" }),
   taskAlertsOn: copy.taskAlertsReply({ mode: "on", live: true }), taskAlertsOnNotLive: copy.taskAlertsReply({ mode: "on", live: false }),
   taskAlertsOff: copy.taskAlertsReply({ mode: "off", live: true }), taskAlertsStatusOn: copy.taskAlertsReply({ mode: "statusOn", live: false }),

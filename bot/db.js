@@ -805,12 +805,21 @@ function getAmendments(parentId) {
 }
 
 // Votes
+// One wallet, one vote. The key is (proposal_id, tg_id), so until 2026-10-06 one badge
+// voted once per Telegram account that had /register-ed its wallet (and once per call
+// on the web path, which mints a fresh negative tg_id for an unknown address).
 function recordVote(proposalId, tgId, radixAddress, vote) {
   try {
-    db.prepare(
-      "INSERT INTO votes (proposal_id, tg_id, radix_address, vote) VALUES (?, ?, ?, ?)"
-    ).run(proposalId, tgId, radixAddress, vote);
-    return { ok: true };
+    return db.transaction(() => {
+      const prior = db.prepare(
+        "SELECT tg_id FROM votes WHERE proposal_id = ? AND radix_address = ?"
+      ).get(proposalId, radixAddress);
+      if (prior && prior.tg_id !== tgId) return { ok: false, error: "wallet_already_voted" };
+      db.prepare(
+        "INSERT INTO votes (proposal_id, tg_id, radix_address, vote) VALUES (?, ?, ?, ?)"
+      ).run(proposalId, tgId, radixAddress, vote);
+      return { ok: true };
+    })();
   } catch (e) {
     if (e.message.includes("UNIQUE constraint")) {
       return { ok: false, error: "already_voted" };

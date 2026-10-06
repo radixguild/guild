@@ -111,9 +111,13 @@ function setupWizard(bot, db, requireBadge, buildYesNoKeyboard, buildPollKeyboar
       return ctx.answerCallbackQuery({ text: "No active wizard.", show_alert: true });
     }
 
-    const user = db.getUser(ctx.from.id);
+    // Gate the submit itself, not just /propose: the type buttons work for anyone who can
+    // see a wizard message, so until 2026-10-06 a registered member with no badge could
+    // tap through someone else's wizard and create a proposal.
+    const user = await requireBadge(ctx);
     if (!user) {
-      return ctx.answerCallbackQuery({ text: "Register first: /register", show_alert: true });
+      pendingProposals.delete(ctx.from.id);
+      return ctx.answerCallbackQuery();
     }
 
     const daysActive = pending.duration / 24;
