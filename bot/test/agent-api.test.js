@@ -15,6 +15,9 @@
 // and of 2026-10-07:
 //   - an `admin` key could mint keys (more `admin` keys among them) with POST /keys and
 //     revoke any key with DELETE /keys/:id, over the internet               → 403, both
+//   - api.js routed on the WHATWG-normalised pathname, so /api/agent/../stats was served by
+//     /api/stats and POST /api/agent/../proposals reached POST /api/proposals (".." and
+//     %2e%2e and "\" alike); "//[" threw inside the handler and was never answered → 400
 //
 // Like api-badge-gate-outage.test.js: the real server runs in a child process on a
 // throwaway database, listening on port 0 (api.js installs module-scope intervals). The
@@ -28,6 +31,7 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const http = require('node:http');
 const { spawn } = require('node:child_process');
 
 const BOT_DIR = path.join(__dirname, '..');
@@ -138,6 +142,35 @@ async function call(port, method, pathname, { key, body, auth } = {}) {
   });
   const text = await res.text();
   return { status: res.status, text, json: JSON.parse(text) };
+}
+
+// fetch resolves "..", %2e%2e and "\" in the path before it sends the request, so the
+// raw-path tests write the request target as given, with http.request.
+function rawCall(port, method, target, { key, body } = {}) {
+  callNo++;
+  const headers = { 'x-forwarded-for': '10.7.' + Math.floor(callNo / 250) + '.' + (callNo % 250) };
+  if (key) headers.authorization = 'Bearer ' + key;
+  const payload = body ? JSON.stringify(body) : null;
+  if (payload) {
+    headers['content-type'] = 'application/json';
+    headers['content-length'] = Buffer.byteLength(payload);
+  }
+  return new Promise((resolve, reject) => {
+    const r = http.request({ host: '127.0.0.1', port, method, path: target, headers }, (res) => {
+      let text = '';
+      res.setEncoding('utf8');
+      res.on('data', (d) => { text += d; });
+      res.on('end', () => {
+        let json = null;
+        try { json = JSON.parse(text); } catch (_) { /* not JSON */ }
+        resolve({ status: res.statusCode, text, json });
+      });
+    });
+    r.setTimeout(5000, () => r.destroy(new Error('no answer to ' + method + ' ' + target)));
+    r.on('error', reject);
+    if (payload) r.write(payload);
+    r.end();
+  });
 }
 
 /** Every key, at any depth, that names a Telegram id. */
@@ -476,5 +509,85 @@ describe('agent API with the legacy board off (production default)', () => {
   it('the reads do not depend on the flags', async () => {
     const read = await call(s.port, 'GET', '/api/agent/tasks/' + s.ids.open, { key: s.keys.reader });
     assert.equal(read.status, 200);
+  });
+});
+
+// At the edge (Caddy, `handle /api/agent/*`) these should not get through: Caddy matches on
+// the cleaned path, and Go re-escapes a raw "\" as %5C (from the matcher's semantics, not
+// probed live). The bot must not depend on that. Its own server is used so that, on a tree without
+// the guard, the "//[" request (which throws inside the handler) takes down nothing else.
+describe('raw request paths: no way out of /api/agent/ at the bot', () => {
+  let server;
+  let s;
+  before(async () => {
+    server = startServer({});
+    s = await server.ready;
+  });
+  after(() => server && server.stop());
+
+  const refused = (r, target) => {
+    assert.equal(r.status, 400, target + ' → ' + r.status + ' ' + r.text);
+    assert.equal(r.json && r.json.error, 'bad_path', target + ' → ' + r.text);
+  };
+
+  it('plain paths still route, and the query string is not checked', async () => {
+    const who = await rawCall(s.port, 'GET', '/api/agent/whoami', { key: s.keys.reader });
+    assert.equal(who.status, 200, who.text);
+    assert.equal(who.json.ok, true);
+    const q = await rawCall(s.port, 'GET', '/api/agent/activity?limit=5&note=../%2e%2E%5c\\', { key: s.keys.reader });
+    assert.equal(q.status, 200, q.text);
+    const anon = await rawCall(s.port, 'GET', '/api/agent/whoami');
+    assert.equal(anon.status, 401, 'auth still comes after the path check: ' + anon.text);
+    const stats = await rawCall(s.port, 'GET', '/api/stats');
+    assert.equal(stats.status, 200, stats.text);
+  });
+
+  it('REGRESSION: a dot-segment hop from /api/agent/ to another route is refused, in every spelling (400 bad_path)', async () => {
+    for (const target of [
+      '/api/agent/../stats',
+      '/api/agent/%2e%2e/stats',
+      '/api/agent/%2E%2E/stats',
+      '/api/agent/.%2e/stats',
+      '/api/agent/..\\stats',
+      '/api/agent\\..\\stats',
+      '/api/agent/tasks/../../stats',
+      'http://localhost/api/agent/../stats',
+    ]) {
+      const r = await rawCall(s.port, 'GET', target, { key: s.keys.reader });
+      refused(r, target);
+      assert.ok(!r.text.includes('total_proposals'), target + ' was served by /api/stats');
+    }
+  });
+
+  // Without the guard these answered 503 badge_check_unavailable (fetch throws here): the
+  // POST /api/proposals handler was reached. The 400 is the assertion that carries this test.
+  it('REGRESSION: POST /api/agent/../proposals does not reach POST /api/proposals (400 bad_path)', async () => {
+    const total = async () => (await call(s.port, 'GET', '/api/stats')).json.data.total_proposals;
+    const before = await total();
+    for (const target of ['/api/agent/../proposals', '/api/agent/%2e%2e/proposals', '/api/agent/..\\proposals']) {
+      const r = await rawCall(s.port, 'POST', target, { key: s.keys.proposer, body: { title: 'Smuggled past the agent prefix', address: POSTER } });
+      refused(r, target);
+    }
+    assert.equal(await total(), before);
+  });
+
+  it('REGRESSION: a path the parser would rewrite in place is refused too (".", "//")', async () => {
+    for (const target of ['/api/agent/./whoami', '/api/agent/whoami/.', '//api/agent/whoami']) {
+      refused(await rawCall(s.port, 'GET', target, { key: s.keys.reader }), target);
+    }
+  });
+
+  // The parser leaves these alone, so they routed literally (404) before; they are refused
+  // outright, so no %2e or %5c reaches a route or anything downstream that might decode it.
+  it('any %2e or %5c in the path is refused, whatever the parser makes of it', async () => {
+    for (const target of ['/api/agent/whoami%2e', '/api/agent/..%5cstats', '/api/agent/..%5Cstats', '/api/agent/a%2Eb']) {
+      refused(await rawCall(s.port, 'GET', target, { key: s.keys.reader }), target);
+    }
+  });
+
+  it('REGRESSION: a path new URL cannot parse is answered 400 (it threw in the handler), and the server keeps serving', async () => {
+    refused(await rawCall(s.port, 'GET', '//[', { key: s.keys.reader }), '//[');
+    const who = await rawCall(s.port, 'GET', '/api/agent/whoami', { key: s.keys.reader });
+    assert.equal(who.status, 200, who.text);
   });
 });

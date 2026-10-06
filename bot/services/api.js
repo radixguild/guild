@@ -131,7 +131,23 @@ function startApi() {
       return res.end(JSON.stringify({ ok: false, error: "uri_too_long" }));
     }
 
-    const url = new URL(req.url, "http://localhost");
+    // RAW-PATH GUARD (2026-10-07). Every route below matches url.pathname, and the WHATWG
+    // parser has rewritten the raw path by then: it resolves "." and ".." segments (%2e%2e
+    // too), reads "\" as "/" and a leading "//x" as a host. So GET /api/agent/../stats was
+    // served by /api/stats, and POST /api/agent/../proposals reached the unproven-address
+    // POST /api/proposals; only Caddy's path cleaning kept them off the edge. And "//[" made
+    // new URL throw inside this handler, which never answered. Refuse, before routing, a raw
+    // path that is not already the pathname the routes see, and any %2e, "\" or %5c in it.
+    // The query string is not checked.
+    const rawPath = req.url.split(/[?#]/, 1)[0];
+    let url = null;
+    if (rawPath.startsWith("/") && !/%2e|%5c|\\/i.test(rawPath) && !/(^|\/)\.\.?(\/|$)/.test(rawPath)) {
+      try { url = new URL(req.url, "http://localhost"); } catch (_) { url = null; }
+    }
+    if (!url || url.pathname !== rawPath) {
+      res.writeHead(400);
+      return res.end(JSON.stringify({ ok: false, error: "bad_path" }));
+    }
 
     // ── FEATURE_ESCROW gate (default off; treat anything but "true" as false) ──
     // Returns 503 for the entire bounty/escrow surface while the new version is
@@ -165,7 +181,8 @@ function startApi() {
     // (or tg_id) read from the request body, which nothing proves the caller controls;
     // badgeRefusal only asks whether THAT address holds a badge. They are safe only while
     // unexposed: this server listens on 127.0.0.1 and Caddy forwards only /api/agent/* to it
-    // (since 2026-09-24). They must stay off the edge.
+    // (since 2026-09-24), and the RAW-PATH GUARD above keeps an /api/agent/../ path from
+    // reaching them. They must stay off the edge.
     // Allow GET + POST for game board routes, feedback, bounties, milestones, disputes, XP; GET only for everything else
     const isGamePost = req.method === "POST" && url.pathname.includes("/board/");
     const isFeedbackPost = req.method === "POST" && url.pathname === "/api/feedback";
