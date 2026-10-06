@@ -32,7 +32,7 @@ test("no Telegram-facing bounty gate still reads FEATURE_ESCROW", () => {
 test("/start in a DM checks for a badge before offering to mint one, and leads with the task board", () => {
   const index = read("index.js");
   const start = index.slice(index.indexOf('bot.command("start"'), index.indexOf('bot.command("start"') + 1800);
-  assert.match(start, /getBadgeData\(user\.radix_address\)/);
+  assert.match(start, /getBadgeResult\(user\.radix_address\)/);
   assert.match(start, /else if \(!badge\)/);
   assert.match(start, /PORTAL \+ "\/tasks"/);
   assert.doesNotMatch(start, /onboard_proposals/);

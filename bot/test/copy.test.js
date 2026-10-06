@@ -32,6 +32,12 @@ const ALL = {
   registeredMustLinkNoBadge: copy.registered({ ...o, hasBadge: false, mustLink: true }), registeredMustLinkBadge: copy.registered({ ...o, hasBadge: true, mustLink: true }),
   registerKeepsProven: copy.registerKeepsProven({ last8: "…12345678" }), registerAddressTaken: copy.registerAddressTaken(),
   startDmMustLink: copy.startDm({ ...o, linkedAddress: "account_rdx1" + "a".repeat(54), hasBadge: true, mustLink: true }),
+  // 2026-10-06: a failed badge read (Gateway outage) is not "no badge".
+  badgeCheckUnavailable: copy.badgeCheckUnavailable(),
+  startDmBadgeUnknown: copy.startDm({ ...o, linkedAddress: "account_rdx1" + "a".repeat(54), badgeUnknown: true }),
+  startDmMustLinkBadgeUnknown: copy.startDm({ ...o, linkedAddress: "account_rdx1" + "a".repeat(54), badgeUnknown: true, mustLink: true }),
+  registeredBadgeUnknown: copy.registered({ ...o, hasBadge: false, badgeUnknown: true }),
+  registeredMustLinkBadgeUnknown: copy.registered({ ...o, hasBadge: false, badgeUnknown: true, mustLink: true }),
   fundedTaskAlert: copy.fundedTaskAlert({ ...o, taskId: 42, amount: "250", tokenLabel: "XRD" }),
   taskAlertsOn: copy.taskAlertsReply({ mode: "on", live: true }), taskAlertsOnNotLive: copy.taskAlertsReply({ mode: "on", live: false }),
   taskAlertsOff: copy.taskAlertsReply({ mode: "off", live: true }), taskAlertsStatusOn: copy.taskAlertsReply({ mode: "statusOn", live: false }),
