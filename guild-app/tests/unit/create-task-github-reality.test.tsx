@@ -34,7 +34,7 @@ vi.mock("@/components/app-shell", () => ({
 }))
 
 vi.mock("@/hooks/useWallet", () => ({
-  useWallet: () => ({ ensureSession: vi.fn().mockResolvedValue(true) }),
+  useWallet: () => ({ ensureSession: vi.fn().mockResolvedValue(true), ensureSessionDetailed: vi.fn().mockResolvedValue({ ok: true }) }),
 }))
 
 vi.mock("@/hooks/useEscrowPostingFrozen", () => ({

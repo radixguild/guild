@@ -131,6 +131,15 @@ export function explainSignInThrow(e: unknown): SessionFailure {
   return sessionFailure("wallet-error", text)
 }
 
+/**
+ * A page action that needs a session and did not get one: the page's own
+ * certain fact ("no task was posted"), then the gate's cause and fix. The
+ * escrow buttons compose the same shape in escrow-actions.tsx (signInIncomplete).
+ */
+export function signInDidNotComplete(consequence: string, failure: SessionFailure): string {
+  return `Sign-in didn't complete, so ${consequence}. ${failure.message}`
+}
+
 /** POST /api/v1/auth/verify answered, and said no. */
 export function explainVerifyRefusal(status: number, error: unknown): SessionFailure {
   let text = ""

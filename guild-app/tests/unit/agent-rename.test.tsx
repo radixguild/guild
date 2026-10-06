@@ -12,7 +12,7 @@ import "@testing-library/jest-dom/vitest"
 const H = vi.hoisted(() => ({ fetch: vi.fn() }))
 vi.mock("@/lib/api-fetch", () => ({ apiFetch: (...a: unknown[]) => H.fetch(...a) }))
 vi.mock("@/hooks/useWallet", () => ({
-  useWallet: () => ({ rdt: null, user: { id: "account_rdx1owner" }, ensureSession: async () => true, sessionMismatch: false }),
+  useWallet: () => ({ rdt: null, user: { id: "account_rdx1owner" }, ensureSession: async () => true, ensureSessionDetailed: async () => ({ ok: true }), sessionMismatch: false }),
 }))
 vi.mock("@/hooks/useNetworkHalt", () => ({ useNetworkHalt: () => ({ halted: false, operatorHalt: false }) }))
 vi.mock("@/hooks/useXrdBalance", () => ({ useXrdBalance: () => ({ balance: 1000, checked: true, recheck: () => {} }) }))

@@ -21,6 +21,7 @@ vi.mock("@/hooks/useWallet", () => ({
     rdt: { walletApi: { sendTransaction: H.send } },
     user: { id: OWNER },
     ensureSession: async () => true,
+    ensureSessionDetailed: async () => ({ ok: true }),
     sessionMismatch: false,
   }),
 }))

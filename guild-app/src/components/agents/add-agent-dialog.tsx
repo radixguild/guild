@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { CopyButton } from "@/components/copy-button"
 import { useWallet } from "@/hooks/useWallet"
+import { signInDidNotComplete } from "@/lib/session-outcome"
 import { apiFetch } from "@/lib/api-fetch"
 import { AGENT_LABEL_MAX, AGENT_LABEL_RULE, isValidAgentLabel } from "@/lib/agent-label"
 import { KIT_CHECK_BY_EYE, KIT_SHA256 } from "@/lib/kit"
@@ -65,7 +66,7 @@ async function askCodeStatus(code: string): Promise<CodeStatus | null> {
  * before that the line would point at nothing.
  */
 export function AddAgentDialog({ onChanged }: { onChanged: () => void }) {
-  const { ensureSession } = useWallet()
+  const { ensureSessionDetailed } = useWallet()
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<Step>({ kind: "name" })
   const [label, setLabel] = useState("")
@@ -152,10 +153,10 @@ export function AddAgentDialog({ onChanged }: { onChanged: () => void }) {
     }
     setSubmitting(true)
     try {
-      const signedIn = await ensureSession()
+      const gate = await ensureSessionDetailed()
       if (stale()) return
-      if (!signedIn) {
-        setError("Approve the wallet signature to add an agent.")
+      if (!gate.ok) {
+        setError(signInDidNotComplete("no agent code was created", gate))
         return
       }
       const res = await apiFetch("/api/v1/agents/codes", {

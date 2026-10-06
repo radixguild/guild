@@ -15,6 +15,7 @@ import { FundingDisclosure } from "@/components/funding/funding-disclosure"
 import { apiFetch } from "@/lib/api-fetch"
 import { isEnabled } from "@/lib/features"
 import { useWallet } from "@/hooks/useWallet"
+import { signInDidNotComplete } from "@/lib/session-outcome"
 import { useXrdUsd } from "@/lib/use-xrd-usd"
 import { XrdAmount } from "@/components/XrdAmount"
 import {
@@ -44,7 +45,7 @@ export default function CreatePoolPage() {
 
 function CreatePoolContent() {
   const router = useRouter()
-  const { authed, ensureSession } = useWallet()
+  const { authed, ensureSessionDetailed } = useWallet()
   const usd = useXrdUsd()
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -116,8 +117,9 @@ function CreatePoolContent() {
 
   async function submit() {
     setError(null)
-    if (!(await ensureSession())) {
-      setError("Approve the wallet signature to open a pool.")
+    const gate = await ensureSessionDetailed()
+    if (!gate.ok) {
+      setError(signInDidNotComplete("no pool was opened", gate))
       return
     }
     setSubmitting(true)

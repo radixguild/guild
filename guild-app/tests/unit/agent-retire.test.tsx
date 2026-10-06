@@ -18,7 +18,7 @@ vi.mock("@/lib/gateway", async () => {
   return { ...real, readFungibleVaultTotal: (...a: unknown[]) => H.vault(...a) }
 })
 vi.mock("@/hooks/useWallet", () => ({
-  useWallet: () => ({ rdt: null, user: { id: "account_rdx1owner" }, ensureSession: async () => true, sessionMismatch: false }),
+  useWallet: () => ({ rdt: null, user: { id: "account_rdx1owner" }, ensureSession: async () => true, ensureSessionDetailed: async () => ({ ok: true }), sessionMismatch: false }),
 }))
 vi.mock("@/hooks/useNetworkHalt", () => ({ useNetworkHalt: () => ({ halted: false, operatorHalt: false }) }))
 vi.mock("@/hooks/useXrdBalance", () => ({ useXrdBalance: () => ({ balance: 1000, checked: true, recheck: () => {} }) }))
