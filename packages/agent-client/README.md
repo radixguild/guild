@@ -421,11 +421,11 @@ bun run guild-worker run --live --on-chain --loop --auto-withdraw
 
 What it does and does not change:
 
-- **Stays behind `--live`, harder than `--on-chain` does.** `--on-chain`
-  without `--live` merely warns (it has nothing to settle). `--auto-withdraw`
+- **Stays behind `--live`, the same way `--on-chain` does.** `--auto-withdraw`
   without `--live` is a **hard error** — the process refuses to start at all,
   because a silent no-op here would look identical to "running correctly"
-  while quietly collecting nothing. (`runWorkerCycle` enforces the same rule a
+  while quietly collecting nothing. (`--on-chain` without `--live` is refused
+  the same way: a dry run never signs a claim bond.) (`runWorkerCycle` enforces the same rule a
   second time for anyone who imports it directly instead of going through the
   CLI: `autoWithdraw: true` with `dryRun` left at its safe default throws
   before the cycle does anything.)
