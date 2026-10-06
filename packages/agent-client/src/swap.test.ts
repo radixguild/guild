@@ -18,6 +18,7 @@ import {
   runFillSwap,
   runListSwap,
   runWithdrawSwap,
+  readSwapState,
   swapStatus,
   type ListingRead,
   type SwapDeps,
@@ -115,6 +116,43 @@ describe('parseSwapListing — same answer as guild-app on the mainnet records',
     expect(parseAmount('5000.500')).toBe('5000.5');
     expect(parseAmount('0.0')).toBeNull();
     expect(parseAmount('1e3')).toBeNull();
+  });
+});
+
+describe('readSwapState — refuses what is not the live NftSwap component', () => {
+  const body = (over: object) => ({
+    ledger_state: { proposer_round_timestamp: '2026-10-06T07:00:00.000Z' },
+    items: [{ details: {
+      blueprint_name: 'NftSwap',
+      package_address: 'package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv',
+      state: { fields: [
+        { field_name: 'listings', value: STATE.listingsKvStore },
+        { field_name: 'next_listing_id', value: '3' },
+        { field_name: 'listing_receipt_manager', value: RECEIPT },
+      ] },
+      royalty_config: { is_enabled: true, method_rules: [{ method_name: 'fill', royalty_amount: { unit: 'XRD', amount: '0' } }] },
+      ...over,
+    } }],
+  });
+  const withFetch = async (json: object, fn: () => Promise<void>) => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify(json))) as unknown as typeof fetch;
+    try { await fn(); } finally { globalThis.fetch = real; }
+  };
+
+  test('reads the live component', async () => {
+    await withFetch(body({}), async () => {
+      const s = await readSwapState(CONFIG);
+      expect(s).toMatchObject({ nextListingId: 3, receiptResource: RECEIPT, fees: { fill: { unit: 'XRD', amount: '0' }, extend: null } });
+    });
+  });
+  test('another package at the live address, or another blueprint, reads as null', async () => {
+    await withFetch(body({ package_address: 'package_rdx1pkgnotthelivepackagexxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' }), async () => {
+      expect(await readSwapState(CONFIG)).toBeNull();
+    });
+    await withFetch(body({ blueprint_name: 'Escrow' }), async () => {
+      expect(await readSwapState(CONFIG)).toBeNull();
+    });
   });
 });
 

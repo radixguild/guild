@@ -52,6 +52,12 @@ export const LIVE_ESCROW_COMPONENT =
 export const LIVE_NFT_SWAP_COMPONENT =
   'component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4';
 
+/** The package the live swap component was instantiated from (parity MATCH at
+ *  publish, 2026-09-15). swap.ts refuses the live component address if the
+ *  Gateway ever reports another package for it. */
+export const LIVE_NFT_SWAP_PACKAGE =
+  'package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv';
+
 /**
  * Production escrow components that have been RETIRED. They are still real,
  * still hold state, and pointing a dispute leg at one is never something a

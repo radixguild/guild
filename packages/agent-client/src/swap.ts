@@ -21,10 +21,10 @@
 // The component's listing-receipt resource is read from its own state on
 // every run, never configured — so no override can pair the component with a
 // stale receipt. Gateway shapes are the ones read off mainnet 2026-10-06; the
-// parser mirrors guild-app/src/lib/nft-swap.ts (cross-checked in
-// swap.parity.test.ts).
+// parser mirrors guild-app/src/lib/nft-swap.ts (cross-checked against it on the
+// mainnet records in swap.test.ts).
 
-import type { GuildClientConfig } from './config.js';
+import { LIVE_NFT_SWAP_COMPONENT, LIVE_NFT_SWAP_PACKAGE, type GuildClientConfig } from './config.js';
 import type { AgentIdentity } from './identity.js';
 import {
   cancelSwapManifest,
@@ -205,6 +205,9 @@ export async function readSwapState(config: GuildClientConfig): Promise<SwapStat
   });
   const details = json?.items?.[0]?.details;
   if (!details || details.blueprint_name !== 'NftSwap' || !Array.isArray(details?.state?.fields)) return null;
+  // The live component is also pinned to its package; an override address is
+  // checked by blueprint only (a test or a future cutover brings its own).
+  if (config.nftSwapComponent === LIVE_NFT_SWAP_COMPONENT && details.package_address !== LIVE_NFT_SWAP_PACKAGE) return null;
   const f = (name: string) => details.state.fields.find((x: any) => x?.field_name === name)?.value;
   const listingsKvStore = f('listings');
   const nextListingId = Number(f('next_listing_id'));
