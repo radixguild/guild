@@ -22,6 +22,7 @@ import { isMainModule } from './runtime.js';
 import { sweepToOwner, type SweepResult } from './sweep.js';
 import { withdrawWorkerReward } from './withdraw.js';
 import { workerCliMain } from './worker-cli.js';
+import { runFillSwap } from './swap.js';
 
 export interface ParsedArgs {
   command: string;
@@ -32,7 +33,7 @@ export interface ParsedArgs {
 }
 
 /** Flags that take a value (`--username bob` or `--username=bob`). */
-const VALUE_OPTIONS = new Set(['--username', '--reason', '--owner', '--sweep-to', '--to']);
+const VALUE_OPTIONS = new Set(['--username', '--reason', '--owner', '--sweep-to', '--to', '--alternative']);
 
 /**
  * Parse `<command> [flags]` argv into a command + flags/options/rest.
@@ -122,6 +123,13 @@ usage: guild-worker <command> [flags]
                Production stays MOCK-ONLY: --live refuses against the live
                escrow (or a retired one) unless GUILD_ALLOW_LIVE_DISPUTE=1 is
                set on purpose.
+  fill-swap    fill an NFT swap listing: fill-swap <listingId> [--alternative <n>]
+               pays EXACTLY the chosen alternative — read from the chain, never
+               typed — and receives the NFT in the same transaction. --alternative
+               is required when the listing has more than one. Refuses (signs
+               nothing) unless the listing is open at the ledger clock. DRY-RUN by
+               default; --live signs with GUILD_AGENT_PRIVATE_KEY. A fill cannot be
+               undone, and a listing is not proof the NFT is genuine.
   run          the worker loop — flags pass through: [--live] [--loop] [--on-chain]
                [--auto-withdraw] (collects every entitlement the post-submit
                survey reports, each cycle; needs --live — see README)
@@ -188,6 +196,7 @@ function reportSweep(result: SweepResult): number {
 export interface MainDeps {
   withdrawWorkerReward: typeof withdrawWorkerReward;
   sweepToOwner: typeof sweepToOwner;
+  runFillSwap: typeof runFillSwap;
   loadIdentity: () => Promise<AgentIdentity | null>;
 }
 
@@ -195,7 +204,7 @@ export interface MainDeps {
 export const EXIT_COLLECTED_NOT_SWEPT = 3;
 
 export async function main(argv: string[] = process.argv.slice(2), overrides: Partial<MainDeps> = {}): Promise<number> {
-  const deps: MainDeps = { withdrawWorkerReward, sweepToOwner, loadIdentity: loadIdentityIfPresent, ...overrides };
+  const deps: MainDeps = { withdrawWorkerReward, sweepToOwner, runFillSwap, loadIdentity: loadIdentityIfPresent, ...overrides };
   const args = parseArgv(argv);
   switch (args.command) {
     case 'doctor': {
@@ -346,6 +355,46 @@ export async function main(argv: string[] = process.argv.slice(2), overrides: Pa
           log: line => line && console.error(`sweep: ${line}`),
         })
       );
+    }
+
+    case 'fill-swap': {
+      const raw = args.rest[0];
+      const listingId = Number(raw);
+      if (!raw || !Number.isInteger(listingId) || listingId <= 0) {
+        console.error('fill-swap needs a positive listing id:  guild-worker fill-swap <listingId> [--alternative <n>]');
+        return 2;
+      }
+      let alternative: number | undefined;
+      if (args.options.has('alternative')) {
+        alternative = Number(args.options.get('alternative'));
+        if (!Number.isInteger(alternative) || alternative < 0) {
+          console.error('--alternative must be a whole number from 0');
+          return 2;
+        }
+      }
+      const live = args.flags.has('live');
+      const identity = await deps.loadIdentity();
+      const result = await deps.runFillSwap({
+        listingId,
+        alternative,
+        live,
+        identity,
+        config: loadConfig(),
+        log: line => line && console.error(`fill-swap: ${line}`),
+      });
+      if (result.refused) {
+        console.error(`\nfill-swap refused: ${result.message}\n`);
+        console.log(`RESULT ${JSON.stringify(result)}`);
+        return 1;
+      }
+      if (result.manifest && result.dryRun) {
+        console.error('\nManifest that WOULD be signed (re-run with --live to sign):\n');
+        console.error(result.manifest);
+        console.error('');
+      }
+      console.error(result.dryRun ? 'Dry-run only — nothing signed.' : `Filled listing ${listingId}. The NFT is in this account.`);
+      console.log(`RESULT ${JSON.stringify(result)}`);
+      return 0;
     }
 
     case 'dispute': {

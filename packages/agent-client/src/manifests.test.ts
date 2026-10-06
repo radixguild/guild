@@ -80,6 +80,13 @@ const SERVER_EXPORTS = [
   'cancelTaskManifest',
   'cancelTaskAfterClaimManifest',
   'releaseAfterReviewTimeoutManifest',
+  // NFT swap (P7-05) — the six NftSwap builders.
+  'listSwapManifest',
+  'fillSwapManifest',
+  'cancelSwapManifest',
+  'withdrawSwapProceedsManifest',
+  'extendSwapListingManifest',
+  'burnListingReceiptManifest',
 ] as const;
 
 type ServerBuilder = (...a: never[]) => string;
@@ -121,6 +128,55 @@ function expectServerParity(builder: string, client: string, buildServer: () => 
   if (serverLoadError) throw new Error(`parity guard disarmed: ${serverLoadError}`);
   expect(client).toBe(buildServer());
 }
+
+// ── NFT swap (P7-05) — every builder byte-identical to guild-app's ─────────────
+// guild-app's builders are pinned to the manifests the 2026-09-15 proving run
+// signed on the live component; parity here carries that proof to the agent.
+describe('NFT swap builders — parity with guild-app', () => {
+  const SWAP = 'component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4';
+  const RECEIPT = 'resource_rdx1nfq47l0t7glmntfjuandqdmlejzvffq4cvlvrha94kqr52mdrvt2e7';
+  const NFT = 'resource_rdx1ng3k9ll8yygujlamrszv5qu58nv9kqtala6cry2xql4006ccyrykdk';
+  const SELLER = 'account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm';
+  const BUYER = 'account_rdx12y5senkxfxg38swfv4tg88lx73jqnkdvcnzv8kwwdmg0efl40r2p7u';
+  const FUNGIBLE = { kind: 'fungible' as const, resource: MAINNET_XRD, amount: '5000.25' };
+  const NON_FUNGIBLE = { kind: 'nonFungible' as const, resource: NFT, id: '<rare_7>' };
+
+  test('listSwapManifest — an AnyOf of both kinds', () => {
+    const asks = [FUNGIBLE, NON_FUNGIBLE];
+    expectServerParity('listSwapManifest', clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#', asks, 1790114665), () =>
+      (server.listSwapManifest as unknown as typeof clientManifests.listSwapManifest)(SWAP, SELLER, NFT, '#2#', asks, 1790114665)
+    );
+  });
+
+  test('fillSwapManifest — fungible and non-fungible payments', () => {
+    for (const [alt, ask] of [[0, FUNGIBLE], [1, NON_FUNGIBLE]] as const) {
+      expectServerParity('fillSwapManifest', clientManifests.fillSwapManifest(SWAP, BUYER, 3, alt, ask), () =>
+        (server.fillSwapManifest as unknown as typeof clientManifests.fillSwapManifest)(SWAP, BUYER, 3, alt, ask)
+      );
+    }
+  });
+
+  test('the four receipt-holder calls', () => {
+    for (const name of [
+      'cancelSwapManifest',
+      'withdrawSwapProceedsManifest',
+      'extendSwapListingManifest',
+      'burnListingReceiptManifest',
+    ] as const) {
+      const client = clientManifests[name](SWAP, SELLER, RECEIPT, 3);
+      expectServerParity(name, client, () =>
+        (server[name] as unknown as (typeof clientManifests)[typeof name])(SWAP, SELLER, RECEIPT, 3)
+      );
+    }
+  });
+
+  test('the client refuses the same inputs the app refuses', () => {
+    expect(() => clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#', [], 1790114665)).toThrow(/at least one/);
+    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 256, FUNGIBLE)).toThrow(/alternative/);
+    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, { ...FUNGIBLE, amount: '0.0' })).toThrow(/ask\.amount/);
+    expect(() => clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#")', [FUNGIBLE], 1790114665)).toThrow(/assetId/);
+  });
+});
 
 describe('the parity guard itself', () => {
   // Runs first, so a disarmed harness is reported as its own named failure rather

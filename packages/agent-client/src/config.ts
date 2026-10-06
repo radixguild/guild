@@ -43,6 +43,16 @@ export const LIVE_ESCROW_COMPONENT =
   'component_rdx1czka54tdxyva098x7djgdsqplt63n9qdglep47atkzpml45hp88yly';
 
 /**
+ * The live guild-nft-swap component (P7-05): instantiated 2026-09-15 23:08:53Z,
+ * same address as guild-app/src/lib/config.ts NFT_SWAP_COMPONENT (pinned by
+ * escrow-address-drift.test.ts). Its listing-receipt resource is NOT a config
+ * value: swap.ts reads it from the component's own state on every use, so no
+ * partial override can pair this address with a stale receipt.
+ */
+export const LIVE_NFT_SWAP_COMPONENT =
+  'component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4';
+
+/**
  * Production escrow components that have been RETIRED. They are still real,
  * still hold state, and pointing a dispute leg at one is never something a
  * caller means to do — so the fuse refuses these too.
@@ -160,6 +170,13 @@ export interface GuildClientConfig {
    * escrow-address-drift.test.ts's AG-13 comment on `taskReceiptResource`).
    */
   taskReceiptResource: string;
+  /**
+   * The guild-nft-swap component the swap verbs (`guild-poster list-swap` /
+   * `cancel-swap` / `withdraw-swap`, `guild-worker fill-swap`) act on. Env
+   * override: GUILD_NFT_SWAP_COMPONENT. swap.ts refuses any address whose
+   * blueprint is not `NftSwap`.
+   */
+  nftSwapComponent: string;
 }
 
 const DEFAULTS: GuildClientConfig = {
@@ -207,6 +224,7 @@ const DEFAULTS: GuildClientConfig = {
   // "Task Receipt — WAVE B component" row). PARTIAL-OVERRIDE TRAP: move this
   // together with escrowComponent, same as claimReceiptResource above.
   taskReceiptResource: 'resource_rdx1n2gxh84q62taekne4d5mys5yk23du7yyvma6zjuh0vvhn4w2vrtkju',
+  nftSwapComponent: LIVE_NFT_SWAP_COMPONENT,
 };
 
 import { keyFileExists, readKeyFile, resolveKeyFilePath } from './key-file.js';
@@ -279,6 +297,7 @@ export function loadConfig(overrides: Partial<GuildClientConfig> = {}): GuildCli
     badgeManagerComponent: env('GUILD_BADGE_MANAGER'),
     workerBadgeResource: env('GUILD_WORKER_BADGE_RESOURCE'),
     taskReceiptResource: env('GUILD_ESCROW_TASK_RECEIPT_RESOURCE'),
+    nftSwapComponent: env('GUILD_NFT_SWAP_COMPONENT'),
   };
   const merged: GuildClientConfig = { ...DEFAULTS };
   for (const [key, value] of Object.entries({ ...fromEnv, ...overrides })) {

@@ -162,3 +162,29 @@ export type {
   DoWork,
   IntentRecord,
 } from './worker.js';
+
+// NFT swap legs (P7-05) — guild-poster list-swap / cancel-swap / withdraw-swap,
+// guild-worker fill-swap. See swap.ts.
+export {
+  runListSwap,
+  runFillSwap,
+  runCancelSwap,
+  runWithdrawSwap,
+  readSwapState,
+  readSwapListing,
+  readListedListingId,
+  parseSwapListing,
+  swapStatus,
+  expiryForDays,
+} from './swap.js';
+export type { SwapListing, SwapStatus, SwapState, SwapFee, SwapLegResult, ListingRead } from './swap.js';
+export {
+  listSwapManifest,
+  fillSwapManifest,
+  cancelSwapManifest,
+  withdrawSwapProceedsManifest,
+  extendSwapListingManifest,
+  burnListingReceiptManifest,
+} from './manifests.js';
+export type { SwapAsk } from './manifests.js';
+export { LIVE_NFT_SWAP_COMPONENT } from './config.js';
