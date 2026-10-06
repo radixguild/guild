@@ -470,6 +470,40 @@ export async function readDisputeRaised(
 }
 
 /**
+ * Read a raise_dispute tx's DisputeRaisedEvent for what the dispute-evidence
+ * route must check a filed statement against: WHO raised it (`raised_by`) and
+ * the statement hash they committed (`dispute_evidence_hash: Option<Hash>`).
+ *
+ * `evidenceHash: null` is a CONFIRMED absence — the event read cleanly and its
+ * Option is None (a dispute raised without a statement). Anything unreadable —
+ * the tx, the emitter pin, the task id, `raised_by`, or a Some whose bytes are
+ * not a 32-byte hex — returns null for the whole read, never a guess, so the
+ * route fails closed instead of storing prose it could not check.
+ */
+export async function readDisputeEvidenceCommitment(
+  intentHash: string,
+  escrowComponent: string,
+  expectedTaskId: number,
+): Promise<{ raisedBy: "Poster" | "Worker"; evidenceHash: string | null } | null> {
+  const events = await fetchTxEvents(intentHash);
+  if (!events) return null;
+  const fields = findEventFields(events, "DisputeRaisedEvent", escrowComponent);
+  if (!fields) return null;
+  if (u64Field(fields, "task_id") !== expectedTaskId) return null;
+  const raisedBy = enumVariantField(fields, "raised_by");
+  if (raisedBy !== "Poster" && raisedBy !== "Worker") return null;
+  const opt = fields.find((f) => f?.field_name === "dispute_evidence_hash");
+  if (!opt) return null;
+  const variant = opt.variant_name ?? (opt.variant_id === "0" ? "None" : opt.variant_id === "1" ? "Some" : null);
+  if (variant === "None") return { raisedBy, evidenceHash: null };
+  if (variant !== "Some") return null;
+  const inner = Array.isArray(opt.fields) ? opt.fields[0] : null;
+  if (!inner || inner.kind !== "Bytes" || typeof inner.hex !== "string") return null;
+  if (!/^[0-9a-fA-F]{64}$/.test(inner.hex)) return null;
+  return { raisedBy, evidenceHash: inner.hex.toLowerCase() };
+}
+
+/**
  * Read an auto_resolve_dispute tx's DisputeAutoResolvedEvent → the EXACT
  * on-chain settlement amounts (decimal strings; "0" is a valid share). The
  * confirm route writes the ledger rows from these verified amounts — never
