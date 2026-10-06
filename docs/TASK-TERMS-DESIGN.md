@@ -267,7 +267,9 @@ The guild-public `bot/services/github.js` watcher, re-imagined app-canonical
   verdict panel. The PR link is regex-extracted from submission content (the
   evidence hash binds only `content`, so nothing about the commitment moves);
   the PR must live under the brief's committed `repoUrl` (no borrowing green
-  PRs); merged/CI/review are checked against the task's definition-of-done and
+  PRs; since 2026-10-06 a task with no `repoUrl` cannot be verified at all,
+  `422 NO_REPO_PIN`, and a verdict stored without a pin no longer renders as
+  this task's evidence); merged/CI/review are checked against the task's definition-of-done and
   the verdict stored on the submission row. On-demand (poster/submitter
   button or agent API call) — no cron, no custody question.
 - **v2 (deferred to the keeper-cron + signing-custody decision)**: scheduled
@@ -277,7 +279,10 @@ The guild-public `bot/services/github.js` watcher, re-imagined app-canonical
 - **Operational notes from the live test** (its pull request is in the
   repository this one was exported from, and that reference does not resolve
   here): (a) verifying a PR in a private repository needs `GITHUB_TOKEN` in the
-  server env; for a public one the token is optional and only raises the rate
-  limit (`guild-app/src/lib/pr-verify.ts`). (b) At the time, the lint job was
+  server env AND the repository listed in `PR_VERIFY_PRIVATE_REPOS`
+  (`owner/repo`, comma-separated; since 2026-10-06 any other private PR answers
+  like one GitHub hides, so the route never confirms it exists); for a public
+  one the token is optional and only raises the rate limit
+  (`guild-app/src/lib/pr-verify.ts`). (b) At the time, the lint job was
   red on every PR, so `ci-green` could never pass. *(Resolved by 2026-10-02:
   the `lint (guild-app)` job passes on `main`.)*

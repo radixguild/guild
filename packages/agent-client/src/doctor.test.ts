@@ -335,6 +335,19 @@ describe('funding check', () => {
 });
 
 describe('badge check', () => {
+  test('unreadable badge holdings → fail that says so, never "holds no badge" (both lanes)', async () => {
+    const unreadable = async (): Promise<string | null> => {
+      throw new Error('could not read its badge holdings');
+    };
+    for (const config of [loadConfig({ agentBadgeResource: GAGENT, agentBadgeLocalId: '#1#' }), CONFIG]) {
+      const report = await runDoctor({ config, env: HEALTHY_ENV, deps: healthyDeps({ resolveBadgeLocalId: unreadable }) });
+      expect(byId(report, 'badge').status).toBe('fail');
+      expect(byId(report, 'badge').detail).toContain('could not read');
+      expect(byId(report, 'badge').detail).not.toContain('holds no');
+      expect(report.verdict).toBe('not-ready');
+    }
+  });
+
   test('badge env set but NFT not held → fail with the right lane hint', async () => {
     const config = loadConfig({ agentBadgeResource: GAGENT, agentBadgeLocalId: '#1#' });
     const report = await runDoctor({

@@ -1,4 +1,7 @@
 <!-- status: proposal
+     verified: 2026-10-06 (the banner's first bullet ONLY: it said BUG-7 was still open. The PULL
+     cutover of 2026-08-17 closed it; the bullet now says so, and says why "trustless" stays
+     banned regardless. Nothing else re-checked.)
      verified: 2026-08-23 (ONE addition: "The Ladder" section, the operator's 2026-08-23 positioning
      frame, recorded with its evidence. Measured this pass: Xi'an's undated status in the current
      primary roadmap page; Radix TVL ~$1.1-1.2M via a live DefiLlama query (matches this repo's
@@ -22,10 +25,13 @@
 > The argument (why coordination is the bottleneck, why Radix, why agents) is intact and still
 > the operating thesis. These specifics are not:
 > - 🔴 **"Trustless payment — Yes (escrow)"** in the comparison table, and **"trustless
->   payments"** in the bottom line, are **banned copy and factually false.** Settlement returns
->   funds via the *caller's* manifest (BUG-7, open), so payout integrity depends on the app
->   building an honest manifest. The live product says "on-chain escrow" and is enforced by
->   `guild-app/scripts/honest-copy.mjs`. **Do not lift a line from this doc into anything
+>   payments"** in the bottom line, are **banned copy and factually false.** When this banner
+>   was written, settlement returned funds via the *caller's* manifest (BUG-7), so payout
+>   integrity depended on the app building an honest manifest. The PULL cutover of 2026-08-17
+>   closed that: settlement now credits only the accounts pinned at claim and funding. The word
+>   stays false all the same, because one operator-held arbiter rules every dispute and the
+>   escrow's owner badge can change its settings. The live product says "on-chain escrow" and
+>   is enforced by `guild-app/scripts/honest-copy.mjs`. **Do not lift a line from this doc into anything
 >   public.**
 > - 🔴 **The Newcomer → Master "Reputation Levels" table is the vestigial ladder.** The shipped
 >   on-chain one is **member → elder**, and the point-gated task bands here exist nowhere in

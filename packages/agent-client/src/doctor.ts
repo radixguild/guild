@@ -20,6 +20,7 @@ import {
   type ClaimBondBasis,
 } from './gateway.js';
 import { AgentIdentity } from './identity.js';
+import { findAgentPrivateKeyHex, resolveKeyFilePath } from './key-file.js';
 import { localPairingFor, type AgentState } from './agent-state.js';
 import { MIN_SWEEP_XRD, loadOwnerLink } from './sweep.js';
 
@@ -141,6 +142,33 @@ function localBadgeSource(
   }
 }
 
+/**
+ * Badge holdings read that keeps "could not read" apart from "holds none":
+ * resolveBadgeLocalId throws on an unreadable Gateway answer, and doctor
+ * reports that as its own failing check instead of crashing or saying the
+ * account holds no badge.
+ */
+async function readBadge(
+  deps: DoctorDeps,
+  account: string,
+  resource: string,
+  gatewayBaseUrl: string
+): Promise<{ held: string | null; error: string | null }> {
+  try {
+    return { held: await deps.resolveBadgeLocalId(account, resource, gatewayBaseUrl), error: null };
+  } catch (error) {
+    return { held: null, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+const badgeUnreadable = (why: string): CheckResult => ({
+  id: 'badge',
+  label: 'badge',
+  status: 'fail',
+  detail: `could not read the account's badge holdings: ${why}`,
+  hint: 'A Gateway hiccup, not a missing badge. Re-run doctor in a minute, or check GUILD_GATEWAY_URL.',
+});
+
 const skip = (id: string, label: string, why: string): CheckResult => ({
   id,
   label,
@@ -169,14 +197,34 @@ export async function runDoctor(options: {
 
   // ── 1. key ────────────────────────────────────────────────────────────────
   let identity: AgentIdentity | null = null;
-  const keyHex = env.GUILD_AGENT_PRIVATE_KEY;
-  if (!keyHex) {
+  // The same sources the signing commands read (GUILD_AGENT_PRIVATE_KEY, else
+  // the key file), so doctor's verdict is about the key `run` and `mint-badge`
+  // would actually sign with.
+  let keyHex: string | undefined;
+  let keySource: 'env' | 'file' = 'env';
+  let keyFileProblem: string | null = null;
+  try {
+    const found = findAgentPrivateKeyHex(env);
+    keyHex = found?.keyHex;
+    if (found) keySource = found.source;
+  } catch (error) {
+    keyFileProblem = error instanceof Error ? error.message : String(error);
+  }
+  if (keyFileProblem !== null) {
     checks.push({
       id: 'key',
       label: 'agent key',
       status: 'fail',
-      detail: 'GUILD_AGENT_PRIVATE_KEY is not set.',
-      hint: 'This kit never creates a key — bring your own: export GUILD_AGENT_PRIVATE_KEY (or, for `guild-agent`, put it in GUILD_AGENT_KEY_FILE).',
+      detail: keyFileProblem,
+      hint: 'Expect the file to hold 64 hex chars (32-byte ed25519) and be readable by this user. Fix the file, or export GUILD_AGENT_PRIVATE_KEY instead.',
+    });
+  } else if (!keyHex) {
+    checks.push({
+      id: 'key',
+      label: 'agent key',
+      status: 'fail',
+      detail: `No agent key: GUILD_AGENT_PRIVATE_KEY is not set and there is no key file at ${resolveKeyFilePath(env)}.`,
+      hint: 'This kit never creates a key — bring your own: export GUILD_AGENT_PRIVATE_KEY, or put it in the file GUILD_AGENT_KEY_FILE names.',
     });
   } else {
     try {
@@ -185,7 +233,7 @@ export async function runDoctor(options: {
         id: 'key',
         label: 'agent key',
         status: 'pass',
-        detail: `parses OK — account ${identity.address}`,
+        detail: `parses OK${keySource === 'file' ? ' (from the key file)' : ''} — account ${identity.address}`,
       });
     } catch (error) {
       checks.push({
@@ -458,13 +506,16 @@ export async function runDoctor(options: {
   } else if (config.agentBadgeResource && config.agentBadgeLocalId) {
     const isMemberResource = config.agentBadgeResource === config.workerBadgeResource;
     const laneName = isMemberResource ? 'member-badge' : 'agent-badge';
-    const held = await deps.resolveBadgeLocalId(
+    const { held, error: badgeReadError } = await readBadge(
+      deps,
       identity.address,
       config.agentBadgeResource,
       config.gatewayBaseUrl
     );
     const expected = normalizeLocalId(config.agentBadgeLocalId);
-    if (!held) {
+    if (badgeReadError !== null) {
+      checks.push(badgeUnreadable(badgeReadError));
+    } else if (!held) {
       checks.push({
         id: 'badge',
         label: 'badge',
@@ -494,12 +545,15 @@ export async function runDoctor(options: {
       });
     }
   } else {
-    const heldMember = await deps.resolveBadgeLocalId(
+    const { held: heldMember, error: memberReadError } = await readBadge(
+      deps,
       identity.address,
       config.workerBadgeResource,
       config.gatewayBaseUrl
     );
-    if (heldMember) {
+    if (memberReadError !== null) {
+      checks.push(badgeUnreadable(memberReadError));
+    } else if (heldMember) {
       checks.push({
         id: 'badge',
         label: 'badge',
