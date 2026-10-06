@@ -1,0 +1,24 @@
+CALL_METHOD
+    Address("account_rdx12y5senkxfxg38swfv4tg88lx73jqnkdvcnzv8kwwdmg0efl40r2p7u")
+    "withdraw"
+    Address("resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd")
+    Decimal("1")
+;
+TAKE_FROM_WORKTOP
+    Address("resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd")
+    Decimal("1")
+    Bucket("payment")
+;
+CALL_METHOD
+    Address("component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4")
+    "fill"
+    1u64
+    0u8
+    Bucket("payment")
+;
+CALL_METHOD
+    Address("account_rdx12y5senkxfxg38swfv4tg88lx73jqnkdvcnzv8kwwdmg0efl40r2p7u")
+    "try_deposit_batch_or_abort"
+    Expression("ENTIRE_WORKTOP")
+    Enum<0u8>()
+;

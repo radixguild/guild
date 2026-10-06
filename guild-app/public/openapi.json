@@ -4014,6 +4014,149 @@
         ]
       }
     },
+    "/swaps/{id}": {
+      "get": {
+        "summary": "One NFT swap listing, read fresh from the chain, with its receipt holder and the live fees",
+        "description": "`receipt.holder` is the account holding the listing receipt — the only credential that can cancel, extend or withdraw proceeds (proceeds always go to the listing's pinned `seller`). A listing the operator hid from the site answers 200 with `listing.hidden: true` and no NFT display data, so its receipt holder is never locked out. 404 NOT_FOUND, 502 LISTING_UNREADABLE (the record exists but did not parse), 503 CHAIN_UNREADABLE, 429 RATE_LIMITED (60/min per address).",
+        "tags": [
+          "swaps"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Envelope `{ ok: true, data: ... }`. Response bodies are not schema-typed yet — call the endpoint to see the shape."
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED — see Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "FEATURE_DISABLED or AGENT_LANE_OFF — the operator has switched this surface off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/swaps": {
+      "get": {
+        "summary": "NFT swap listings, newest first, read from the guild-nft-swap component on chain",
+        "description": "Each listing is the component's own record (seller, asset, asks as exact decimal strings, unix-second times, state) plus `status` and best-effort NFT display data, with `resources` carrying name / symbol / divisibility for every resource named. `fees` are the live `fill` and `extend_listing` royalties. Listings the operator hid are left off (counted in `hidden`) unless `seller` is given, where they appear with `hidden: true` and no NFT display data. 503 CHAIN_UNREADABLE when the Gateway cannot be read — never an empty list in its place. 429 RATE_LIMITED (60/min per address).",
+        "tags": [
+          "swaps"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "At the ledger clock in `ledgerTime`. `open` = fillable now; `expired` = still Listed but past its expiry (only the seller can act: cancel or extend). Default `all`.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "expired",
+                "filled",
+                "cancelled",
+                "all"
+              ]
+            }
+          },
+          {
+            "name": "seller",
+            "in": "query",
+            "required": false,
+            "description": "Only listings whose pinned seller is this account address.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "description": "Cursor: the previous page's `nextCursor` (a listing id).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "1-100, default 48.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Envelope `{ ok: true, data: ... }`. Response bodies are not schema-typed yet — call the endpoint to see the shape."
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED — see Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "FEATURE_DISABLED or AGENT_LANE_OFF — the operator has switched this surface off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tasks/{id}/dispute-evidence": {
       "post": {
         "summary": "Attach the hashed dispute statement for a task",

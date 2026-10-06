@@ -142,7 +142,9 @@ export async function injectWalletMock(
       },
       async sendTransaction({ transactionManifest }: { transactionManifest: string }) {
         sent.push(transactionManifest);
-        return ok({ transactionIntentHash: `txid_e2e_${++txN}` });
+        // `status` mirrors the real toolkit, which resolves ok only once the
+        // transaction reached a final status (the swap buttons check for it).
+        return ok({ transactionIntentHash: `txid_e2e_${++txN}`, status: "CommittedSuccess" });
       },
     };
     w.__GUILD_E2E_RDT__ = () => ({ walletApi, destroy() {} });

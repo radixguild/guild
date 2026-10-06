@@ -1,0 +1,113 @@
+{
+ "transaction": {
+  "transaction_status": "CommittedSuccess",
+  "intent_hash": "txid_rdx1hdkp85sp42r5eragxpjm3vt8d58ggf0hjwlsgkt3p8rjaddtmhxsp6gjq6",
+  "confirmed_at": "2026-09-15T23:13:34.925Z",
+  "receipt": {
+   "events": [
+    {
+     "name": "LockFeeEvent",
+     "emitter": {
+      "type": "Method",
+      "entity": {
+       "is_global": false,
+       "entity_type": "InternalFungibleVault",
+       "entity_address": "internal_vault_rdx1tpst9rju2dtmpmxc66dz7wdh57fg78jh5n30vrm6004jsh5suhvccx"
+      },
+      "object_module_id": "Main"
+     },
+     "data": {
+      "fields": []
+     }
+    },
+    {
+     "name": "MintNonFungibleResourceEvent",
+     "emitter": {
+      "type": "Method",
+      "entity": {
+       "is_global": true,
+       "entity_type": "GlobalNonFungibleResource",
+       "entity_address": "resource_rdx1nfq47l0t7glmntfjuandqdmlejzvffq4cvlvrha94kqr52mdrvt2e7"
+      },
+      "object_module_id": "Main"
+     },
+     "data": {
+      "fields": []
+     }
+    },
+    {
+     "name": "ListedEvent",
+     "emitter": {
+      "type": "Method",
+      "entity": {
+       "is_global": true,
+       "entity_type": "GlobalGenericComponent",
+       "entity_address": "component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4"
+      },
+      "object_module_id": "Main"
+     },
+     "data": {
+      "fields": [
+       {
+        "value": "1",
+        "kind": "U64",
+        "field_name": "listing_id"
+       },
+       {
+        "value": "account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm",
+        "kind": "Reference",
+        "type_name": "ComponentAddress",
+        "field_name": "seller"
+       },
+       {
+        "value": "resource_rdx1ng3k9ll8yygujlamrszv5qu58nv9kqtala6cry2xql4006ccyrykdk",
+        "kind": "Reference",
+        "type_name": "ResourceAddress",
+        "field_name": "asset_resource"
+       },
+       {
+        "value": "#1#",
+        "kind": "NonFungibleLocalId",
+        "field_name": "asset_id"
+       },
+       {
+        "element_kind": "Enum",
+        "elements": [
+         {
+          "variant_id": "0",
+          "variant_name": "Fungible",
+          "fields": [
+           {
+            "value": "resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd",
+            "kind": "Reference",
+            "type_name": "ResourceAddress",
+            "field_name": "resource"
+           },
+           {
+            "value": "1",
+            "kind": "Decimal",
+            "field_name": "amount"
+           }
+          ],
+          "kind": "Enum",
+          "type_name": "Ask"
+         }
+        ],
+        "kind": "Array",
+        "field_name": "asks"
+       },
+       {
+        "value": "1790114665",
+        "kind": "I64",
+        "type_name": "Instant",
+        "field_name": "expires_at"
+       }
+      ],
+      "kind": "Tuple",
+      "type_name": "ListedEvent"
+     }
+    }
+   ]
+  }
+ }
+}

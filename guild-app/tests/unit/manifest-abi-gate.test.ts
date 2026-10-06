@@ -35,6 +35,8 @@ import * as manifests from "../../src/lib/manifests"
 
 const REPO = resolve(__dirname, "../../..")
 const LIB_RS = resolve(REPO, "escrow/scrypto/guild-marketplace-escrow/src/lib.rs")
+// The NftSwap blueprint — same package, its own module (P7-02).
+const NFT_SWAP_RS = resolve(REPO, "escrow/scrypto/guild-marketplace-escrow/src/nft_swap.rs")
 const MANIFESTS_TS = resolve(REPO, "guild-app/src/lib/manifests.ts")
 
 // Real-format dummy addresses (must pass the anchored `[a-z0-9]{20,}$` check).
@@ -56,6 +58,12 @@ const HASH64 = "a".repeat(64)
 function rustTypeToKind(rustType: string): string {
   const t = rustType.trim()
   if (t === "u64") return "u64"
+  if (t === "u8") return "u8"
+  // nft_swap.rs: `Instant` crosses the manifest as its i64 seconds, the asset
+  // and the returned NFT are typed buckets, and the asks are one Array.
+  if (t === "Instant") return "i64"
+  if (t === "NonFungibleBucket") return "Bucket"
+  if (t === "Vec<Ask>") return "Array"
   if (t === "Proof") return "Proof"
   if (t === "Bucket") return "Bucket"
   if (t === "Decimal") return "Decimal"
@@ -70,6 +78,8 @@ function rustTypeToKind(rustType: string): string {
 function argLineToKind(line: string): string {
   const l = line.trim()
   if (/^\d+u64$/.test(l)) return "u64"
+  if (/^\d+u8$/.test(l)) return "u8"
+  if (/^\d+i64$/.test(l)) return "i64"
   if (l.startsWith("Proof(")) return "Proof"
   if (l.startsWith("Bucket(")) return "Bucket"
   if (l.startsWith("Decimal(")) return "Decimal"
@@ -149,6 +159,27 @@ const GATED: Record<string, () => string> = {
     manifests.withdrawPosterManifest(ESCROW, POSTER, RECEIPT_RES, 7),
   registerAcceptedTokenManifest: () =>
     manifests.registerAcceptedTokenManifest(ESCROW, POSTER, BADGE_RES, RECEIPT_RES, 1),
+}
+
+// SWAP-GATED: the NftSwap builders, checked the same way against nft_swap.rs
+// (P7-04). A separate roster because they target a different component and
+// blueprint; the completeness test counts them.
+const SWAP = "component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4"
+const XRD_RES = "resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd"
+const SWAP_GATED: Record<string, () => string> = {
+  listSwapManifest: () =>
+    manifests.listSwapManifest(SWAP, POSTER, BADGE_RES, "#1#", [
+      { kind: "fungible", resource: XRD_RES, amount: "5000" },
+      { kind: "nonFungible", resource: RECEIPT_RES, id: "#2#" },
+    ], 1790114665),
+  fillSwapManifest: () =>
+    manifests.fillSwapManifest(SWAP, WORKER, 1, 0, { kind: "fungible", resource: XRD_RES, amount: "5000" }),
+  fillSwapManifestNonFungible: () =>
+    manifests.fillSwapManifest(SWAP, WORKER, 1, 1, { kind: "nonFungible", resource: RECEIPT_RES, id: "#2#" }),
+  cancelSwapManifest: () => manifests.cancelSwapManifest(SWAP, POSTER, RECEIPT_RES, 1),
+  withdrawSwapProceedsManifest: () => manifests.withdrawSwapProceedsManifest(SWAP, POSTER, RECEIPT_RES, 1),
+  extendSwapListingManifest: () => manifests.extendSwapListingManifest(SWAP, POSTER, RECEIPT_RES, 1),
+  burnListingReceiptManifest: () => manifests.burnListingReceiptManifest(SWAP, POSTER, RECEIPT_RES, 1),
 }
 
 // NON-ESCROW: exported functions that never CALL_METHOD the escrow component —
@@ -301,7 +332,7 @@ describe("manifest-abi gate — every escrow call matches the blueprint signatur
     const exported = [...src.matchAll(/^export function (\w+)/gm)].map((m) => m[1])
     expect(exported.length).toBeGreaterThan(10) // the scrape itself works
     const unaccounted = exported.filter(
-      (n) => !(n in GATED) && !NON_ESCROW.has(n) && !LEGACY_PUSH.has(n),
+      (n) => !(n in GATED) && !(n in SWAP_GATED) && !NON_ESCROW.has(n) && !LEGACY_PUSH.has(n),
     )
     expect(
       unaccounted,
@@ -328,4 +359,49 @@ describe("manifest-abi gate — every escrow call matches the blueprint signatur
     expect(() => argLineToKind("SomeNewSyntax(1)")).toThrow(/unclassifiable/)
     expect(() => rustTypeToKind("Vec<Bucket>")).toThrow(/unmapped/)
   })
+})
+
+describe("manifest-abi gate — every NftSwap call matches nft_swap.rs", () => {
+  const methods = new Map(
+    scrapeMethods(NFT_SWAP_RS).map((m: { name: string; params: string[]; returns: string }) => [m.name, m]),
+  )
+
+  it("scraped the swap ABI (the scraper is alive on this module too)", () => {
+    for (const name of ["list", "fill", "cancel", "extend_listing", "withdraw_proceeds", "burn_listing_receipt"]) {
+      expect(methods.has(name), `nft_swap.rs scrape is missing ${name}`).toBe(true)
+    }
+  })
+
+  for (const [builder, build] of Object.entries(SWAP_GATED)) {
+    it(`${builder} matches the ABI and the worktop flow on every swap call`, () => {
+      const manifest = build()
+      const calls = escrowCalls(manifest, SWAP)
+      expect(calls.length, `${builder} emitted no swap CALL_METHOD at all`).toBeGreaterThan(0)
+      for (const call of calls) {
+        const abi = methods.get(call.method)
+        expect(abi, `${builder} calls "${call.method}" which does not exist in nft_swap.rs`).toBeTruthy()
+        const expected = abi!.params
+          .filter((p: string) => !/^&(mut )?self$/.test(p.trim()))
+          .map((p: string) => rustTypeToKind(p.split(":").slice(1).join(":")))
+        expect(call.kinds, `${builder} → "${call.method}": [${call.kinds}] vs blueprint [${expected}]`).toEqual(expected)
+      }
+      // Worktop flow, the same rule as the escrow leg above — with the typed
+      // bucket spelled out, since \bBucket\b cannot see "NonFungibleBucket".
+      const lines = manifest.split(";").map((c) => c.split("\n").map((l) => l.trim()).filter(Boolean)).filter((l) => l.length)
+      lines.forEach((ins, i) => {
+        if (ins[0] !== "CALL_METHOD" || ins[1] !== `Address("${SWAP}")`) return
+        const method = /^"([a-z_0-9]+)"$/.exec(ins[2] ?? "")![1]
+        const returns = methods.get(method)!.returns
+        const after = lines.slice(i + 1)
+        if (/Bucket\b/.test(returns)) {
+          expect(
+            after.some((x) => x[0] === "CALL_METHOD" && /^"try_deposit_batch_or_abort"$/.test(x[2] ?? "")),
+            `${builder} → "${method}" returns ${returns} but nothing deposits it`,
+          ).toBe(true)
+        } else {
+          expect(after.filter((x) => /^TAKE/.test(x[0])), `${builder} → "${method}" returns ${returns}`).toEqual([])
+        }
+      })
+    })
+  }
 })

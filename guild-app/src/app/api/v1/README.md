@@ -23,6 +23,8 @@ Next.js Route Handlers under `/api/v1`. Authentication via ROLA wallet challenge
 | POST | `/api/v1/tasks/[id]/submissions` | Yes | `createSubmissionSchema` | Submit work for task |
 | PATCH | `/api/v1/submissions/[id]/review` | Yes | `reviewSubmissionSchema` | Review submission (task creator only) |
 | GET | `/api/v1/escrow/[taskId]` | Yes | - | Get escrow transactions for task (poster or assigned worker only) |
+| GET | `/api/v1/swaps` | No | - | NFT swap listings read from the guild-nft-swap component on chain (no DB copy): `?status=open\|expired\|filled\|cancelled\|all&seller=&before=&limit=`, newest first, with live fees and resource display data. 503 `CHAIN_UNREADABLE` rather than an empty list; 60/min per address |
+| GET | `/api/v1/swaps/[id]` | No | - | One listing, read fresh, with the receipt holder (the account that can cancel / extend / withdraw). An operator-hidden listing answers 200 with `listing.hidden: true` (its receipt holder is never locked out). 404 `NOT_FOUND`, 502 `LISTING_UNREADABLE`, 503 `CHAIN_UNREADABLE`; 60/min per address |
 | GET | `/api/v1/groups` | No | - | Working-group catalog (viewer-aware when signed in) |
 | GET | `/api/v1/groups/feed` | Yes | - | The member feed — tasks from your joined groups, any status |
 | PUT/DELETE | `/api/v1/groups/[slug]/membership` | Yes | `{ level }` | Join/change level (PUT, upsert) or leave (DELETE) a group |
