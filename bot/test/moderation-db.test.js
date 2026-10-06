@@ -45,4 +45,14 @@ describe('moderation db', () => {
     assert.ok(!ids.includes(2002), 'banned id must be excluded');
     db.unbanUser(2002);
   });
+
+  it('listUserTgIds holds only Telegram user ids: no negative placeholder rows (2026-10-06)', () => {
+    // Web voters/proposers and API agents get negative tg_ids, and a negative id names a
+    // group chat to the Bot API: a broadcast must never send to one.
+    db.registerUser(-1790000000, 'account_rdx1ccc', 'web-voter');
+    db.registerUser(-900001, 'agent:worker', 'agent:worker');
+    const ids = db.listUserTgIds();
+    assert.ok(ids.includes(2001));
+    assert.deepEqual(ids.filter((id) => id <= 0), []);
+  });
 });

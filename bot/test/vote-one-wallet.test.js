@@ -77,7 +77,7 @@ describe('index.js badge gates resolve the wallet through memberAddress', () => 
     assert.match(body, /memberAddress\(ctx\.from\.id\)/);
     assert.match(body, /getBadgeResult\(who\.address\)/);
     assert.match(body, /badge\.error/);
-    assert.match(body, /db\.recordVote\(proposalId, ctx\.from\.id, who\.address, voteChoice\)/);
+    assert.match(body, /db\.recordVote\(proposalId, ctx\.from\.id, who\.address, voteChoice, badgeId\)/);
     assert.match(body, /wallet_already_voted/);
     assert.doesNotMatch(body, /\buser\.radix_address\b/);
   });

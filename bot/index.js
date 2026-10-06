@@ -109,7 +109,9 @@ async function notifyDiscord(content) {
     await fetch(DISCORD_WEBHOOK, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      // No mentions resolve: proposal and task titles are member-written text, and
+      // "@everyone" in one would ping the whole server (2026-10-06).
+      body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
     });
   } catch (e) {
     console.error("[Discord] Webhook failed:", e.message);
@@ -189,7 +191,7 @@ async function requireBadge(ctx) {
 // (drop banned users outright; admins exempt so a typo'd /ban can't lock the
 // operator out), then a per-user flood throttle. Implementations + unit tests:
 // services/guards.js, test/guards.test.js.
-const { createBanGuard, createThrottleGuard } = require("./services/guards");
+const { createBanGuard, createThrottleGuard, refuseOutsidePrivate } = require("./services/guards");
 const { runBroadcast } = require("./services/broadcast");
 // FIRST, before the guards: one `[cmd]` line per incoming command — name, chat type and a
 // salted hash of the sender; never arguments, ids or plain messages. See services/command-log.js.
@@ -438,11 +440,13 @@ bot.on("callback_query:data", async (ctx, next) => {
   }
 
   let has = false;
+  let badgeId = null; // the badge NFT's local id: a vote is also deduped on the badge (it is transferable)
   // getBadgeResult keeps "the Gateway didn't answer" apart from "no badge" (hasBadge does not).
   try {
     const badge = await getBadgeResult(who.address);
     if (badge.error) throw new Error("badge read failed (Gateway)");
     has = !!(badge.data && badge.data.status === "active");
+    badgeId = (badge.data && badge.data.id) || null;
   } catch (e) {
     console.error("[Vote] badge read error:", e.message);
     return ctx.answerCallbackQuery({ text: "Could not verify badge. Try again in a moment.", show_alert: true });
@@ -451,13 +455,16 @@ bot.on("callback_query:data", async (ctx, next) => {
     return ctx.answerCallbackQuery({ text: "You need a Guild badge to vote. Mint: " + PORTAL + "/mint", show_alert: true });
   }
 
-  const result = db.recordVote(proposalId, ctx.from.id, who.address, voteChoice);
+  const result = db.recordVote(proposalId, ctx.from.id, who.address, voteChoice, badgeId);
   if (!result.ok) {
     if (result.error === "already_voted") {
       return ctx.answerCallbackQuery({ text: "Already voted on this one.", show_alert: true });
     }
     if (result.error === "wallet_already_voted") {
       return ctx.answerCallbackQuery({ text: "This wallet has already voted on this one.", show_alert: true });
+    }
+    if (result.error === "badge_already_voted") {
+      return ctx.answerCallbackQuery({ text: copy.badgeAlreadyVoted(), show_alert: true });
     }
     console.error("[Vote] recordVote refused:", result.error);
     return ctx.answerCallbackQuery({ text: "Could not record that vote. Try again in a moment.", show_alert: true });
@@ -478,7 +485,14 @@ bot.on("callback_query:data", async (ctx, next) => {
 
   // The bot still queues its off-ledger XP row for the vote (services/xp.js), but says
   // nothing about it: that queue has never been applied, and the dice game is closed.
-  queueXpReward(who.address, "vote");
+  // The vote is already recorded here, so a failure in this side effect is logged and the
+  // member still hears that the vote counted (until 2026-10-06 it fell to the outer catch
+  // and answered "Error processing vote" for a vote that had been recorded).
+  try {
+    queueXpReward(who.address, "vote");
+  } catch (e) {
+    console.error("[Vote] XP queue failed after the vote was recorded:", e.message);
+  }
 
   ctx.answerCallbackQuery({ text: copy.voteRecorded(voteChoice) });
   } catch (e) {
@@ -1094,6 +1108,9 @@ bot.command("signer", async (ctx) => {
   if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply("Admin only.");
   const args = ctx.message.text.split(" ").slice(1);
   const sub = (args[0] || "").toLowerCase();
+  // `disable` is the emergency stop and prints nothing about the account, so it works in
+  // any chat; everything else answers only in a DM.
+  if (sub !== "disable" && await refuseOutsidePrivate(ctx, copy.adminCommandDmOnly())) return;
 
   if (sub === "status") {
     const status = txSigner.getSignerStatus();
@@ -1416,6 +1433,7 @@ bot.command("mystatus", (ctx) => ctx.reply(copy.myStatus({ tickets: db.getFeedba
 bot.command("adminfeedback", async (ctx) => {
   // Simple admin check — only creator can manage feedback
   if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply("Admin only.");
+  if (await refuseOutsidePrivate(ctx, copy.adminCommandDmOnly())) return;
 
   const args = ctx.message.text.split(/\s+/).slice(1);
   const sub = args[0];
@@ -1579,6 +1597,7 @@ bot.command("cv3", (ctx) => ctx.reply(copy.cv3Parked()));
 
 bot.command("agent", async (ctx) => {
   if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply("Admin only.");
+  if (await refuseOutsidePrivate(ctx, copy.adminCommandDmOnly())) return;
 
   const args = (ctx.match || "").trim().split(/\s+/);
   const sub = args[0];
@@ -1789,7 +1808,8 @@ setInterval(async () => {
 
 // ── PR Merge Watcher (auto-verify tasks) ─────────────────
 
-const { parsePRUrl: parsePR, checkPRStatus } = require("./services/github");
+const { prAutoVerifyTarget, checkPRStatus } = require("./services/github");
+const prWatcherNoRepoLogged = new Set();
 
 async function checkPRMerges() {
   // Find all submitted bounties with PR URLs and pr_merged approval
@@ -1809,14 +1829,19 @@ async function checkPRMerges() {
   for (const bounty of bounties) {
     if (checked >= 10) break; // max 10 per cycle (rate limit safety)
 
-    const parsed = parsePR(bounty.github_pr);
-    if (!parsed) continue;
-
-    // If repo is specified, validate
-    if (bounty.approval_repo && (parsed.owner + "/" + parsed.repo) !== bounty.approval_repo) {
-      console.log("[PRWatcher] PR repo mismatch for bounty #" + bounty.id + ": expected " + bounty.approval_repo + ", got " + parsed.owner + "/" + parsed.repo);
+    // A bounty without approval_repo is left for a human to verify: a merged PR in any
+    // repository used to verify it (services/github.js prAutoVerifyTarget).
+    const target = prAutoVerifyTarget(bounty);
+    if (!target.ok) {
+      if (target.reason === "repo_mismatch") {
+        console.log("[PRWatcher] PR repo mismatch for bounty #" + bounty.id + ": expected " + bounty.approval_repo + ", got " + target.parsed.owner + "/" + target.parsed.repo);
+      } else if (target.reason === "no_approval_repo" && !prWatcherNoRepoLogged.has(bounty.id)) {
+        prWatcherNoRepoLogged.add(bounty.id); // once per bounty, not every 5 minutes
+        console.log("[PRWatcher] Bounty #" + bounty.id + " names no approval repo — not auto-verified; verify it by hand");
+      }
       continue;
     }
+    const parsed = target.parsed;
 
     const status = await checkPRStatus(parsed.owner, parsed.repo, parsed.number);
     checked++;
@@ -1913,8 +1938,9 @@ bot.command("unban", (ctx) => {
   return ctx.reply(res.changes > 0 ? "Unbanned tg_id " + tgId + "." : "tg_id " + tgId + " was not banned.");
 });
 
-bot.command("banned", (ctx) => {
+bot.command("banned", async (ctx) => {
   if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply("Admin only.");
+  if (await refuseOutsidePrivate(ctx, copy.adminCommandDmOnly())) return;
   const rows = db.listBanned();
   if (rows.length === 0) return ctx.reply("No banned users.");
   return ctx.reply("Banned (" + rows.length + "):\n" + rows.map((r) => "• " + r.tg_id + (r.reason ? " — " + r.reason : "")).join("\n"));

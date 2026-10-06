@@ -57,4 +57,16 @@ function createThrottleGuard({ max = 60, windowMs = 60000 } = {}) {
   return guard;
 }
 
-module.exports = { createBanGuard, createThrottleGuard };
+// Admin commands whose replies must never land in a group (2026-10-06): /agent create
+// printed a raw API key in whatever chat it was typed, /signer names the signing account
+// and prints its audit, and /adminfeedback and /banned list members. Outside a private
+// chat this takes the command message down (best effort: the bot may not be allowed to
+// delete in that group), answers with `text`, and returns true so the handler stops.
+async function refuseOutsidePrivate(ctx, text) {
+  if (ctx.chat && ctx.chat.type === "private") return false;
+  try { await ctx.deleteMessage(); } catch (_) { /* best effort */ }
+  try { await ctx.reply(text); } catch (_) { /* nothing more to do in a group we cannot write to */ }
+  return true;
+}
+
+module.exports = { createBanGuard, createThrottleGuard, refuseOutsidePrivate };
