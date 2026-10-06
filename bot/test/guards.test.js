@@ -4,7 +4,7 @@
 // admin self-lockout via ban, and throttle-dropped callbacks left unanswered.
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
-const { createBanGuard, createThrottleGuard } = require('../services/guards');
+const { createBanGuard, createThrottleGuard, refuseOutsidePrivate } = require('../services/guards');
 
 function fakeCtx({ id = 1, callback = false } = {}) {
   const calls = { answered: 0, answeredWith: [], replies: [] };
@@ -95,5 +95,41 @@ describe('createThrottleGuard', () => {
     await guard(fakeCtx({ id: 5 }), async () => { nexted++; });
     await guard(fakeCtx({ id: 6 }), async () => { nexted++; });
     assert.equal(nexted, 2);
+  });
+});
+
+// 2026-10-06: /agent create printed a raw API key in whatever chat it was typed in.
+// /agent, /signer, /adminfeedback and /banned now answer only in a private chat.
+describe('refuseOutsidePrivate', () => {
+  function chatCtx(type, { deleteFails = false } = {}) {
+    const calls = { deleted: 0, replies: [] };
+    return {
+      chat: { type },
+      from: { id: 1 },
+      message: { text: '/agent create bot tasks:read' },
+      deleteMessage: async () => { calls.deleted++; if (deleteFails) throw new Error('not enough rights'); },
+      reply: async (t) => { calls.replies.push(t); },
+      _calls: calls,
+    };
+  }
+
+  it('in a private chat it does nothing and lets the handler run', async () => {
+    const ctx = chatCtx('private');
+    assert.equal(await refuseOutsidePrivate(ctx, 'DM me'), false);
+    assert.deepEqual(ctx._calls, { deleted: 0, replies: [] });
+  });
+
+  for (const type of ['group', 'supergroup', 'channel']) {
+    it('in a ' + type + ' it takes the message down, answers, and stops the handler', async () => {
+      const ctx = chatCtx(type);
+      assert.equal(await refuseOutsidePrivate(ctx, 'DM me'), true);
+      assert.deepEqual(ctx._calls, { deleted: 1, replies: ['DM me'] });
+    });
+  }
+
+  it('still answers and stops when the bot may not delete in that group', async () => {
+    const ctx = chatCtx('supergroup', { deleteFails: true });
+    assert.equal(await refuseOutsidePrivate(ctx, 'DM me'), true);
+    assert.deepEqual(ctx._calls.replies, ['DM me']);
   });
 });

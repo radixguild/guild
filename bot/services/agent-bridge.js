@@ -115,6 +115,28 @@ function listKeys() {
   ).all().map(k => ({ ...k, scopes: (() => { try { return JSON.parse(k.scopes || "[]"); } catch { return []; } })() }));
 }
 
+// ── Agent identity in the bot's tables ──
+
+/**
+ * The tg_id an agent's rows carry (bounties.assignee_tg_id, proposals.creator_tg_id):
+ * a negative sentinel, so it can never be a Telegram user id.
+ */
+function agentTgId(agent) {
+  return -(agent.id + 900000);
+}
+
+/**
+ * proposals.creator_tg_id references users(tg_id), so an agent that creates a proposal
+ * needs a users row of its own; without one the insert failed its foreign key and the
+ * temp-check route always answered 500 (found 2026-10-06). radix_address holds the same
+ * "agent:<name>" placeholder the claim route writes to assignee_address: it is not an
+ * account, and no wallet lookup matches it.
+ */
+function ensureAgentUser(agent) {
+  raw().prepare("INSERT OR IGNORE INTO users (tg_id, radix_address, username) VALUES (?, ?, ?)")
+    .run(agentTgId(agent), "agent:" + agent.name, "agent:" + agent.name);
+}
+
 // ── Scope Check ──
 
 function hasScope(agent, scope) {
@@ -214,6 +236,8 @@ module.exports = {
   validateKey,
   revokeKey,
   listKeys,
+  agentTgId,
+  ensureAgentUser,
   hasScope,
   checkAgentRateLimit,
   checkDailyBudget,

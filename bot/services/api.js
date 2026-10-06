@@ -11,7 +11,10 @@ const arbiterService = require("./arbiter");
 const projectService = require("./project");
 const txSigner = require("./tx-signer");
 const agentBridge = require("./agent-bridge");
+const agentView = require("./agent-projection");
 const escrowFunding = require("./escrow-funding");
+const { legacyBountyBoardEnabled, agentProposalsEnabled } = require("./feature-flags");
+const { parsePRUrl } = require("./github");
 
 const API_PORT = parseInt(process.env.API_PORT || "3003");
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || "").split(",").filter(Boolean);
@@ -89,10 +92,16 @@ setInterval(() => {
 // outage is 503 badge_check_unavailable, not 403 badge_required (2026-10-06): hasBadge
 // read an outage as "no badge".
 async function badgeRefusal(address) {
+  return (await readActiveBadge(address)).refusal || null;
+}
+
+// The same check, keeping the badge it found: { badge } (getBadgeResult's data, whose
+// `id` is the NFT local id) or { refusal }. The vote route records badge.id (2026-10-06).
+async function readActiveBadge(address) {
   const read = await getBadgeResult(address).catch(() => ({ error: true }));
-  if (read.error) return { status: 503, error: "badge_check_unavailable" };
-  if (!(read.data && read.data.status === "active")) return { status: 403, error: "badge_required" };
-  return null;
+  if (read.error) return { refusal: { status: 503, error: "badge_check_unavailable" } };
+  if (!(read.data && read.data.status === "active")) return { refusal: { status: 403, error: "badge_required" } };
+  return { badge: read.data };
 }
 
 function startApi() {
@@ -290,7 +299,13 @@ function startApi() {
       return new Promise((resolve, reject) => {
         let body = "";
         req.on("data", chunk => { body += chunk; if (body.length > 8192) { reject(new Error("too_large")); req.destroy(); } });
-        req.on("end", () => { try { resolve(JSON.parse(body || "{}")); } catch { resolve({}); } });
+        // Only a JSON object is a body: `null`, a number or an array read as {} (a `null`
+        // body used to reach the handlers and answer 500 on the first property read).
+        req.on("end", () => {
+          let parsed = {};
+          try { parsed = JSON.parse(body || "{}"); } catch { parsed = {}; }
+          resolve(parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {});
+        });
         req.on("error", reject);
       });
     }
@@ -895,10 +910,10 @@ function startApi() {
           res.writeHead(400);
           return res.end(JSON.stringify({ ok: false, error: "address and vote required" }));
         }
-        const refusal = await badgeRefusal(body.address);
-        if (refusal) {
-          res.writeHead(refusal.status);
-          return res.end(JSON.stringify({ ok: false, error: refusal.error }));
+        const gate = await readActiveBadge(body.address);
+        if (gate.refusal) {
+          res.writeHead(gate.refusal.status);
+          return res.end(JSON.stringify({ ok: false, error: gate.refusal.error }));
         }
         const proposalId = parseInt(voteMatch[1]);
         const proposal = db.getProposal(proposalId);
@@ -918,7 +933,8 @@ function startApi() {
           try { db.prepare("INSERT OR IGNORE INTO users (tg_id, radix_address, username) VALUES (?, ?, ?)").run(-Math.floor(Date.now() / 1000), body.address, "web-voter"); } catch(e) {}
         }
         const resolvedTgId = user ? user.tg_id : -Math.floor(Date.now() / 1000);
-        const result = db.recordVote(proposalId, resolvedTgId, body.address, body.vote);
+        // The badge id too: the badge is transferable, so the wallet alone let it vote again from each wallet it moved to.
+        const result = db.recordVote(proposalId, resolvedTgId, body.address, body.vote, gate.badge.id || null);
         if (!result.ok) {
           res.writeHead(409);
           return res.end(JSON.stringify({ ok: false, error: result.error }));
@@ -1310,7 +1326,7 @@ function startApi() {
       if (req.method === "GET" && agentPath === "/activity") {
         const limit = parseInt(url.searchParams.get("limit") || "20");
         const activity = agentBridge.getActivity(agent.id, limit);
-        return res.end(JSON.stringify({ ok: true, data: activity }));
+        return res.end(JSON.stringify({ ok: true, data: activity.map(agentView.activity) }));
       }
 
       // GET /api/agent/tasks/match — skill-matched tasks
@@ -1326,7 +1342,7 @@ function startApi() {
           limit: parseInt(url.searchParams.get("limit") || "20"),
         });
         agentBridge.logActivity(agent.id, "match_tasks", { skills }, { count: results.length });
-        return res.end(JSON.stringify({ ok: true, data: results }));
+        return res.end(JSON.stringify({ ok: true, data: results.map(agentView.matchedTask) }));
       }
 
       // GET /api/agent/tasks/:id
@@ -1338,7 +1354,8 @@ function startApi() {
         const taskId = parseInt(agentPath.split("/")[2]);
         const bounty = db.getBountyDetail(taskId);
         if (!bounty) { res.writeHead(404); return res.end(JSON.stringify({ ok: false, error: "not_found" })); }
-        return res.end(JSON.stringify({ ok: true, data: bounty }));
+        const viewerIsCreator = bounty.creator_tg_id === agentBridge.agentTgId(agent);
+        return res.end(JSON.stringify({ ok: true, data: agentView.taskDetail(bounty, { viewerIsCreator }) }));
       }
 
       // GET /api/agent/proposals
@@ -1348,8 +1365,19 @@ function startApi() {
           return res.end(JSON.stringify({ ok: false, error: "insufficient_scope" }));
         }
         const proposals = db.getActiveProposals();
-        return res.end(JSON.stringify({ ok: true, data: proposals }));
+        return res.end(JSON.stringify({ ok: true, data: proposals.map(agentView.proposal) }));
       }
+
+      // The claim, submit and project-breakdown legs below write only the bot's LEGACY
+      // SQLite task table; the chain is never touched. No shipped client calls them (the
+      // agent kits and the MCP server use radixguild.com's /api/v1 and the on-chain
+      // escrow), so since 2026-10-06 they sit behind the legacy board's own flag,
+      // FEATURE_LEGACY_BOUNTY (default off; services/feature-flags.js).
+      const LEGACY_TASK_WRITE_OFF = JSON.stringify({
+        ok: false,
+        error: "service_unavailable",
+        detail: "Writing tasks through this API is switched off: it wrote only the bot's legacy task table, never the on-chain escrow. Tasks live on the web app: https://radixguild.com/agents",
+      });
 
       // POST /api/agent/tasks/:id/claim
       if (req.method === "POST" && agentPath.match(/^\/tasks\/\d+\/claim$/)) {
@@ -1357,6 +1385,7 @@ function startApi() {
           res.writeHead(403);
           return res.end(JSON.stringify({ ok: false, error: "insufficient_scope", detail: "Requires tasks:claim" }));
         }
+        if (!legacyBountyBoardEnabled()) { res.writeHead(503); return res.end(LEGACY_TASK_WRITE_OFF); }
         const taskId = parseInt(agentPath.split("/")[2]);
         const bounty = db.getBounty(taskId);
         if (!bounty) { res.writeHead(404); return res.end(JSON.stringify({ ok: false, error: "not_found" })); }
@@ -1373,14 +1402,23 @@ function startApi() {
         }
 
         // Assign to agent (use negative agent ID as TG ID sentinel, agent address as placeholder)
-        const agentTgId = -(agent.id + 900000); // negative sentinel for agent identity
+        const agentTgId = agentBridge.agentTgId(agent); // negative sentinel for agent identity
         const result = db.assignBounty(taskId, agentTgId, "agent:" + agent.name);
-        if (!result) {
-          return res.end(JSON.stringify({ ok: false, error: "assign_failed" }));
+        // assignBounty answers { changes: 0, error } when it refuses (an application is
+        // required above the threshold, or the task moved), and a bare { changes: 0 } when
+        // the guarded UPDATE lost a race. Until 2026-10-06 this route checked only that a
+        // result object came back, so it answered "assigned" for a claim that wrote nothing.
+        if (!result || result.error || result.changes !== 1) {
+          const error = (result && result.error) || "assign_failed";
+          const detail = error === "application_required"
+            ? "Tasks above " + result.threshold + " XRD need an accepted application before they can be claimed. Nothing was assigned."
+            : "The task could not be assigned to you. Nothing was assigned.";
+          res.writeHead(409);
+          return res.end(JSON.stringify({ ok: false, error, detail }));
         }
 
         // Flag as agent-claimed
-        db._raw().prepare("UPDATE bounties SET claimed_by_agent = 1 WHERE id = ?").run(taskId);
+        db._raw().prepare("UPDATE bounties SET claimed_by_agent = 1 WHERE id = ? AND assignee_tg_id = ?").run(taskId, agentTgId);
 
         agentBridge.logActivity(agent.id, "claim_task", { taskId, reward_xrd: bounty.reward_xrd }, { ok: true });
         return res.end(JSON.stringify({ ok: true, data: { taskId, status: "assigned", agent: agent.name } }));
@@ -1392,6 +1430,7 @@ function startApi() {
           res.writeHead(403);
           return res.end(JSON.stringify({ ok: false, error: "insufficient_scope", detail: "Requires tasks:submit" }));
         }
+        if (!legacyBountyBoardEnabled()) { res.writeHead(503); return res.end(LEGACY_TASK_WRITE_OFF); }
         const taskId = parseInt(agentPath.split("/")[2]);
         const body = await readBody(req);
         const bounty = db.getBounty(taskId);
@@ -1400,9 +1439,12 @@ function startApi() {
           return res.end(JSON.stringify({ ok: false, error: "not_assigned", detail: "Task status: " + bounty.status }));
         }
 
-        // Ownership check: agent must be the one who claimed this task
-        const agentTgId = -(agent.id + 900000);
-        if (bounty.assignee_tg_id !== agentTgId && bounty.claimed_by_agent === 1) {
+        // Ownership check: the task must be assigned to THIS agent. Until 2026-10-06 the
+        // check applied only to agent-claimed tasks, so any tasks:submit key could
+        // overwrite the submission on a task a person had claimed.
+        const agentTgId = agentBridge.agentTgId(agent);
+        if (bounty.assignee_tg_id !== agentTgId) {
+          res.writeHead(403);
           return res.end(JSON.stringify({ ok: false, error: "not_your_task", detail: "You did not claim this task" }));
         }
 
@@ -1410,12 +1452,22 @@ function startApi() {
         if (!githubPr) {
           return res.end(JSON.stringify({ ok: false, error: "url_required", detail: "Provide github_pr or url with your submission" }));
         }
-        db.submitBounty(taskId, githubPr);
+        // Only a GitHub pull request URL: the PR watcher (index.js checkPRMerges) reads
+        // github_pr as one, and the submission is shown to people as a GitHub link.
+        if (!parsePRUrl(githubPr)) {
+          res.writeHead(400);
+          return res.end(JSON.stringify({ ok: false, error: "invalid_pr_url", detail: "Expected a GitHub pull request URL: https://github.com/<owner>/<repo>/pull/<number>" }));
+        }
+        const submitted = db.submitBounty(taskId, githubPr.trim());
+        if (!submitted || submitted.changes !== 1) {
+          res.writeHead(409);
+          return res.end(JSON.stringify({ ok: false, error: "submit_failed", detail: "The task changed before the submission was written. Nothing was submitted." }));
+        }
 
-        agentBridge.logActivity(agent.id, "submit_work", { taskId, github_pr: githubPr }, { ok: true });
+        agentBridge.logActivity(agent.id, "submit_work", { taskId, github_pr: githubPr.trim() }, { ok: true });
         return res.end(JSON.stringify({
           ok: true,
-          data: { taskId, status: "submitted", github_pr: githubPr, note: "Awaiting human verification" },
+          data: { taskId, status: "submitted", github_pr: githubPr.trim(), note: "Awaiting human verification" },
         }));
       }
 
@@ -1425,28 +1477,45 @@ function startApi() {
           res.writeHead(403);
           return res.end(JSON.stringify({ ok: false, error: "insufficient_scope", detail: "Requires proposals:create" }));
         }
+        // Off unless FEATURE_AGENT_PROPOSALS=true (services/feature-flags.js): a working
+        // route lets any proposals:create key post to the groups and the Discord feed.
+        if (!agentProposalsEnabled()) {
+          res.writeHead(503);
+          return res.end(JSON.stringify({
+            ok: false,
+            error: "service_unavailable",
+            detail: "Creating proposals through this API is switched off. Proposals are raised in the Guild's Telegram group.",
+          }));
+        }
         const body = await readBody(req);
-        if (!body.title || body.title.length < 5) {
+        const title = typeof body.title === "string" ? body.title.trim().slice(0, 500) : "";
+        if (title.length < 5) {
           return res.end(JSON.stringify({ ok: false, error: "title_required", detail: "Title must be at least 5 characters" }));
         }
 
-        const contentCheck = checkContent(body.title + " " + (body.description || ""));
+        const contentCheck = checkContent(title + " " + (typeof body.description === "string" ? body.description : ""));
         if (contentCheck.blocked) {
-          return res.end(JSON.stringify({ ok: false, error: "content_blocked", detail: contentCheck.reason }));
+          // checkContent returns {blocked, word}; it has no reason to pass on.
+          return res.end(JSON.stringify({ ok: false, error: "content_blocked", detail: "Content not allowed" }));
         }
 
-        const agentTgId = -(agent.id + 900000);
-        const proposal = db.createProposal(body.title, agentTgId, {
+        // Until 2026-10-06 this route always answered 500: proposals.creator_tg_id is a
+        // users foreign key and the agent's sentinel id had no users row, and the
+        // response read .id off the number createProposal returns.
+        const agentTgId = agentBridge.agentTgId(agent);
+        agentBridge.ensureAgentUser(agent);
+        const category = typeof body.category === "string" && body.category.trim() ? body.category.trim().slice(0, 32) : "general";
+        const proposalId = db.createProposal(title, agentTgId, {
           type: "yesno",
           stage: "temp_check",
-          category: body.category || "general",
-          durationDays: 3,
+          category,
+          daysActive: 3,
         });
 
-        agentBridge.logActivity(agent.id, "create_temp_check", { title: body.title }, { ok: true, proposalId: proposal.id });
+        agentBridge.logActivity(agent.id, "create_temp_check", { title }, { ok: true, proposalId });
         return res.end(JSON.stringify({
           ok: true,
-          data: { proposalId: proposal.id, title: body.title, stage: "temp_check", note: "Requires community votes to advance" },
+          data: { proposalId, title, stage: "temp_check", note: "Requires community votes to advance" },
         }));
       }
 
@@ -1456,6 +1525,8 @@ function startApi() {
           res.writeHead(403);
           return res.end(JSON.stringify({ ok: false, error: "insufficient_scope", detail: "Requires projects:breakdown" }));
         }
+        // It wrote legacy bounties in the group lead's name and reset the project's budget.
+        if (!legacyBountyBoardEnabled()) { res.writeHead(503); return res.end(LEGACY_TASK_WRITE_OFF); }
         const groupId = parseInt(agentPath.split("/")[2]);
         const body = await readBody(req);
         if (!body.tasks || !Array.isArray(body.tasks) || body.tasks.length === 0) {
@@ -1476,20 +1547,29 @@ function startApi() {
         const groupId = parseInt(agentPath.split("/")[2]);
         const status = projectService.getFullProjectStatus(groupId);
         if (!status) { res.writeHead(404); return res.end(JSON.stringify({ ok: false, error: "not_found" })); }
-        return res.end(JSON.stringify({ ok: true, data: status }));
+        return res.end(JSON.stringify({ ok: true, data: agentView.projectStatus(status) }));
       }
 
       // ── Admin agent routes ──
 
-      // POST /api/agent/keys — create key (requires admin scope)
-      if (req.method === "POST" && agentPath === "/keys") {
-        if (!agentBridge.hasScope(agent, "admin")) {
-          res.writeHead(403);
-          return res.end(JSON.stringify({ ok: false, error: "insufficient_scope", detail: "Requires admin scope" }));
-        }
-        const body = await readBody(req);
-        const result = agentBridge.createAgentKey(body.name, body.scopes, body.owner_tg_id, body.rate_limit_per_hour, body.daily_budget_xrd);
-        return res.end(JSON.stringify(result));
+      // Agent keys are created and revoked only by a Guild admin, in a private chat with
+      // the bot (/agent create, /agent revoke in index.js). Until 2026-10-07 an
+      // `admin`-scope key could also POST /keys and DELETE /keys/:id here, over the
+      // internet: mint more keys (more `admin` keys among them, with any owner, a rate
+      // limit up to 10,000/hour and any daily budget) and revoke every other key. No
+      // shipped client called either route (the agent kits and the MCP server talk to
+      // radixguild.com /api/v1), so any write under /keys now answers 403 for every key,
+      // before the body is read, and the attempt goes to the caller's activity log.
+      // Listing stays: GET /keys is a read, and agentView.key leaves out owner ids and
+      // key hashes.
+      if ((agentPath === "/keys" || agentPath.startsWith("/keys/")) && req.method !== "GET" && req.method !== "HEAD") {
+        agentBridge.logActivity(agent.id, "key_write_refused", { method: req.method, path: agentPath }, { error: "telegram_only" });
+        res.writeHead(403);
+        return res.end(JSON.stringify({
+          ok: false,
+          error: "telegram_only",
+          detail: "Agent keys are created and revoked by a Guild admin in a private chat with the bot (/agent create, /agent revoke). This API does not manage keys.",
+        }));
       }
 
       // GET /api/agent/keys
@@ -1498,18 +1578,7 @@ function startApi() {
           res.writeHead(403);
           return res.end(JSON.stringify({ ok: false, error: "insufficient_scope" }));
         }
-        return res.end(JSON.stringify({ ok: true, data: agentBridge.listKeys() }));
-      }
-
-      // DELETE /api/agent/keys/:id
-      if (req.method === "DELETE" && agentPath.match(/^\/keys\/\d+$/)) {
-        if (!agentBridge.hasScope(agent, "admin")) {
-          res.writeHead(403);
-          return res.end(JSON.stringify({ ok: false, error: "insufficient_scope" }));
-        }
-        const keyId = parseInt(agentPath.split("/")[2]);
-        const result = agentBridge.revokeKey(keyId);
-        return res.end(JSON.stringify(result));
+        return res.end(JSON.stringify({ ok: true, data: agentBridge.listKeys().map(agentView.key) }));
       }
 
       res.writeHead(404);

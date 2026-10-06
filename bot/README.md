@@ -15,7 +15,7 @@ It was folded into this repository from `guild-public` on 2026-09-29, as a copy 
 - **`db.js`**: the SQLite schema. The file defaults to `guild.db` next to `db.js`; set `BOT_DB_PATH` to put it elsewhere. It runs in WAL mode, so a copy must use `sqlite3 <db> ".backup <file>"`, never a plain `cp` of `guild.db` alone.
 - **`lib/alert-policy.cjs`**: a vendored build of `packages/alert-policy` from this repository. Do not edit it. `test/alert-policy-vendor.test.js` recomputes its sha256 header.
 
-The HTTP API listens on `127.0.0.1:3003` (`API_HOST`, `API_PORT`). In production, of the bot's own routes only `/api/agent/*` is reachable from the internet (Bearer-gated, `services/agent-bridge.js`); the reverse proxy closes the rest. The operator routes need `Authorization: Bearer $XP_SIGNER_KEY` whatever the proxy does: `GET /api/xp-queue`, `POST /api/xp/mark-applied`, and the signer's `GET /api/signer/status` and `/api/signer/audit`. With `XP_SIGNER_KEY` unset they answer 401. For a liveness probe, use `GET /api/stats`, which needs no key and reads only the database.
+The HTTP API listens on `127.0.0.1:3003` (`API_HOST`, `API_PORT`). In production, of the bot's own routes only `/api/agent/*` is reachable from the internet (Bearer-gated, `services/agent-bridge.js`); the reverse proxy closes the rest. Agent keys are created and revoked only by an admin with `/agent create` and `/agent revoke` in a private chat with the bot: an `admin`-scope key can list them (`GET /api/agent/keys`), but any write under `/api/agent/keys` answers 403. The operator routes need `Authorization: Bearer $XP_SIGNER_KEY` whatever the proxy does: `GET /api/xp-queue`, `POST /api/xp/mark-applied`, and the signer's `GET /api/signer/status` and `/api/signer/audit`. With `XP_SIGNER_KEY` unset they answer 401. For a liveness probe, use `GET /api/stats`, which needs no key and reads only the database.
 
 ## Commands
 
@@ -30,7 +30,8 @@ Each flag is off unless set to the string `true`:
 | Flag | What it switches on |
 |---|---|
 | `FEATURE_ESCROW` | The escrow surface: the watcher and the bot's bounty/escrow/dispute API routes |
-| `FEATURE_LEGACY_BOUNTY` | The old in-chat `/bounty` board. When off, `/bounty` links to the web task board |
+| `FEATURE_LEGACY_BOUNTY` | The old in-chat `/bounty` board, and the agent API's `POST /api/agent/tasks/:id/claim`, `/submit` and `POST /api/agent/projects/:id/breakdown` (they write only that board's table). When off, `/bounty` links to the web task board and those three answer 503 |
+| `FEATURE_AGENT_PROPOSALS` | The agent API's `POST /api/agent/proposals/temp-check`, which puts a proposal in front of the Telegram groups (and the Discord feed when it closes). When off it answers 503 |
 | `FEATURE_TASK_ALERTS` | Opt-in DMs for newly funded tasks |
 | `FEATURE_WG_WATCHER` | The working-group sunset/overdue checker (paused) |
 | `CV2_ENABLED` | The parked CV2 governance reader |

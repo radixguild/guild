@@ -12,14 +12,36 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
 
 /**
  * Parse a GitHub PR URL into components.
- * Accepts: https://github.com/owner/repo/pull/123
+ * Accepts: https://github.com/owner/repo/pull/123 (optionally followed by /files, ?…, #…)
  * Returns: { owner, repo, number } or null
+ *
+ * Anchored to the github.com host since 2026-10-06: the old unanchored match also took
+ * https://any.host/github.com/owner/repo/pull/1, which then sat in github_pr as if it
+ * were a GitHub link.
  */
 function parsePRUrl(url) {
-  if (!url) return null;
-  const match = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+  if (!url || typeof url !== "string") return null;
+  const match = url.trim().match(/^https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/pull\/(\d+)(?:[/?#].*)?$/);
   if (!match) return null;
   return { owner: match[1], repo: match[2], number: parseInt(match[3]) };
+}
+
+/**
+ * Whether the PR watcher may auto-verify a submitted bounty, and against which PR.
+ * Returns { ok: true, parsed } or { ok: false, reason }.
+ *
+ * A bounty with no approval_repo is NOT auto-verified (2026-10-06). Before, the watcher
+ * then accepted a merged PR in ANY repository, so a worker could open and merge a PR in
+ * a repo of their own and have the task marked verified. Those tasks now wait for a
+ * human to verify them.
+ */
+function prAutoVerifyTarget(bounty) {
+  if (!bounty || bounty.approval_type !== "pr_merged") return { ok: false, reason: "not_pr_merged" };
+  const parsed = parsePRUrl(bounty.github_pr);
+  if (!parsed) return { ok: false, reason: "bad_pr_url" };
+  if (!bounty.approval_repo) return { ok: false, reason: "no_approval_repo" };
+  if (parsed.owner + "/" + parsed.repo !== bounty.approval_repo) return { ok: false, reason: "repo_mismatch", parsed };
+  return { ok: true, parsed };
 }
 
 /**
@@ -76,4 +98,4 @@ async function checkRateLimit() {
   }
 }
 
-module.exports = { parsePRUrl, checkPRStatus, checkRateLimit };
+module.exports = { parsePRUrl, prAutoVerifyTarget, checkPRStatus, checkRateLimit };
