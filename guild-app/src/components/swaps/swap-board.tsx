@@ -38,14 +38,16 @@ function SwapCard({ l, board }: { l: SwapListingView; board: SwapBoardView }) {
   return (
     <Link href={`/swaps/${l.listingId}`} className="group block no-underline">
       <Card className="h-full overflow-hidden transition-colors group-hover:border-primary/50">
-        <NftImage src={l.asset.imageUrl} alt={name} className="aspect-square w-full" />
-        <CardContent className="space-y-1.5 p-3">
-          <div className="flex items-start justify-between gap-2">
-            <p className="line-clamp-1 text-sm font-medium" title={name}>
-              {name}
-            </p>
+        <div className="relative">
+          <NftImage src={l.asset.imageUrl} alt={name} className="aspect-square w-full" />
+          <div className="absolute left-2 top-2">
             <SwapStatusBadge status={l.status} />
           </div>
+        </div>
+        <CardContent className="space-y-1.5 p-3">
+          <p className="line-clamp-2 text-sm font-medium break-words" title={name}>
+            {name}
+          </p>
           <p className="line-clamp-1 text-xs text-muted-foreground" title={l.assetResource}>
             {coll} · {l.assetId}
           </p>
