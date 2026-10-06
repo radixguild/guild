@@ -1,0 +1,30 @@
+CALL_METHOD
+    Address("account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm")
+    "withdraw_non_fungibles"
+    Address("resource_rdx1ng3k9ll8yygujlamrszv5qu58nv9kqtala6cry2xql4006ccyrykdk")
+    Array<NonFungibleLocalId>(NonFungibleLocalId("#1#"))
+;
+TAKE_NON_FUNGIBLES_FROM_WORKTOP
+    Address("resource_rdx1ng3k9ll8yygujlamrszv5qu58nv9kqtala6cry2xql4006ccyrykdk")
+    Array<NonFungibleLocalId>(NonFungibleLocalId("#1#"))
+    Bucket("asset")
+;
+CALL_METHOD
+    Address("component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4")
+    "list"
+    Address("account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm")
+    Bucket("asset")
+    Array<Enum>(
+        Enum<0u8>(
+            Address("resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd"),
+            Decimal("1")
+        )
+    )
+    1790114665i64
+;
+CALL_METHOD
+    Address("account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm")
+    "try_deposit_batch_or_abort"
+    Expression("ENTIRE_WORKTOP")
+    Enum<0u8>()
+;

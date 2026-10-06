@@ -1,6 +1,7 @@
 import { XRD_ADDRESS } from "./radix"
 import { INSTANTIATE_SPEC } from "./generated/instantiate-spec"
 import { isPositiveXrd, normalizeXrd } from "./xrd-decimal"
+import type { SwapAsk } from "./nft-swap"
 
 // Sanitize string values used in transaction manifests
 function sanitize(val: string): string {
@@ -1499,4 +1500,251 @@ CALL_METHOD
     Expression("ENTIRE_WORKTOP")
     Enum<0u8>()
 ;`
+}
+
+// ── NFT swap (guild-nft-swap) — P7-04 ────────────────────────────────────────
+//
+// Builders for the six NftSwap calls a wallet makes. Every shape here is the
+// one that ran on mainnet against the live component in the 2026-09-15 proving
+// run (list → fill → withdraw_proceeds, list → cancel; the signed files are kept
+// outside the repo with the ceremony record) — whitespace aside: the `asks`
+// array is emitted on ONE line so the manifest↔ABI gate reads it as one
+// argument. tests/unit/nft-swap-manifests.test.ts pins each builder to those
+// proven manifests, and tests/unit/manifest-abi-gate.test.ts checks every call
+// against src/nft_swap.rs.
+//
+// The account deposits use `try_deposit_batch_or_abort` (the proving run's
+// form): a refused deposit aborts the signer's own transaction before anything
+// moves, instead of stranding the returned NFT on the worktop.
+
+/** An ask's amount: a positive exact decimal at ≤ 18 places (Radix Decimal). */
+function swapAmount(val: string, name: string): string {
+  if (!/^\d{1,30}(\.\d{1,18})?$/.test(val) || !/[1-9]/.test(val)) {
+    throw new Error(`Invalid ${name}: must be a positive decimal string with at most 18 places`);
+  }
+  return val;
+}
+
+function swapAskArg(ask: SwapAsk, i: number): string {
+  const r = validateAddress(ask.resource, "resource_rdx");
+  if (ask.kind === "fungible") {
+    return `Enum<0u8>(Address("${r}"), Decimal("${swapAmount(ask.amount, `asks[${i}].amount`)}"))`;
+  }
+  if (ask.kind === "nonFungible") {
+    return `Enum<1u8>(Address("${r}"), NonFungibleLocalId("${validateLocalId(ask.id, `asks[${i}].id`)}"))`;
+  }
+  throw new Error(`Invalid asks[${i}]: unknown kind`);
+}
+
+function swapReceiptProof(account: string, receiptResource: string, listingId: number): string {
+  return `CALL_METHOD
+  Address("${account}")
+  "create_proof_of_non_fungibles"
+  Address("${validateAddress(receiptResource, "resource_rdx")}")
+  Array<NonFungibleLocalId>(NonFungibleLocalId("${intLocalId(listingId, "listingId")}"))
+;
+POP_FROM_AUTH_ZONE
+  Proof("receipt")
+;`;
+}
+
+function depositAllTo(account: string): string {
+  return `CALL_METHOD
+  Address("${account}")
+  "try_deposit_batch_or_abort"
+  Expression("ENTIRE_WORKTOP")
+  Enum<0u8>()
+;`;
+}
+
+/**
+ * List one NFT. `seller` is the account the NFT leaves AND the account the
+ * blueprint pins as the only proceeds destination; the listing receipt (the
+ * credential for cancel / extend / withdraw) is deposited back to it.
+ * `expiresAt` is unix seconds, at most 30 days after the ledger clock when
+ * the transaction executes (nft_swap.rs `list`) — use nft-swap.ts expiryForDays.
+ */
+export function listSwapManifest(
+  swapComponent: string,
+  seller: string,
+  assetResource: string,
+  assetId: string,
+  asks: SwapAsk[],
+  expiresAt: number,
+): string {
+  const c = validateAddress(swapComponent, "component_rdx");
+  const a = validateAddress(seller, "account_rdx");
+  const r = validateAddress(assetResource, "resource_rdx");
+  const id = validateLocalId(assetId, "assetId");
+  if (!Array.isArray(asks) || asks.length === 0) throw new Error("Invalid asks: at least one alternative is required");
+  const askList = asks.map(swapAskArg).join(", ");
+  const exp = validatePositiveInt(expiresAt, "expiresAt");
+  return `CALL_METHOD
+  Address("${a}")
+  "withdraw_non_fungibles"
+  Address("${r}")
+  Array<NonFungibleLocalId>(NonFungibleLocalId("${id}"))
+;
+TAKE_NON_FUNGIBLES_FROM_WORKTOP
+  Address("${r}")
+  Array<NonFungibleLocalId>(NonFungibleLocalId("${id}"))
+  Bucket("asset")
+;
+CALL_METHOD
+  Address("${c}")
+  "list"
+  Address("${a}")
+  Bucket("asset")
+  Array<Enum>(${askList})
+  ${exp}i64
+;
+${depositAllTo(a)}`;
+}
+
+/**
+ * Fill listing `listingId` with its alternative at index `alternative`.
+ * `ask` must be that alternative exactly as the chain stores it — the
+ * blueprint takes no change and no partial payment, so the manifest moves
+ * precisely that amount (or that one NFT) and nothing else. The listed NFT
+ * comes back on the worktop in the same transaction and lands in `buyer`.
+ */
+export function fillSwapManifest(
+  swapComponent: string,
+  buyer: string,
+  listingId: number,
+  alternative: number,
+  ask: SwapAsk,
+): string {
+  const c = validateAddress(swapComponent, "component_rdx");
+  const a = validateAddress(buyer, "account_rdx");
+  const lid = validatePositiveInt(listingId, "listingId");
+  if (!Number.isInteger(alternative) || alternative < 0 || alternative > 255) {
+    throw new Error("Invalid alternative: must be an integer 0-255");
+  }
+  const r = validateAddress(ask.resource, "resource_rdx");
+  let payment: string;
+  if (ask.kind === "fungible") {
+    const amt = swapAmount(ask.amount, "ask.amount");
+    payment = `CALL_METHOD
+  Address("${a}")
+  "withdraw"
+  Address("${r}")
+  Decimal("${amt}")
+;
+TAKE_FROM_WORKTOP
+  Address("${r}")
+  Decimal("${amt}")
+  Bucket("payment")
+;`;
+  } else if (ask.kind === "nonFungible") {
+    const id = validateLocalId(ask.id, "ask.id");
+    payment = `CALL_METHOD
+  Address("${a}")
+  "withdraw_non_fungibles"
+  Address("${r}")
+  Array<NonFungibleLocalId>(NonFungibleLocalId("${id}"))
+;
+TAKE_NON_FUNGIBLES_FROM_WORKTOP
+  Address("${r}")
+  Array<NonFungibleLocalId>(NonFungibleLocalId("${id}"))
+  Bucket("payment")
+;`;
+  } else {
+    throw new Error("Invalid ask: unknown kind");
+  }
+  return `${payment}
+CALL_METHOD
+  Address("${c}")
+  "fill"
+  ${lid}u64
+  ${alternative}u8
+  Bucket("payment")
+;
+${depositAllTo(a)}`;
+}
+
+/** Cancel a Listed listing (any time, expired or not). The receipt holder
+ *  gets the NFT back; the receipt itself stays (burn it separately). */
+export function cancelSwapManifest(
+  swapComponent: string,
+  account: string,
+  receiptResource: string,
+  listingId: number,
+): string {
+  const c = validateAddress(swapComponent, "component_rdx");
+  const a = validateAddress(account, "account_rdx");
+  return `${swapReceiptProof(a, receiptResource, listingId)}
+CALL_METHOD
+  Address("${c}")
+  "cancel"
+  Proof("receipt")
+;
+${depositAllTo(a)}`;
+}
+
+/** Pull a Filled listing's payment. The blueprint pays the SELLER pinned at
+ *  list, whoever presents the receipt — nothing here names a destination. */
+export function withdrawSwapProceedsManifest(
+  swapComponent: string,
+  account: string,
+  receiptResource: string,
+  listingId: number,
+): string {
+  const c = validateAddress(swapComponent, "component_rdx");
+  const a = validateAddress(account, "account_rdx");
+  return `${swapReceiptProof(a, receiptResource, listingId)}
+CALL_METHOD
+  Address("${c}")
+  "withdraw_proceeds"
+  Proof("receipt")
+;`;
+}
+
+/** Push a Listed listing's expiry to max(now, expiry) + 30 days. Carries the
+ *  `extend_listing` royalty, paid with the network fee. */
+export function extendSwapListingManifest(
+  swapComponent: string,
+  account: string,
+  receiptResource: string,
+  listingId: number,
+): string {
+  const c = validateAddress(swapComponent, "component_rdx");
+  const a = validateAddress(account, "account_rdx");
+  return `${swapReceiptProof(a, receiptResource, listingId)}
+CALL_METHOD
+  Address("${c}")
+  "extend_listing"
+  Proof("receipt")
+;`;
+}
+
+/** Retire a spent receipt: Cancelled, or Filled with the proceeds withdrawn.
+ *  The blueprint refuses it otherwise, because the receipt is the only
+ *  credential that can still move what the listing holds. */
+export function burnListingReceiptManifest(
+  swapComponent: string,
+  account: string,
+  receiptResource: string,
+  listingId: number,
+): string {
+  const c = validateAddress(swapComponent, "component_rdx");
+  const a = validateAddress(account, "account_rdx");
+  const rr = validateAddress(receiptResource, "resource_rdx");
+  const rid = intLocalId(listingId, "listingId");
+  return `CALL_METHOD
+  Address("${a}")
+  "withdraw_non_fungibles"
+  Address("${rr}")
+  Array<NonFungibleLocalId>(NonFungibleLocalId("${rid}"))
+;
+TAKE_NON_FUNGIBLES_FROM_WORKTOP
+  Address("${rr}")
+  Array<NonFungibleLocalId>(NonFungibleLocalId("${rid}"))
+  Bucket("receipt")
+;
+CALL_METHOD
+  Address("${c}")
+  "burn_listing_receipt"
+  Bucket("receipt")
+;`;
 }

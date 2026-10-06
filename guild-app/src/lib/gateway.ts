@@ -328,6 +328,22 @@ function findEventFields(
   return null;
 }
 
+/**
+ * The fields of the first `name` event that `emitter` emitted in a committed,
+ * SUCCESSFUL transaction — the same fail-closed emitter pin as every escrow
+ * reader above. null = unknown (not committed yet, failed, unreadable, or no
+ * such event from that emitter). Exported for the NFT swap reader.
+ */
+export async function readTxEventFields(
+  intentHash: string,
+  name: string,
+  emitter: string,
+): Promise<any[] | null> {
+  const events = await fetchTxEvents(intentHash);
+  if (!events) return null;
+  return findEventFields(events, name, emitter);
+}
+
 function u64Field(fields: any[], fieldName: string): number | null {
   const f = fields.find((x) => x?.field_name === fieldName);
   const v = f?.value;

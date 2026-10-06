@@ -1,0 +1,203 @@
+{
+ "ledger_state": {
+  "network": "mainnet",
+  "state_version": 561291238,
+  "proposer_round_timestamp": "2026-10-06T06:32:14.487Z"
+ },
+ "key_value_store_address": "internal_keyvaluestore_rdx1kp9yd7edwqrzn5gnwzc38drdmy8tnjpn864a3v4538tmtxky2x5cqp",
+ "entries": [
+  {
+   "key": {
+    "programmatic_json": {
+     "value": "1",
+     "kind": "U64"
+    }
+   },
+   "value": {
+    "programmatic_json": {
+     "fields": [
+      {
+       "value": "account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm",
+       "kind": "Reference",
+       "type_name": "ComponentAddress",
+       "field_name": "seller"
+      },
+      {
+       "value": "resource_rdx1ng3k9ll8yygujlamrszv5qu58nv9kqtala6cry2xql4006ccyrykdk",
+       "kind": "Reference",
+       "type_name": "ResourceAddress",
+       "field_name": "asset_resource"
+      },
+      {
+       "value": "#1#",
+       "kind": "NonFungibleLocalId",
+       "field_name": "asset_id"
+      },
+      {
+       "element_kind": "Enum",
+       "elements": [
+        {
+         "variant_id": "0",
+         "variant_name": "Fungible",
+         "fields": [
+          {
+           "value": "resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd",
+           "kind": "Reference",
+           "type_name": "ResourceAddress",
+           "field_name": "resource"
+          },
+          {
+           "value": "1",
+           "kind": "Decimal",
+           "field_name": "amount"
+          }
+         ],
+         "kind": "Enum",
+         "type_name": "Ask"
+        }
+       ],
+       "kind": "Array",
+       "field_name": "asks"
+      },
+      {
+       "value": "1789514014",
+       "kind": "I64",
+       "type_name": "Instant",
+       "field_name": "created_at"
+      },
+      {
+       "value": "1790114665",
+       "kind": "I64",
+       "type_name": "Instant",
+       "field_name": "expires_at"
+      },
+      {
+       "variant_id": "1",
+       "variant_name": "Filled",
+       "fields": [],
+       "kind": "Enum",
+       "type_name": "ListingState",
+       "field_name": "state"
+      },
+      {
+       "variant_id": "1",
+       "variant_name": "Some",
+       "fields": [
+        {
+         "value": "0",
+         "kind": "U8"
+        }
+       ],
+       "kind": "Enum",
+       "type_name": "Option",
+       "field_name": "filled_with"
+      },
+      {
+       "value": true,
+       "kind": "Bool",
+       "field_name": "proceeds_withdrawn"
+      }
+     ],
+     "kind": "Tuple",
+     "type_name": "Listing"
+    }
+   },
+   "last_updated_at_state_version": 558349550,
+   "is_locked": false
+  },
+  {
+   "key": {
+    "programmatic_json": {
+     "value": "2",
+     "kind": "U64"
+    }
+   },
+   "value": {
+    "programmatic_json": {
+     "fields": [
+      {
+       "value": "account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm",
+       "kind": "Reference",
+       "type_name": "ComponentAddress",
+       "field_name": "seller"
+      },
+      {
+       "value": "resource_rdx1ng3k9ll8yygujlamrszv5qu58nv9kqtala6cry2xql4006ccyrykdk",
+       "kind": "Reference",
+       "type_name": "ResourceAddress",
+       "field_name": "asset_resource"
+      },
+      {
+       "value": "#2#",
+       "kind": "NonFungibleLocalId",
+       "field_name": "asset_id"
+      },
+      {
+       "element_kind": "Enum",
+       "elements": [
+        {
+         "variant_id": "0",
+         "variant_name": "Fungible",
+         "fields": [
+          {
+           "value": "resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd",
+           "kind": "Reference",
+           "type_name": "ResourceAddress",
+           "field_name": "resource"
+          },
+          {
+           "value": "5000",
+           "kind": "Decimal",
+           "field_name": "amount"
+          }
+         ],
+         "kind": "Enum",
+         "type_name": "Ask"
+        }
+       ],
+       "kind": "Array",
+       "field_name": "asks"
+      },
+      {
+       "value": "1789514167",
+       "kind": "I64",
+       "type_name": "Instant",
+       "field_name": "created_at"
+      },
+      {
+       "value": "1790114665",
+       "kind": "I64",
+       "type_name": "Instant",
+       "field_name": "expires_at"
+      },
+      {
+       "variant_id": "2",
+       "variant_name": "Cancelled",
+       "fields": [],
+       "kind": "Enum",
+       "type_name": "ListingState",
+       "field_name": "state"
+      },
+      {
+       "variant_id": "0",
+       "variant_name": "None",
+       "fields": [],
+       "kind": "Enum",
+       "type_name": "Option",
+       "field_name": "filled_with"
+      },
+      {
+       "value": false,
+       "kind": "Bool",
+       "field_name": "proceeds_withdrawn"
+      }
+     ],
+     "kind": "Tuple",
+     "type_name": "Listing"
+    }
+   },
+   "last_updated_at_state_version": 558349699,
+   "is_locked": false
+  }
+ ]
+}

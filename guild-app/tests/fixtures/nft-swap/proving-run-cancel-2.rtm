@@ -1,0 +1,20 @@
+CALL_METHOD
+    Address("account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm")
+    "create_proof_of_non_fungibles"
+    Address("resource_rdx1nfq47l0t7glmntfjuandqdmlejzvffq4cvlvrha94kqr52mdrvt2e7")
+    Array<NonFungibleLocalId>(NonFungibleLocalId("#2#"))
+;
+POP_FROM_AUTH_ZONE
+    Proof("receipt")
+;
+CALL_METHOD
+    Address("component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4")
+    "cancel"
+    Proof("receipt")
+;
+CALL_METHOD
+    Address("account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm")
+    "try_deposit_batch_or_abort"
+    Expression("ENTIRE_WORKTOP")
+    Enum<0u8>()
+;
