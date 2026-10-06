@@ -1,6 +1,6 @@
 {
   "name": "@radix-guild/agent-client",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "description": "Programmatic Radix Guild marketplace client — the guild-agent CLI (status/stop/sweep) for a person's own agent, headless ROLA auth, on-chain claim/submit/expire/dispute legs, the guild-worker CLI (doctor/onboard/mint-badge/withdraw) for autonomous workers, and the guild-poster CLI (post/approve/cancel/cancel-after-claim/release-timeout/withdraw) for autonomous posters.",
   "license": "Apache-2.0",
   "repository": {

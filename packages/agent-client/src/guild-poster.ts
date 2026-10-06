@@ -106,6 +106,17 @@ import {
   type TransactionStatus,
 } from './tx.js';
 import { workBriefHash, type TaskTerms } from './work-brief.js';
+import { MAINNET_XRD } from './config.js';
+import {
+  parseAmount,
+  parseNftRef,
+  runCancelSwap,
+  runListSwap,
+  runWithdrawSwap,
+  type SwapAsk,
+  type SwapDeps,
+  type SwapLegResult,
+} from './swap.js';
 import { scrubWouldChange } from './scrub-guard.js';
 import { parseArgv, type ParsedArgs } from './guild-worker.js';
 
@@ -117,6 +128,12 @@ const VALUE_OPTIONS = new Set([
   '--terms-file',
   '--project',
   '--name',
+  // NFT swap verbs (P7-05) — see swap.ts.
+  '--nft',
+  '--price',
+  '--price-token',
+  '--ask-nft',
+  '--days',
 ]);
 
 // Valid-format placeholder account for keyless dry-run previews — same literal
@@ -158,6 +175,20 @@ usage: guild-poster <command> [flags]
                               share of the worker's claim bond after a
                               dispute). Takes the ON-CHAIN id, NOT the DB id —
                               see this file's "Two id spaces" doc comment.
+
+  list-swap                   list one NFT this account holds on the Guild NFT swap:
+                                --nft <resource>:<local id>
+                                --price <amount> [--price-token <resource>]   (default XRD)
+                                [--ask-nft <resource>:<local id>]             (an alternative)
+                                [--days <1-30>]                               (default 7)
+                              A buyer pays exactly one alternative, in full. The
+                              listing receipt comes back to this account; keep it.
+  cancel-swap <listingId>     take a Listed NFT back (expired or not).
+  withdraw-swap <listingId>   collect a Filled listing's payment; the component pays
+                              the seller pinned at list, whoever holds the receipt.
+                              Each swap verb checks the chain first (state at the
+                              ledger clock, the receipt, the NFT's holder) and
+                              signs nothing when a check fails.
 
   project list                list Guild projects — id, slug, name, and each
                               project's task/paid counts. Always a plain
@@ -915,6 +946,20 @@ export interface PosterCliOverrides {
   identity?: AgentIdentity | null;
   api?: PosterApiLike;
   deps?: Partial<PosterCliDeps>;
+  swapDeps?: Partial<SwapDeps>;
+}
+
+/** Print a swap leg's outcome the way every other leg here does; returns the exit code. */
+function finishSwapLeg(verb: string, result: SwapLegResult, done: string): number {
+  if (result.refused) {
+    console.error(`\n${verb} refused: ${result.message}\n`);
+    console.log(`RESULT ${JSON.stringify(result)}`);
+    return 1;
+  }
+  printManifestPreview(result);
+  console.error(result.dryRun ? 'Dry-run only — nothing signed.' : done);
+  console.log(`RESULT ${JSON.stringify(result)}`);
+  return 0;
 }
 
 function printManifestPreview(result: { manifest?: string; dryRun: boolean }): void {
@@ -1030,6 +1075,65 @@ export async function main(
       );
       console.log(`RESULT ${JSON.stringify(result)}`);
       return 0;
+    }
+
+    case 'list-swap': {
+      const nft = parseNftRef(args.options.get('nft'));
+      if (!nft) {
+        console.error('list-swap needs --nft <resource address>:<local id>, e.g. --nft resource_rdx1…:#1#');
+        return 2;
+      }
+      const asks: SwapAsk[] = [];
+      if (args.options.has('price')) {
+        const amount = parseAmount(args.options.get('price'));
+        if (!amount) {
+          console.error('--price must be a positive amount with at most 18 decimal places');
+          return 2;
+        }
+        asks.push({ kind: 'fungible', resource: args.options.get('price-token') ?? MAINNET_XRD, amount });
+      } else if (args.options.has('price-token')) {
+        console.error('--price-token names the token --price is in; it needs --price');
+        return 2;
+      }
+      if (args.options.has('ask-nft')) {
+        const want = parseNftRef(args.options.get('ask-nft'));
+        if (!want) {
+          console.error('--ask-nft needs <resource address>:<local id>');
+          return 2;
+        }
+        asks.push({ kind: 'nonFungible', ...want });
+      }
+      if (asks.length === 0) {
+        console.error('list-swap needs --price <amount> and/or --ask-nft <resource>:<local id>');
+        return 2;
+      }
+      const days = args.options.has('days') ? Number(args.options.get('days')) : 7;
+      const result = await runListSwap({ nft, asks, days, live, identity, config, deps: overrides.swapDeps, log });
+      return finishSwapLeg(
+        'list-swap',
+        result,
+        result.listingId
+          ? `Listed: listing ${result.listingId}. Its receipt is in this account — keep it; cancel-swap and withdraw-swap need it.`
+          : 'Listed. The listing id could not be read back yet — look the transaction up on the Dashboard.'
+      );
+    }
+
+    case 'cancel-swap':
+    case 'withdraw-swap': {
+      const listingId = positiveIntArg(args.rest[0]);
+      if (listingId === null) {
+        console.error(`${args.command} needs a positive listing id:  guild-poster ${args.command} <listingId>`);
+        return 2;
+      }
+      const run = args.command === 'cancel-swap' ? runCancelSwap : runWithdrawSwap;
+      const result = await run({ listingId, live, identity, config, deps: overrides.swapDeps, log });
+      return finishSwapLeg(
+        args.command,
+        result,
+        args.command === 'cancel-swap'
+          ? 'Cancelled. The NFT is back in this account.'
+          : 'Withdrawn. The component paid the seller account pinned at list — confirm on the transaction above.'
+      );
     }
 
     case 'project': {

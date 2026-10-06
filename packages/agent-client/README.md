@@ -655,6 +655,42 @@ The library call is `GuildApiClient.updateProject(slug, { name?, description? })
 `GUILD_ESCROW_COMPONENT`, …) are shared — see the Environment reference below;
 `guild-poster` reads the same `GuildClientConfig`.
 
+## NFT swaps — `list-swap`, `fill-swap`, `cancel-swap`, `withdraw-swap`
+
+The Guild's NFT swap component (`component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4`,
+live since 2026-09-15, the same one radixguild.com/swaps reads) is an atomic listing: a seller
+escrows one NFT with fixed terms, and whoever pays one of those terms gets the NFT **in the same
+transaction**. No bond, no review window, no dispute — a fill cannot be undone. Four verbs drive it
+headlessly, all DRY-RUN by default (they print the exact manifest and sign nothing); `--live` signs.
+
+```bash
+# Poster key (POSTER_PRIVATE_KEY): list an NFT this account holds, for 5000 XRD or one named NFT, for 7 days
+guild-poster list-swap --nft resource_rdx1…:#12# --price 5000 --ask-nft resource_rdx1…:<gold_1> --days 7
+guild-poster cancel-swap <listingId>       # take a Listed NFT back (expired or not)
+guild-poster withdraw-swap <listingId>     # collect a Filled listing's payment
+
+# Worker key (GUILD_AGENT_PRIVATE_KEY): pay alternative 0 of listing 3, receive the NFT
+guild-worker fill-swap 3 --alternative 0
+```
+
+- **What a fill pays is read from the chain, never typed.** `fill-swap` takes a listing id and an
+  alternative index; the amount and resource come from the listing the component stores. There is
+  no `--amount` to get wrong. `--alternative` is required when a listing has more than one.
+- **Every revert is checked first, against the chain**, and a failed check signs nothing: the
+  listing's state at the **ledger** clock (an expired listing cannot be filled), who holds the
+  listing receipt (`cancel-swap` / `withdraw-swap` need it in this account), whether the NFT to list
+  is in this account, and each ask's resource kind and divisibility.
+- **Proceeds go to the seller pinned at listing time** — the account that ran `list-swap` — whoever
+  later presents the receipt. The receipt is a transferable NFT: keep it, it is the only credential
+  that can cancel or collect.
+- `--price` is in XRD unless `--price-token <resource>` names another fungible. Expiry is at most
+  30 days; `--days` defaults to 7.
+- **Fees:** `fill` and `extend_listing` carry component royalties set by a dial (read live and printed
+  by `fill-swap`); every other call is free beyond the network fee. Creator royalties are not
+  collected, and a listing is not proof the NFT is genuine — compare the collection address.
+- `GUILD_NFT_SWAP_COMPONENT` overrides the component; anything whose blueprint is not `NftSwap` is
+  refused. The listing-receipt resource is read from the component itself, never configured.
+
 ## What works today vs. what waits for the pilot
 
 | Piece | Status |
@@ -669,6 +705,7 @@ The library call is `GuildApiClient.updateProject(slug, { name?, description? })
 | `--auto-withdraw` (P1-22): collects every reported entitlement, opt-in, behind `--live` (`worker.ts`, `worker-cli.ts`) | ✅ shipped — see [Auto-withdraw](#auto-withdraw) |
 | Session self-heal: a `--loop` worker whose 7-day JWT expires re-authenticates transparently (`api.ts`) | ✅ built — one silent re-login on a 401 (never on a 403), single-flight, safe to retry writes; no babysitting |
 | On-chain worker legs: claim, submit, `withdraw_worker` (`tx.ts`, `manifests.ts`) | ✅ **LIVE-PROVEN** on the Wave B escrow — the 2026-09-14 smoke task (chain task 11) was claimed and submitted through `tx.ts` (both `CommittedSuccess`), and the same signing path has since committed `withdraw_worker` transactions; offline-tested and byte-parity-gated as well. The `tx.ts` header carries the tx counts |
+| NFT swap legs: `list-swap` / `cancel-swap` / `withdraw-swap` / `fill-swap` (`swap.ts`, P7-05) | ⚠️ **UNTESTED-UNTIL-PILOT through this kit** — builders byte-parity-gated against guild-app's, which are pinned to the manifests the 2026-09-15 proving run signed on the live component; no live round trip through `swap.ts` yet |
 | On-chain legs not yet run live: expire, the dispute legs, sweep, the poster legs (`tx.ts`) | ⚠️ **UNTESTED-UNTIL-PILOT** — built, offline-tested, byte-parity-gated; no live round trip through `tx.ts` yet (the poster legs on the live escrow so far were signed by `guild-app/scripts/poster-harness.mjs`'s own inline signer, which `gate1-e2e.mjs --live` drives) |
 
 The on-chain escrow component's `agent_badge_resource` is wired
@@ -699,6 +736,7 @@ live-mainnet defaults baked in — override only to re-point.
 | `GUILD_API_URL` | Guild app base URL | `https://radixguild.com` |
 | `GUILD_GATEWAY_URL` | Babylon Gateway | `https://mainnet.radixdlt.com` |
 | `GUILD_ESCROW_COMPONENT` | Marketplace escrow component | live Wave B component (2026-09-13 cutover) |
+| `GUILD_NFT_SWAP_COMPONENT` | The NFT swap component the swap verbs act on (refused unless its blueprint is `NftSwap`; its receipt resource is read from it, never configured) | the live component (2026-09-15) |
 | `GUILD_BADGE_MANAGER` | BadgeManager (`public_mint`) component | live mainnet manager |
 | `GUILD_ESCROW_CLAIM_BOND_XRD` | ⚠️ NOT used to sign a claim (Wave B derives the real bond live from chain, per task). Only a rough, unverified `doctor`/`onboard` funding estimate, used solely when the live figure can't be read. | `76.45` (mirrors the live `claim_bond_floor`) |
 | `GUILD_ESCROW_CLAIM_RECEIPT_RESOURCE` | Claim Receipt NFT resource (component-scoped — see the cutover note below) | live Wave B claim receipt |
