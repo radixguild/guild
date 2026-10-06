@@ -99,8 +99,14 @@ function withDeadline(promise, ms, message) {
 // badge can take up to the TTL to be seen (mint already has chain propagation lag).
 const BADGE_CACHE_TTL_MS = parseInt(process.env.BADGE_CACHE_TTL_MS) || 30000;
 const BADGE_CACHE_MAX = parseInt(process.env.BADGE_CACHE_MAX) || 2000;
+// How old a cached read may be and still stand in for a failed one. Until 2026-10-06 a
+// Gateway that stayed down served the last read however old it was, so a badge moved or
+// burned long before still passed the gates. Default 10 × TTL; 0 turns stale serving off.
+const _staleMaxEnv = parseInt(process.env.BADGE_CACHE_STALE_MAX_MS);
+const BADGE_CACHE_STALE_MAX_MS = Number.isFinite(_staleMaxEnv) && _staleMaxEnv >= 0 ? _staleMaxEnv : BADGE_CACHE_TTL_MS * 10;
 const _badgeCache = new Map(); // radixAddress -> { at, data } — successful reads only
 
+// Swallows a Gateway error as "no badge" — gates must not use it; use getBadgeResult.
 async function hasBadge(radixAddress) {
   try {
     const badge = await getBadgeData(radixAddress);
@@ -127,8 +133,10 @@ async function getBadgeResult(radixAddress) {
   if (res.error) {
     // Gateway blip/timeout: never cache the failure (a cached error-null would
     // tell real badge holders "no badge" for the whole TTL). Serve a stale
-    // entry if one exists; otherwise report the error for this one call.
-    return cached ? { data: cached.data } : { error: true };
+    // entry while it is younger than BADGE_CACHE_STALE_MAX_MS; otherwise report
+    // the error for this one call.
+    if (cached && Date.now() - cached.at < BADGE_CACHE_STALE_MAX_MS) return { data: cached.data };
+    return { error: true };
   }
   if (_badgeCache.size >= BADGE_CACHE_MAX) {
     // Bounded memory: keys are attacker-controllable via the public badge API,

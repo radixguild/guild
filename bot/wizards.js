@@ -1,7 +1,7 @@
 // Guided wizards for onboarding, bounties, and registration
 const { InlineKeyboard } = require("grammy");
 const { legacyBountyBoardEnabled } = require("./services/feature-flags");
-const { getBadgeData } = require("./services/gateway");
+const { getBadgeResult } = require("./services/gateway");
 const copy = require("./services/copy");
 
 const wizardStates = new Map();
@@ -47,9 +47,14 @@ function setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward, checkC
       await ctx.answerCallbackQuery({ text: "Register first!", show_alert: true });
       return;
     }
-    const badge = await getBadgeData(user.radix_address);
+    // A Gateway outage is not "no badge" (2026-10-06): no mint button, just a retry.
+    const badgeRead = await getBadgeResult(user.radix_address).catch(() => ({ error: true }));
+    const badge = badgeRead.error ? null : badgeRead.data;
 
-    if (badge) {
+    if (badgeRead.error) {
+      const kb = new InlineKeyboard().text("Check again", "onboard_check_badge");
+      await ctx.editMessageText(copy.badgeCheckUnavailable(), { reply_markup: kb });
+    } else if (badge) {
       const kb = new InlineKeyboard().url("Browse open tasks", PORTAL + "/tasks");
       await ctx.editMessageText(
         copy.badgeFound({ badge, trust: db.getTrustScore(ctx.from.id) }),
@@ -249,12 +254,16 @@ function setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward, checkC
       // Look before offering to mint, as /register does. Until 2026-09-24 this said
       // "Voting is FREE — no XRD needed. Next step: mint your badge." to every wallet,
       // including ones that already held a badge.
-      getBadgeData(text)
-        .catch(() => null)
-        .then((badge) => ctx.reply(copy.registered({ portal: PORTAL, hasBadge: !!badge, mustLink: claim.mustLink }), {
-          reply_markup: badge
-            ? new InlineKeyboard().url("Browse open tasks", PORTAL + "/tasks")
-            : new InlineKeyboard().text("Next: Mint Badge", "onboard_mint"),
+      // A Gateway outage is not "no badge" either (2026-10-06): a retry button, not the mint one.
+      getBadgeResult(text)
+        .catch(() => ({ error: true }))
+        .then((badgeRead) => ctx.reply(copy.registered({ portal: PORTAL, hasBadge: !badgeRead.error && !!badgeRead.data,
+          badgeUnknown: !!badgeRead.error, mustLink: claim.mustLink }), {
+          reply_markup: badgeRead.error
+            ? new InlineKeyboard().text("Check my badge", "onboard_check_badge")
+            : badgeRead.data
+              ? new InlineKeyboard().url("Browse open tasks", PORTAL + "/tasks")
+              : new InlineKeyboard().text("Next: Mint Badge", "onboard_mint"),
         }))
         .catch((e) => console.error("[Onboard] register reply failed:", e.message));
       return true;

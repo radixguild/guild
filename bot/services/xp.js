@@ -45,31 +45,13 @@ function queueXpReward(radixAddress, action) {
     "INSERT INTO xp_rewards (radix_address, action, xp_amount) VALUES (?, ?, ?)"
   ).run(radixAddress, action, xp);
 
-  // Grid game: roll the dice
-  const mainDb = require("../db");
-  const roll = mainDb.rollDice();
-  const bonus = mainDb.ROLL_BONUSES[roll - 1] || 0;
-  mainDb.recordRoll(radixAddress, roll);
+  // No dice roll and no roll_bonus row (2026-10-06). Until then every queued action also
+  // rolled the closed dice game, recorded the roll (and 7-day streak rolls) in game_state
+  // and queued a roll_bonus row of 5-100 XP into the same pending queue the XP batch
+  // signer reads — bonus XP that copy.diceGameClosed says "does not count anywhere".
+  console.log("[XP] +" + xp + " for " + radixAddress.slice(0, 20) + "... (" + action + ")");
 
-  if (bonus > 0) {
-    db.prepare(
-      "INSERT INTO xp_rewards (radix_address, action, xp_amount) VALUES (?, ?, ?)"
-    ).run(radixAddress, "roll_bonus", bonus);
-  }
-
-  // 7-day streak bonus: 3 extra rolls
-  const gameState = mainDb.getGameState(radixAddress);
-  if (gameState.streak_days > 0 && gameState.streak_days % 7 === 0) {
-    for (let i = 0; i < 3; i++) {
-      const streakRoll = mainDb.rollDice();
-      mainDb.recordRoll(radixAddress, streakRoll);
-    }
-    console.log("[XP] 7-day streak bonus: +3 rolls for " + radixAddress.slice(0, 20) + "...");
-  }
-
-  console.log("[XP] +" + xp + " for " + radixAddress.slice(0, 20) + "... (" + action + ") | Roll: " + roll + " (+" + bonus + " bonus)");
-
-  return { queued: true, xp, roll, bonus };
+  return { queued: true, xp };
 }
 
 function getXpQueue() {

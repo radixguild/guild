@@ -2,7 +2,7 @@
 const http = require("http");
 const crypto = require("crypto");
 const db = require("../db");
-const { hasBadge, getBadgeData } = require("./gateway");
+const { getBadgeResult } = require("./gateway");
 const cv2 = require("./consultation");
 const { checkContent } = require("./content-filter");
 const insurance = require("./insurance");
@@ -83,6 +83,17 @@ setInterval(() => {
   for (const [ip, b] of rateBuckets) { if (now > b.reset + 60000) rateBuckets.delete(ip); }
 }, 300000);
 
+// The badge check for the unproven-address routes (see UNPROVEN-ADDRESS ROUTES in startApi).
+// null = the address holds an active badge; otherwise the refusal to send. A Gateway
+// outage is 503 badge_check_unavailable, not 403 badge_required (2026-10-06): hasBadge
+// read an outage as "no badge".
+async function badgeRefusal(address) {
+  const read = await getBadgeResult(address).catch(() => ({ error: true }));
+  if (read.error) return { status: 503, error: "badge_check_unavailable" };
+  if (!(read.data && read.data.status === "active")) return { status: 403, error: "badge_required" };
+  return null;
+}
+
 function startApi() {
   const server = http.createServer(async (req, res) => {
     res.setHeader("Content-Type", "application/json");
@@ -139,6 +150,12 @@ function startApi() {
       }
     }
 
+    // UNPROVEN-ADDRESS ROUTES. POST /api/proposals, POST /api/bounties, the milestone writes,
+    // POST /api/proposals/:id/vote and POST /api/disputes/:id/evidence act for an `address`
+    // (or tg_id) read from the request body, which nothing proves the caller controls;
+    // badgeRefusal only asks whether THAT address holds a badge. They are safe only while
+    // unexposed: this server listens on 127.0.0.1 and Caddy forwards only /api/agent/* to it
+    // (since 2026-09-24). They must stay off the edge.
     // Allow GET + POST for game board routes, feedback, bounties, milestones, disputes, XP; GET only for everything else
     const isGamePost = req.method === "POST" && url.pathname.includes("/board/");
     const isFeedbackPost = req.method === "POST" && url.pathname === "/api/feedback";
@@ -234,10 +251,10 @@ function startApi() {
           res.writeHead(400);
           return res.end(JSON.stringify({ ok: false, error: "address_required" }));
         }
-        const hasBadgeResult = await hasBadge(body.address);
-        if (!hasBadgeResult) {
-          res.writeHead(403);
-          return res.end(JSON.stringify({ ok: false, error: "badge_required" }));
+        const refusal = await badgeRefusal(body.address);
+        if (refusal) {
+          res.writeHead(refusal.status);
+          return res.end(JSON.stringify({ ok: false, error: refusal.error }));
         }
         const text = body.title + " " + (body.description || "");
         const filterCheck = checkContent(text);
@@ -348,10 +365,10 @@ function startApi() {
           res.writeHead(400);
           return res.end(JSON.stringify({ ok: false, error: "title, reward_xrd, and address required" }));
         }
-        const hasBadgeResult = await hasBadge(body.address);
-        if (!hasBadgeResult) {
-          res.writeHead(403);
-          return res.end(JSON.stringify({ ok: false, error: "badge_required" }));
+        const refusal = await badgeRefusal(body.address);
+        if (refusal) {
+          res.writeHead(refusal.status);
+          return res.end(JSON.stringify({ ok: false, error: refusal.error }));
         }
         const reward = parseFloat(body.reward_xrd);
         if (!isFinite(reward) || reward <= 0) {
@@ -509,10 +526,10 @@ function startApi() {
         }
         // Badge check
         if (body.address) {
-          const hasBadgeResult = await hasBadge(body.address);
-          if (!hasBadgeResult) {
-            res.writeHead(403);
-            return res.end(JSON.stringify({ ok: false, error: "badge_required" }));
+          const refusal = await badgeRefusal(body.address);
+          if (refusal) {
+            res.writeHead(refusal.status);
+            return res.end(JSON.stringify({ ok: false, error: refusal.error }));
           }
         }
         const result = db.addMilestone(bountyId, body.title, body.description || null, parseInt(body.percentage));
@@ -658,7 +675,10 @@ function startApi() {
     if (badgeMatch) {
       const addr = badgeMatch[1];
       try {
-        const data = await getBadgeData(addr);
+        // An outage answered 404 no_badge until 2026-10-06; it is the gateway_error below now.
+        const read = await getBadgeResult(addr);
+        if (read.error) throw new Error("badge read failed (Gateway)");
+        const data = read.data;
         if (data) {
           res.writeHead(200);
           return res.end(JSON.stringify({ ok: true, data }));
@@ -676,7 +696,10 @@ function startApi() {
     if (verifyMatch) {
       const addr = verifyMatch[1];
       try {
-        const has = await hasBadge(addr);
+        // An outage answered hasBadge: false until 2026-10-06; it is the gateway_error below now.
+        const read = await getBadgeResult(addr);
+        if (read.error) throw new Error("badge read failed (Gateway)");
+        const has = !!(read.data && read.data.status === "active");
         res.writeHead(200);
         return res.end(JSON.stringify({ ok: true, hasBadge: has, address: addr }));
       } catch (e) {
@@ -871,10 +894,10 @@ function startApi() {
           res.writeHead(400);
           return res.end(JSON.stringify({ ok: false, error: "address and vote required" }));
         }
-        const hasBadgeResult = await hasBadge(body.address);
-        if (!hasBadgeResult) {
-          res.writeHead(403);
-          return res.end(JSON.stringify({ ok: false, error: "badge_required" }));
+        const refusal = await badgeRefusal(body.address);
+        if (refusal) {
+          res.writeHead(refusal.status);
+          return res.end(JSON.stringify({ ok: false, error: refusal.error }));
         }
         const proposalId = parseInt(voteMatch[1]);
         const proposal = db.getProposal(proposalId);
@@ -1065,10 +1088,10 @@ function startApi() {
         return res.end(JSON.stringify({ ok: false, error: "address and content required" }));
       }
       // Verify badge ownership
-      const badge = await hasBadge(body.address);
-      if (!badge) {
-        res.writeHead(403);
-        return res.end(JSON.stringify({ ok: false, error: "badge_required" }));
+      const refusal = await badgeRefusal(body.address);
+      if (refusal) {
+        res.writeHead(refusal.status);
+        return res.end(JSON.stringify({ ok: false, error: refusal.error }));
       }
       const user = db.getUserByAddress(body.address);
       if (!user) {
