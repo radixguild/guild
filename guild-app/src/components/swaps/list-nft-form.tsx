@@ -158,6 +158,7 @@ export function ListNftForm() {
   const submit = async () => {
     if (!picked || !canList) return
     setAfter(null)
+    tx.reset()
     // Re-read the ledger clock right before signing: the 30-day ceiling is
     // measured from the clock when the transaction executes.
     const fresh = await readSwapComponentState(NFT_SWAP_COMPONENT)
@@ -171,8 +172,17 @@ export function ListNftForm() {
     )
     if (!txId) return
     const listingId = await readListedListingId(txId, NFT_SWAP_COMPONENT)
-    if (listingId) router.push(`/swaps/${listingId}`)
-    else setAfter("Listed. The listing id could not be read back yet — it will appear on the board shortly.")
+    if (listingId) {
+      router.push(`/swaps/${listingId}?listed=1`)
+      return
+    }
+    // Listed, but the id is not readable yet. Disarm the form — the NFT has
+    // left this account, and a second press would only send a failing list —
+    // and re-read the account so the picker shows what is really there.
+    setPicked(null)
+    setLoaded(null)
+    setHoldingsKey((k) => k + 1)
+    setAfter("Listed. The listing id could not be read back yet — it will appear on the board shortly.")
   }
 
   const setAsk = (i: number, next: SwapAsk) => setAsks((xs) => xs.map((a, j) => (j === i ? next : a)))

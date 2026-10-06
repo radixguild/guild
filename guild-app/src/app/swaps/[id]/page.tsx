@@ -19,8 +19,18 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   })
 }
 
-export default async function SwapListingPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SwapListingPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ listed?: string }>
+}) {
   const { id } = await params
+  // `?listed=1` is set by /swaps/list after the viewer's own list transaction:
+  // the page then retries a "no such listing" read for a few seconds, because a
+  // Gateway read can trail the node the wallet confirmed against.
+  const justListed = (await searchParams).listed === "1"
   // Digits only in the heading: the parameter is a stranger's URL.
   const shown = decodeURIComponent(id).replace(/[^0-9]/g, "").slice(0, 20) || "?"
   return (
@@ -30,7 +40,7 @@ export default async function SwapListingPage({ params }: { params: Promise<{ id
           <ArrowLeft className="h-4 w-4" /> All listings
         </Link>
         <h1 className="text-2xl font-semibold">Swap listing {shown}</h1>
-        <SwapDetail listingId={id} />
+        <SwapDetail listingId={id} justListed={justListed} />
       </div>
     </AppShell>
   )

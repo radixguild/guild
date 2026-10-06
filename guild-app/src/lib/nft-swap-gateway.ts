@@ -92,16 +92,21 @@ function feeFor(config: any, method: string): SwapFee | null {
 /**
  * The component's state: where its listings live, how many there are, the
  * receipt resource, the live fee dials and the ledger clock — one call.
- * Refuses (null) anything that is not an `NftSwap` component, so a wrong
- * address in env reads as "could not read", not as an empty board.
+ * Refuses (null) anything that is not an `NftSwap` component — and, when
+ * `expectedPackage` is given, one instantiated from any other package — so a
+ * wrong address in env reads as "could not read", not as an empty board.
  */
-export async function readSwapComponentState(component: string): Promise<SwapComponentState | null> {
+export async function readSwapComponentState(
+  component: string,
+  expectedPackage?: string,
+): Promise<SwapComponentState | null> {
   const json = await post("/state/entity/details", {
     addresses: [component],
     opt_ins: { component_royalty_config: true },
   })
   const details = json?.items?.[0]?.details
   if (!details || details.blueprint_name !== "NftSwap") return null
+  if (expectedPackage !== undefined && details.package_address !== expectedPackage) return null
   const fields = details?.state?.fields
   if (!Array.isArray(fields)) return null
   const f = (name: string) => fields.find((x: any) => x?.field_name === name)?.value
@@ -179,8 +184,8 @@ export interface SwapBoard {
 }
 
 /** Every listing on the component, newest first (up to SWAP_SCAN_CAP). */
-export async function readSwapBoard(component: string): Promise<SwapBoard | null> {
-  const state = await readSwapComponentState(component)
+export async function readSwapBoard(component: string, expectedPackage?: string): Promise<SwapBoard | null> {
+  const state = await readSwapComponentState(component, expectedPackage)
   if (!state) return null
   const total = state.nextListingId - 1
   const lowest = Math.max(1, total - SWAP_SCAN_CAP + 1)
@@ -200,8 +205,9 @@ export async function readSwapBoard(component: string): Promise<SwapBoard | null
 export async function readSwapListing(
   component: string,
   listingId: number,
+  expectedPackage?: string,
 ): Promise<{ state: SwapComponentState; listing: SwapListing | null; unreadable: boolean } | null> {
-  const state = await readSwapComponentState(component)
+  const state = await readSwapComponentState(component, expectedPackage)
   if (!state) return null
   if (!Number.isSafeInteger(listingId) || listingId < 1 || listingId >= state.nextListingId) {
     return { state, listing: null, unreadable: false }

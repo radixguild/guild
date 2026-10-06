@@ -3,7 +3,7 @@
 // nft-swap-gateway.ts and adds display data; caches briefly so a burst of
 // page views does not fan out to the Gateway.
 
-import { NFT_SWAP_COMPONENT } from "./config"
+import { NFT_SWAP_COMPONENT, NFT_SWAP_PACKAGE } from "./config"
 import {
   isHidden,
   parseHiddenList,
@@ -28,6 +28,11 @@ import {
 export interface SwapListingView extends SwapListing {
   status: SwapStatus
   asset: { name: string | null; imageUrl: string | null }
+  /** The operator hid this listing from these pages (NFT_SWAP_HIDDEN). It
+   *  stays on chain and fillable by id; the site shows no NFT name or picture
+   *  for it and offers no Fill, but its receipt holder keeps every seller
+   *  action — a hide must never lock anyone out of their own NFT. */
+  hidden: boolean
 }
 
 export type SwapResourceView = Omit<ResourceDisplay, "address">
@@ -74,11 +79,14 @@ const DISPLAY_CACHE_MS = 5 * 60_000
 const DISPLAY_CACHE_MAX = 2_000
 
 let boardCache: { component: string; at: number; board: SwapBoard } | null = null
+// Concurrent misses share one chain read rather than each starting their own.
+let boardInFlight: { component: string; p: Promise<SwapBoard | null> } | null = null
 const nftCache = new Map<string, { at: number; v: NftDisplay | null }>()
 const resourceCache = new Map<string, { at: number; v: ResourceDisplay | null }>()
 
 export function __resetSwapCachesForTests() {
   boardCache = null
+  boardInFlight = null
   nftCache.clear()
   resourceCache.clear()
 }
@@ -94,12 +102,24 @@ async function boardFor(component: string): Promise<SwapBoard | null> {
   if (boardCache && boardCache.component === component && now - boardCache.at < BOARD_CACHE_MS) {
     return boardCache.board
   }
-  const board = await readSwapBoard(component)
-  // Only a good read is cached: a Gateway hiccup must not pin "unknown" for
-  // the whole window.
-  if (board) boardCache = { component, at: now, board }
-  return board
+  if (boardInFlight?.component === component) return boardInFlight.p
+  const p = readSwapBoard(component, expectedPackageFor(component)).then((board) => {
+    // Only a good read is cached: a Gateway hiccup must not pin "unknown" for
+    // the whole window.
+    if (board) boardCache = { component, at: Date.now(), board }
+    return board
+  })
+  boardInFlight = { component, p }
+  try {
+    return await p
+  } finally {
+    if (boardInFlight?.p === p) boardInFlight = null
+  }
 }
+
+/** The live component is pinned to its package too; any other component (a
+ *  test, a future cutover passing its own) is checked by blueprint only. */
+const expectedPackageFor = (component: string) => (component === NFT_SWAP_COMPONENT ? NFT_SWAP_PACKAGE : undefined)
 
 async function resourcesFor(addresses: string[]): Promise<Record<string, SwapResourceView>> {
   const now = Date.now()
@@ -145,8 +165,13 @@ async function nftsFor(pairs: { resource: string; id: string }[]): Promise<Map<s
   return out
 }
 
-function view(l: SwapListing, ledgerTime: number, nft: NftDisplay | null): SwapListingView {
-  return { ...l, status: swapStatus(l, ledgerTime), asset: { name: nft?.name ?? null, imageUrl: nft?.imageUrl ?? null } }
+function view(l: SwapListing, ledgerTime: number, nft: NftDisplay | null, hidden: boolean): SwapListingView {
+  return {
+    ...l,
+    status: swapStatus(l, ledgerTime),
+    asset: hidden ? { name: null, imageUrl: null } : { name: nft?.name ?? null, imageUrl: nft?.imageUrl ?? null },
+    hidden,
+  }
 }
 
 const resourcesOf = (ls: SwapListing[]) => ls.flatMap((l) => [l.assetResource, ...l.asks.map((a) => a.resource)])
@@ -171,18 +196,22 @@ export async function getSwapBoard(opts: {
   const limit = Math.min(Math.max(opts.limit ?? 48, 1), 100)
   const status = opts.status ?? "all"
 
+  // A seller-filtered view ("My listings") still shows that seller's hidden
+  // listings — flagged, with no NFT name or picture — so the hide lever cannot
+  // strand anyone's own listing; the public board drops them.
   let hiddenCount = 0
   const matching = board.listings.filter((l) => {
-    if (isHidden(l, hidden)) {
+    if (opts.seller && l.seller !== opts.seller) return false
+    if (!opts.seller && isHidden(l, hidden)) {
       hiddenCount++
       return false
     }
-    if (opts.seller && l.seller !== opts.seller) return false
     if (opts.before !== undefined && l.listingId >= opts.before) return false
     return status === "all" || swapStatus(l, ledgerTime) === status
   })
   const page = matching.slice(0, limit)
-  const nfts = await nftsFor(page.map((l) => ({ resource: l.assetResource, id: l.assetId })))
+  const shown = page.filter((l) => !isHidden(l, hidden))
+  const nfts = await nftsFor(shown.map((l) => ({ resource: l.assetResource, id: l.assetId })))
 
   return {
     component,
@@ -194,7 +223,9 @@ export async function getSwapBoard(opts: {
     truncated: board.truncated,
     unreadable: board.unreadable,
     hidden: hiddenCount,
-    listings: page.map((l) => view(l, ledgerTime, nfts.get(`${l.assetResource} ${l.assetId}`) ?? null)),
+    listings: page.map((l) =>
+      view(l, ledgerTime, nfts.get(`${l.assetResource} ${l.assetId}`) ?? null, isHidden(l, hidden)),
+    ),
     nextCursor: matching.length > limit ? page[page.length - 1].listingId : null,
   }
 }
@@ -202,23 +233,23 @@ export async function getSwapBoard(opts: {
 export type SwapDetailResult =
   | { kind: "ok"; view: SwapDetailView }
   | { kind: "not_found" }
-  | { kind: "hidden" }
   | { kind: "unreadable" }
   | { kind: "unknown" }
 
 /** One listing with everything its page needs. Always a fresh chain read —
  *  this is the page a buyer fills from and a seller cancels from. */
 export async function getSwapDetail(listingId: number, component = NFT_SWAP_COMPONENT): Promise<SwapDetailResult> {
-  const read = await readSwapListing(component, listingId)
+  const read = await readSwapListing(component, listingId, expectedPackageFor(component))
   if (!read) return { kind: "unknown" }
   if (read.unreadable) return { kind: "unreadable" }
   if (!read.listing) return { kind: "not_found" }
   const l = read.listing
-  if (isHidden(l, hiddenList())) return { kind: "hidden" }
+  const hidden = isHidden(l, hiddenList())
 
   const nftAsks = l.asks.flatMap((a) => (a.kind === "nonFungible" ? [{ resource: a.resource, id: a.id }] : []))
   const [nfts, resources, receipt] = await Promise.all([
-    nftsFor([{ resource: l.assetResource, id: l.assetId }, ...nftAsks]),
+    // A hidden listing's own NFT is not looked up at all: nothing to show.
+    nftsFor([...(hidden ? [] : [{ resource: l.assetResource, id: l.assetId }]), ...nftAsks]),
     resourcesFor(resourcesOf([l])),
     readListingReceiptHolder(read.state.receiptResource, l.listingId),
   ])
@@ -235,7 +266,7 @@ export async function getSwapDetail(listingId: number, component = NFT_SWAP_COMP
       ledgerTime: read.state.ledgerNow,
       fees: read.state.fees,
       resources,
-      listing: view(l, read.state.ledgerNow, nfts.get(`${l.assetResource} ${l.assetId}`) ?? null),
+      listing: view(l, read.state.ledgerNow, nfts.get(`${l.assetResource} ${l.assetId}`) ?? null, hidden),
       receipt,
       askNfts,
     },

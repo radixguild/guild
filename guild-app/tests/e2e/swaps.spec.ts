@@ -34,8 +34,8 @@ const ASKS = [
   { kind: "nonFungible" as const, resource: NFT, id: "#1#" },
 ];
 
-function detail(receiptHolder: string) {
-  return {
+function detail(receiptHolder: string, over: { listing?: object; askNfts?: object } = {}) {
+  const base = {
     ok: true,
     data: {
       component: SWAP,
@@ -56,11 +56,15 @@ function detail(receiptHolder: string) {
         proceedsWithdrawn: false,
         status: "open",
         asset: { name: "Guild swap throwaway 2", imageUrl: null },
+        hidden: false,
       },
       receipt: { holder: receiptHolder, burned: false },
       askNfts: {},
     },
   };
+  Object.assign(base.data.listing, over.listing ?? {});
+  Object.assign(base.data.askNfts, over.askNfts ?? {});
+  return base;
 }
 
 async function sentManifests(page: Page): Promise<string[]> {
@@ -74,6 +78,55 @@ async function stubDetail(page: Page, receiptHolder: string) {
 }
 
 test.describe("NFT swap — the listing page", () => {
+  test("after a fill the page re-reads until the ledger shows it, then drops the Fill panel", async ({ page }) => {
+    await injectWalletMock(page);
+    let filled = false;
+    await page.route("**/api/v1/swaps/3", async (route) => {
+      // The first re-read after the fill still answers Listed (a lagging
+      // Gateway read); the next one shows the fill.
+      const sent = (await sentManifests(page)).length;
+      const body = sent > 0 && filled ? detail(SELLER, { listing: { state: "Filled", filledWith: 0, status: "filled" } }) : detail(SELLER);
+      if (sent > 0) filled = true;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    });
+    await page.goto("/swaps/3");
+    await page.getByRole("button", { name: "Fill with this" }).first().click();
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Open my wallet to fill" }).click();
+    await expect(page.getByText("Filled — the NFT is in your account.")).toBeVisible();
+    await expect(page.getByText("This listing has been filled.")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "Fill with this" })).toHaveCount(0);
+  });
+
+  test("a hidden listing offers no Fill, but its receipt holder keeps Cancel", async ({ page }) => {
+    await injectWalletMock(page);
+    await page.route("**/api/v1/swaps/3", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(detail(MOCK_ACCOUNT, { listing: { hidden: true, asset: { name: null, imageUrl: null } } })),
+      }),
+    );
+    await page.goto("/swaps/3");
+    await expect(page.getByText(/hidden this listing from this site/)).toBeVisible();
+    await expect(page.getByRole("button", { name: /Fill/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Cancel listing" })).toBeVisible();
+  });
+
+  test("an alternative naming a burned NFT is marked and gets no Fill button", async ({ page }) => {
+    await injectWalletMock(page);
+    await page.route("**/api/v1/swaps/3", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(detail(SELLER, { askNfts: { [`${NFT} #1#`]: { name: "Guild swap throwaway 1", imageUrl: null, burned: true } } })),
+      }),
+    );
+    await page.goto("/swaps/3");
+    await expect(page.getByText("That NFT has been burned, so this alternative can never be filled.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Fill with this" })).toHaveCount(1);
+  });
+
   test("Fill sends exactly the fill for the chosen alternative, after the confirm box", async ({ page }) => {
     await injectWalletMock(page);
     await stubDetail(page, SELLER);
@@ -200,7 +253,7 @@ test.describe("NFT swap — List an NFT", () => {
     expect((await sentManifests(page))[0]).toBe(
       listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: XRD, amount: "5000" }], expiryForDays(LEDGER, 7)),
     );
-    await expect(page).toHaveURL(/\/swaps\/3$/);
+    await expect(page).toHaveURL(/\/swaps\/3\?listed=1$/);
   });
 
   test("an ask the chain would refuse keeps the wallet closed", async ({ page }) => {

@@ -48,6 +48,7 @@ function componentDetails(next = 3, extra: Record<string, unknown> = {}) {
       details: {
         type: "Component",
         blueprint_name: "NftSwap",
+        package_address: "package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv",
         state: {
           kind: "Tuple",
           type_name: "NftSwap",
@@ -121,6 +122,14 @@ describe("readSwapComponentState", () => {
   it("refuses anything that is not an NftSwap component — a wrong env address must not read as an empty board", async () => {
     fetchSpy.mockResolvedValueOnce(ok(componentDetails(3, { blueprint_name: "Escrow" })))
     expect(await readSwapComponentState(SWAP)).toBeNull()
+  })
+
+  it("with an expected package, refuses an NftSwap component instantiated from any other package", async () => {
+    const live = "package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv"
+    fetchSpy.mockResolvedValueOnce(ok(componentDetails(3, { package_address: "package_rdx1pkgnotthelivepackagexxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" })))
+    expect(await readSwapComponentState(SWAP, live)).toBeNull()
+    fetchSpy.mockResolvedValueOnce(ok(componentDetails(3)))
+    expect(await readSwapComponentState(SWAP, live)).not.toBeNull()
   })
 
   it("null on non-2xx, a throw, or a missing ledger clock", async () => {
@@ -298,13 +307,31 @@ describe("getSwapBoard / getSwapDetail", () => {
     expect(componentReads).toHaveLength(1)
   })
 
-  it("the operator's hide list removes listings from the board and 404s their page", async () => {
+  it("the operator's hide list takes listings off the public board, but never locks out their receipt holder", async () => {
     vi.stubEnv("NFT_SWAP_HIDDEN", `3, ${NFT}x`)
     gatewayStub({ entries: entries(), next: 5 })
     const b = await getSwapBoard({})
     expect(b!.listings.map((l) => l.listingId)).not.toContain(3)
     expect(b!.hidden).toBe(1)
-    expect(await getSwapDetail(3)).toEqual({ kind: "hidden" })
+    // The seller's own view still lists it — flagged, with no NFT name or picture.
+    const mine = await getSwapBoard({ seller: SELLER })
+    const three = mine!.listings.find((l) => l.listingId === 3)!
+    expect(three.hidden).toBe(true)
+    expect(three.asset).toEqual({ name: null, imageUrl: null })
+    // Its page still answers, so the receipt holder can cancel or collect.
+    const d = await getSwapDetail(3)
+    expect(d.kind).toBe("ok")
+    if (d.kind === "ok") {
+      expect(d.view.listing.hidden).toBe(true)
+      expect(d.view.receipt).toEqual({ holder: SELLER, burned: false })
+    }
+  })
+
+  it("concurrent board misses share one chain read", async () => {
+    gatewayStub({ entries: entries(), next: 5 })
+    await Promise.all([getSwapBoard({}), getSwapBoard({ status: "open" }), getSwapBoard({ limit: 1 })])
+    const componentReads = fetchSpy.mock.calls.filter((c) => bodyOf(c).addresses?.[0] === SWAP)
+    expect(componentReads).toHaveLength(1)
   })
 
   it("getSwapDetail: the listing, the receipt holder and the fees; not_found past the last id", async () => {
@@ -326,7 +353,11 @@ describe("getSwapBoard / getSwapDetail", () => {
 })
 
 describe("GET /api/v1/swaps and /api/v1/swaps/{id}", () => {
-  const req = (q: string) => new Request(`http://x/api/v1/swaps${q}`) as any
+  // A distinct client address per request, so the per-address limiter never
+  // trips across tests; one test drives it on purpose.
+  let n = 0
+  const req = (q: string, ip = `10.0.0.${++n}`) =>
+    new Request(`http://x/api/v1/swaps${q}`, { headers: { "x-forwarded-for": ip } }) as any
 
   it("refuses bad filters with a named code", async () => {
     for (const [q, code] of [
@@ -359,12 +390,22 @@ describe("GET /api/v1/swaps and /api/v1/swaps/{id}", () => {
 
   it("the detail route: 400 on a non-integer id, 404 past the last listing, 200 with the record", async () => {
     gatewayStub()
-    const call = async (id: string) => getDetailRoute(new Request("http://x") as any, { params: Promise.resolve({ id }) })
+    const call = async (id: string) =>
+      getDetailRoute(new Request("http://x", { headers: { "x-forwarded-for": `10.1.0.${++n}` } }) as any, {
+        params: Promise.resolve({ id }),
+      })
     expect((await call("1e3")).status).toBe(400)
     expect((await call("0")).status).toBe(400)
     expect((await call("9")).status).toBe(404)
     const res = await call("1")
     expect(res.status).toBe(200)
     expect((await res.json()).data.listing.state).toBe("Filled")
+  })
+
+  it("rate-limits one address at 60 a minute", async () => {
+    gatewayStub()
+    let last = 0
+    for (let i = 0; i < 61; i++) last = (await getBoardRoute(req("?status=sold", "10.9.9.9"))).status
+    expect(last).toBe(429)
   })
 })

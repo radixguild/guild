@@ -293,16 +293,19 @@ const ROUTE_META = {
     description:
       "Each listing is the component's own record (seller, asset, asks as exact decimal strings, unix-second times, state) " +
       "plus `status` and best-effort NFT display data, with `resources` carrying name / symbol / divisibility for every " +
-      "resource named. `fees` are the live `fill` and `extend_listing` royalties. 503 CHAIN_UNREADABLE when the Gateway " +
-      "cannot be read — never an empty list in its place.",
+      "resource named. `fees` are the live `fill` and `extend_listing` royalties. Listings the operator hid are left " +
+      "off (counted in `hidden`) unless `seller` is given, where they appear with `hidden: true` and no NFT display data. " +
+      "503 CHAIN_UNREADABLE when the Gateway cannot be read — never an empty list in its place. 429 RATE_LIMITED (60/min per address).",
   },
   "GET /swaps/{id}": {
     summary: "One NFT swap listing, read fresh from the chain, with its receipt holder and the live fees",
     auth: "none", tag: "swaps",
     description:
       "`receipt.holder` is the account holding the listing receipt — the only credential that can cancel, extend or " +
-      "withdraw proceeds (proceeds always go to the listing's pinned `seller`). 404 NOT_FOUND / LISTING_HIDDEN, " +
-      "502 LISTING_UNREADABLE (the record exists but did not parse), 503 CHAIN_UNREADABLE.",
+      "withdraw proceeds (proceeds always go to the listing's pinned `seller`). A listing the operator hid from the " +
+      "site answers 200 with `listing.hidden: true` and no NFT display data, so its receipt holder is never locked out. " +
+      "404 NOT_FOUND, 502 LISTING_UNREADABLE (the record exists but did not parse), 503 CHAIN_UNREADABLE, " +
+      "429 RATE_LIMITED (60/min per address).",
   },
   // The A2A card's `url` (P1-b). No A2A method is implemented: every request is answered
   // with the protocol's UnsupportedOperationError (-32004) whose `data` names the

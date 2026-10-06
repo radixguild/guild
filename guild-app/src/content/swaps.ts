@@ -27,37 +27,37 @@ export const HOW_IT_WORKS: readonly { term: string; detail: string }[] = [
   {
     term: "A listing escrows the NFT",
     detail:
-      "The seller deposits one non-fungible into the component and states what they will accept: an amount of a fungible resource, a specific NFT, or any-of a list of alternatives. The asset sits in the component until someone fills the listing or the seller cancels it.",
+      "The seller deposits one non-fungible into the component and states what they will accept: an amount of a fungible resource, a specific NFT, or any-of a list of alternatives. The listing mints the seller a receipt, a transferable NFT that is the credential to cancel it, extend it or collect from it. The asset sits in the component until someone fills the listing or the receipt's holder cancels it.",
   },
   {
     term: "A fill settles atomically",
     detail:
-      "Whoever supplies one of the stated alternatives receives the NFT in the same transaction that takes their payment. There is no partial fill and no change: the buyer supplies exactly one alternative, or the transaction reverts.",
+      "Whoever supplies one of the stated alternatives receives the NFT in the same transaction that takes their payment. There is no partial fill and no change: the buyer supplies exactly one alternative, or the transaction fails, nothing changes hands, and only the network fee is spent.",
   },
   {
     term: "Proceeds are pulled, not pushed",
     detail:
-      "A fill credits the payment to a per-listing vault. The seller withdraws it themselves against their listing receipt, so a buyer can never be blocked by a seller account that refuses third-party deposits. The withdrawal always pays the account that made the listing.",
+      "A fill credits the payment to a per-listing vault. It is withdrawn against the listing receipt, so a buyer can never be blocked by a seller account that refuses third-party deposits. The withdrawal always pays the seller account named in the listing, whoever presents the receipt; this site names the account that signs the listing.",
   },
   {
     term: "Every listing expires",
     detail:
-      "Expiry is mandatory: the seller picks a term of up to thirty days when listing. Extending it is a separate call that adds thirty days and has its own fee dial. An expired listing cannot be filled; the seller cancels to take the asset back, or extends it.",
+      "Expiry is mandatory: the seller picks a term of up to thirty days when listing. Extending it is a separate call that adds thirty days and has its own fee dial. An expired listing cannot be filled; the receipt's holder cancels it to take the asset back, or extends it.",
   },
   {
-    term: "The fee is a flat XRD amount",
+    term: "The fee is a flat amount, set on the component",
     detail:
-      "It is a component royalty on the fill call, paid by the buyer with the network fee, and the extension call has its own. Both are dials the Guild can change, so every listing shows the current amounts read from the component, next to the button that pays them.",
+      "It is a component royalty on the fill call, paid by the buyer in XRD with the network fee, and the extension call has its own. Both are dials the Guild can change, in amount and in unit, so every listing shows the current amounts read from the component, next to the button that pays them.",
   },
 ]
 
 /** The things these pages must say plainly because a reader would otherwise
  *  assume them. */
 export const WHAT_THIS_IS_NOT: readonly string[] = [
-  "Creator royalties are not enforced. The component takes its own flat XRD fee on a fill and pays nothing to the collection's creator. If a collection expects a royalty, this venue does not collect it.",
+  "Creator royalties are not enforced. The component takes its own flat fee on a fill and pays nothing to the collection's creator. If a collection expects a royalty, this venue does not collect it.",
   "A listing is not an appraisal. The asking terms are whatever the seller typed. Nobody reviews them, and no price here is evidence of what anything is worth.",
   "There is no dispute path, no insurance, no claim bond and no review window. A swap is one transaction, not a task: the protections that exist on the task board do not apply here, and a fill cannot be undone: check before you fill.",
-  "The Guild does not custody your NFT beyond the listing itself, and cannot move a listed asset. Cancel returns it to the seller; a fill sends it to the buyer. There is no third path.",
+  "The Guild does not custody your NFT beyond the listing itself, and cannot move a listed asset. A fill sends it to the buyer; cancel returns it to whoever holds the listing receipt, which is the seller unless they passed the receipt on. There is no third path.",
   "A listing is not proof the NFT is genuine. The component accepts any NFT, and a copy can carry the same name and picture as the original. Before you fill, compare the collection's resource address with the one its creator publishes.",
 ]
 
@@ -86,26 +86,33 @@ export const BOARD_COPY = {
   truncated:
     "Only the most recent listings were read. Older ones are still on chain; the Radix Gateway has every one.",
   mine: "My listings",
+  hiddenCard: "Hidden by the operator",
+  unreadableListings: (n: number) =>
+    `${n} listing${n === 1 ? "" : "s"} on the ledger could not be read by this site, so nothing is shown here rather than a board that may be incomplete. The listings are still on chain; the Radix Gateway has every one.`,
 } as const
 
 export const DETAIL_COPY = {
   fillHeading: "Fill this listing",
   fillIntro:
-    "Pick one of the seller's terms. You send exactly that, and the NFT comes to your account in the same transaction — or nothing moves.",
+    "Pick one of the seller's terms. You send exactly that, and the NFT comes to your account in the same transaction — or the transaction fails and only the network fee is spent.",
   fillConfirmCheck:
     "I compared the collection's resource address with the one its creator publishes, and I understand a fill cannot be undone.",
   fillNoWallet: "Connect your Radix Wallet to fill this listing.",
   expired:
-    "This listing has passed its expiry, so it cannot be filled. The seller can cancel it to take the NFT back, or extend it.",
+    "This listing has passed its expiry, so it cannot be filled. Whoever holds its listing receipt can cancel it to take the NFT back, or extend it.",
   filled: "This listing has been filled. The NFT went to the buyer in the fill transaction.",
-  cancelled: "The seller cancelled this listing and the NFT went back to them.",
+  cancelled: "This listing was cancelled, and the NFT went to the holder of its listing receipt.",
+  hidden:
+    "The operator has hidden this listing from this site, so its NFT is not shown and it cannot be filled here. It is still on the ledger. Whoever holds its listing receipt can still cancel it, extend it or collect from it on this page.",
+  burnedAsk: "That NFT has been burned, so this alternative can never be filled.",
+  waiting: "Waiting for the ledger read to show your transaction…",
   ownListing:
     "You made this listing. Filling it yourself is allowed: you pay yourself, and the network fee and any fill fee are spent.",
   sellerHeading: "Your listing",
   sellerIntro:
     "Your account holds this listing's receipt — the credential for everything below. Keep it: whoever holds it can cancel, extend or collect.",
   proceedsTo:
-    "Proceeds always go to the account that made the listing, whoever presents the receipt:",
+    "Proceeds always go to the seller account named in the listing, whoever presents the receipt:",
   burnHint:
     "Nothing is left behind this receipt. Burning it is optional housekeeping and removes it from your wallet.",
   receiptElsewhere:

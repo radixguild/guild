@@ -7,7 +7,7 @@
 // stranger's NFT name must not be able to fail a deploy. This file's own
 // strings are still scanned, as a DETAIL_COMPONENT source.
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { Images, Plus, RefreshCw } from "lucide-react"
 import { useWallet } from "@/hooks/useWallet"
@@ -33,8 +33,8 @@ const FILTERS: { key: SwapFilter; label: string }[] = [
 type Load = { state: "loading" } | { state: "failed" } | { state: "ok"; board: SwapBoardView }
 
 function SwapCard({ l, board }: { l: SwapListingView; board: SwapBoardView }) {
-  const coll = board.resources[l.assetResource]?.name ?? shortAddress(l.assetResource)
-  const name = l.asset.name ?? `${coll} ${l.assetId}`
+  const coll = l.hidden ? shortAddress(l.assetResource) : (board.resources[l.assetResource]?.name ?? shortAddress(l.assetResource))
+  const name = l.hidden ? BOARD_COPY.hiddenCard : (l.asset.name ?? `${coll} ${l.assetId}`)
   return (
     <Link href={`/swaps/${l.listingId}`} className="group block no-underline">
       <Card className="h-full overflow-hidden transition-colors group-hover:border-primary/50">
@@ -83,6 +83,13 @@ export function SwapBoard() {
   const [mine, setMine] = useState(false)
   const [load, setLoad] = useState<Load>({ state: "loading" })
   const [more, setMore] = useState<{ busy: boolean; failed: boolean }>({ busy: false, failed: false })
+  // Which query the board on screen answers. A "Load more" that returns after
+  // the filter changed must not splice old-filter listings into the new page.
+  const queryKey = `${filter}|${mine && account ? account : ""}`
+  const keyRef = useRef(queryKey)
+  useEffect(() => {
+    keyRef.current = queryKey
+  }, [queryKey])
 
   const query = useCallback(
     (before?: number) => {
@@ -113,19 +120,25 @@ export function SwapBoard() {
 
   const loadMore = async () => {
     if (load.state !== "ok" || load.board.nextCursor === null) return
+    const key = queryKey
+    const cursor = load.board.nextCursor
     setMore({ busy: true, failed: false })
-    const next = await readBoard(query(load.board.nextCursor))
-    if (next) {
-        setLoad({
-          state: "ok",
-          board: {
-            ...next,
-            listings: [...load.board.listings, ...next.listings],
-            resources: { ...load.board.resources, ...next.resources },
-          },
-        })
-        setMore({ busy: false, failed: false })
-    } else setMore({ busy: false, failed: true })
+    const next = await readBoard(query(cursor))
+    if (keyRef.current !== key) return setMore({ busy: false, failed: false })
+    if (!next) return setMore({ busy: false, failed: true })
+    setLoad((prev) =>
+      prev.state === "ok" && prev.board.nextCursor === cursor
+        ? {
+            state: "ok",
+            board: {
+              ...next,
+              listings: [...prev.board.listings, ...next.listings],
+              resources: { ...prev.board.resources, ...next.resources },
+            },
+          }
+        : prev,
+    )
+    setMore({ busy: false, failed: false })
   }
 
   return (
@@ -181,7 +194,13 @@ export function SwapBoard() {
 
       {load.state === "ok" && (
         <>
-          {load.board.listings.length === 0 ? (
+          {load.board.listings.length === 0 && load.board.unreadable.length > 0 ? (
+            // Fail closed: listings exist that this site could not read, so
+            // "nothing is listed" would be a guess presented as a fact.
+            <p className="rounded-lg border border-destructive/40 p-4 text-sm" role="alert">
+              {BOARD_COPY.unreadableListings(load.board.unreadable.length)}
+            </p>
+          ) : load.board.listings.length === 0 ? (
             <EmptyState
               icon={<Images />}
               title={filter === "open" && !mine ? BOARD_COPY.empty.open : BOARD_COPY.empty.other}
