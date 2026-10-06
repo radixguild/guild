@@ -139,13 +139,26 @@ function buildPollKeyboard(id, options, counts) {
   return kb;
 }
 
+// Which wallet speaks for this Telegram user: the proven /link wallet once /link is
+// on, the /register claim until then (services/verify.js memberAddress). Without
+// verify (init failed) /link is dead too, so the claim is all there is.
+function memberAddress(tgId) {
+  if (verify) return verify.memberAddress(tgId);
+  const user = db.getUser(tgId);
+  return user ? { ok: true, address: user.radix_address, proven: false } : { ok: false, reason: "unregistered" };
+}
+
 async function requireBadge(ctx) {
   try {
-    const user = db.getUser(ctx.from.id);
-    if (!user) {
-      await ctx.reply("Register first: /register <account_rdx1...>");
+    const who = memberAddress(ctx.from.id);
+    if (!who.ok) {
+      await ctx.reply(who.reason === "unlinked" ? copy.linkRequired() : "Register first: /register <account_rdx1...>");
       return null;
     }
+    // Callers read user.radix_address for attribution, so hand back the wallet the
+    // gate checked, not whatever /register last stored.
+    if (!db.getUser(ctx.from.id)) db.registerUser(ctx.from.id, who.address, ctx.from.username || ctx.from.first_name || null);
+    const user = { ...db.getUser(ctx.from.id), radix_address: who.address };
     const has = await hasBadge(user.radix_address);
     if (!has) {
       await ctx.reply(
@@ -387,9 +400,12 @@ bot.on("callback_query:data", async (ctx, next) => {
   const proposalId = parseInt(parts[1]);
   const voteChoice = parts.slice(2).join("_"); // handles options with underscores
 
-  const user = db.getUser(ctx.from.id);
-  if (!user) {
-    return ctx.answerCallbackQuery({ text: "Register first: /register <account_rdx1...>", show_alert: true });
+  const who = memberAddress(ctx.from.id);
+  if (!who.ok) {
+    return ctx.answerCallbackQuery({
+      text: who.reason === "unlinked" ? copy.linkRequiredShort() : "Register first: /register <account_rdx1...>",
+      show_alert: true,
+    });
   }
 
   const proposal = db.getProposal(proposalId);
@@ -403,7 +419,7 @@ bot.on("callback_query:data", async (ctx, next) => {
   }
 
   let has = false;
-  try { has = await hasBadge(user.radix_address); } catch (e) {
+  try { has = await hasBadge(who.address); } catch (e) {
     console.error("[Vote] hasBadge error:", e.message);
     return ctx.answerCallbackQuery({ text: "Could not verify badge. Try again in a moment.", show_alert: true });
   }
@@ -411,10 +427,13 @@ bot.on("callback_query:data", async (ctx, next) => {
     return ctx.answerCallbackQuery({ text: "You need a Guild badge to vote. Mint: " + PORTAL + "/mint", show_alert: true });
   }
 
-  const result = db.recordVote(proposalId, ctx.from.id, user.radix_address, voteChoice);
+  const result = db.recordVote(proposalId, ctx.from.id, who.address, voteChoice);
   if (!result.ok) {
     if (result.error === "already_voted") {
       return ctx.answerCallbackQuery({ text: "Already voted on this one.", show_alert: true });
+    }
+    if (result.error === "wallet_already_voted") {
+      return ctx.answerCallbackQuery({ text: "This wallet has already voted on this one.", show_alert: true });
     }
     console.error("[Vote] recordVote refused:", result.error);
     return ctx.answerCallbackQuery({ text: "Could not record that vote. Try again in a moment.", show_alert: true });
@@ -435,7 +454,7 @@ bot.on("callback_query:data", async (ctx, next) => {
 
   // The bot still queues its off-ledger XP row for the vote (services/xp.js), but says
   // nothing about it: that queue has never been applied, and the dice game is closed.
-  queueXpReward(user.radix_address, "vote");
+  queueXpReward(who.address, "vote");
 
   ctx.answerCallbackQuery({ text: copy.voteRecorded(voteChoice) });
   } catch (e) {
