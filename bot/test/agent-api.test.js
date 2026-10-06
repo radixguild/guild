@@ -512,8 +512,9 @@ describe('agent API with the legacy board off (production default)', () => {
   });
 });
 
-// The edge (Caddy, `handle /api/agent/*`) cleans the path before it matches, so these never
-// left it; the bot must not depend on that. Its own server is used so that, on a tree without
+// At the edge (Caddy, `handle /api/agent/*`) these should not get through: Caddy matches on
+// the cleaned path, and Go re-escapes a raw "\" as %5C (from the matcher's semantics, not
+// probed live). The bot must not depend on that. Its own server is used so that, on a tree without
 // the guard, the "//[" request (which throws inside the handler) takes down nothing else.
 describe('raw request paths: no way out of /api/agent/ at the bot', () => {
   let server;
@@ -549,8 +550,6 @@ describe('raw request paths: no way out of /api/agent/ at the bot', () => {
       '/api/agent/.%2e/stats',
       '/api/agent/..\\stats',
       '/api/agent\\..\\stats',
-      '/api/agent/..%5cstats',
-      '/api/agent/..%5Cstats',
       '/api/agent/tasks/../../stats',
       'http://localhost/api/agent/../stats',
     ]) {
@@ -560,7 +559,9 @@ describe('raw request paths: no way out of /api/agent/ at the bot', () => {
     }
   });
 
-  it('REGRESSION: POST /api/agent/../proposals does not reach POST /api/proposals (400 bad_path, nothing written)', async () => {
+  // Without the guard these answered 503 badge_check_unavailable (fetch throws here): the
+  // POST /api/proposals handler was reached. The 400 is the assertion that carries this test.
+  it('REGRESSION: POST /api/agent/../proposals does not reach POST /api/proposals (400 bad_path)', async () => {
     const total = async () => (await call(s.port, 'GET', '/api/stats')).json.data.total_proposals;
     const before = await total();
     for (const target of ['/api/agent/../proposals', '/api/agent/%2e%2e/proposals', '/api/agent/..\\proposals']) {
@@ -570,8 +571,16 @@ describe('raw request paths: no way out of /api/agent/ at the bot', () => {
     assert.equal(await total(), before);
   });
 
-  it('REGRESSION: a path the parser would rewrite in place is refused too (".", "//", %2e)', async () => {
-    for (const target of ['/api/agent/./whoami', '/api/agent/whoami/.', '//api/agent/whoami', '/api/agent/whoami%2e']) {
+  it('REGRESSION: a path the parser would rewrite in place is refused too (".", "//")', async () => {
+    for (const target of ['/api/agent/./whoami', '/api/agent/whoami/.', '//api/agent/whoami']) {
+      refused(await rawCall(s.port, 'GET', target, { key: s.keys.reader }), target);
+    }
+  });
+
+  // The parser leaves these alone, so they routed literally (404) before; they are refused
+  // outright, so no %2e or %5c reaches a route or anything downstream that might decode it.
+  it('any %2e or %5c in the path is refused, whatever the parser makes of it', async () => {
+    for (const target of ['/api/agent/whoami%2e', '/api/agent/..%5cstats', '/api/agent/..%5Cstats', '/api/agent/a%2Eb']) {
       refused(await rawCall(s.port, 'GET', target, { key: s.keys.reader }), target);
     }
   });
