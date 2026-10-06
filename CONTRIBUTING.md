@@ -74,12 +74,18 @@ Every pull request runs eight jobs from the shipped workflow (`.github/workflows
 | `e2e` | A Playwright end-to-end pass against a local Postgres |
 
 Four more checks come from the other workflows in `.github/workflows/`: `gitleaks (secret scan)`
-runs on every PR, and three gates report on every PR but do their real work only when the PR
-touches what they check — `scrypto gate` (the Scrypto build and tests, for `escrow/scrypto/`,
-`badge-manager/scrypto/radix-badge-manager/` and `blueprints/agent-badge-controller/`),
-`formal gate` (the Quint model check, for `formal/` and the escrow blueprint's source) and
-`npm-lockfile gate` (`npm ci` of `guild-app/` on Node 22, when its `package.json` or
-`package-lock.json` changes). That makes twelve check names.
+runs on every PR and every branch push, and three gates report on every PR but do their real
+work only when the PR touches what they check — `scrypto gate` (the Scrypto build and tests, for
+`escrow/scrypto/`, `badge-manager/scrypto/radix-badge-manager/` and
+`blueprints/agent-badge-controller/`), `formal gate` (the Quint model check, for `formal/` and
+the escrow blueprint's source) and `npm-lockfile gate` (`npm ci` of `guild-app/` on Node 22,
+when its `package.json` or `package-lock.json` changes). Each of the three also does its real
+work when the PR changes its own workflow file. That makes twelve check names.
+
+**Local hooks** — `lefthook.yml` runs gitleaks over your staged changes before each commit
+(`lefthook install` once per clone). Its `identity` hook is a maintainer hook: the scanner it
+calls is not in this repository, so in your clone it prints `identity check skipped` and lets
+the commit through. That is expected; the same identity rule is applied before merge.
 
 One more status comes from outside CI. There is no PII scan in this repository's CI: the
 maintainer runs that gate privately — with the docs check when `docs/` changes, and the tests
