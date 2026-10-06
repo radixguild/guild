@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { readFileSync, readdirSync, writeFileSync, mkdtempSync, chmodSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, mkdtempSync, mkdirSync, chmodSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { privateInputs, PRIVATE_TREE } from "../support/private-input";
 
@@ -633,5 +633,156 @@ describe("no required-check count in the workflow prose", () => {
     for (const [label, path] of FILES) {
       expect(statedCounts(toProse(readFileSync(path, "utf8"))), `${label} states a required-check count`).toEqual([]);
     }
+  });
+});
+
+/**
+ * A gated workflow must watch its OWN file.
+ *
+ * scrypto.yml, formal.yml and npm-lockfile.yml run their heavy jobs only when a PR
+ * touches the paths their `changes` job lists, and their `... gate` job passes on
+ * `skipped`. Before 2026-10-06 only npm-lockfile.yml listed itself, so the weekly
+ * Dependabot github-actions group (or a hand edit to a cargo step or the Apalache
+ * cache key) skipped the scrypto and formal jobs, merged green, and the broken
+ * workflow first ran on the next escrow PR. The detection script is EXECUTED here,
+ * lifted from the YAML, in a throwaway git repo — a string match on the pathspec
+ * would pass a quoting mistake the runner would not.
+ */
+const gatedWorkflows = workflowFiles.filter((f) => parseJobs(f).some((j) => j.id === "changes"));
+
+/** The `run: |` script of the `changes` job's `id: diff` step, dedented. */
+function changesScript(file: string): string {
+  const job = parseJobs(file).find((j) => j.id === "changes")!;
+  const at = job.body.indexOf("id: diff");
+  if (at === -1) throw new Error(`${file}: changes job has no \`id: diff\` step`);
+  const runAt = job.body.indexOf("run: |", at);
+  if (runAt === -1) throw new Error(`${file}: the diff step has no \`run: |\` block`);
+  const lines = job.body.slice(runAt + "run: |".length).split("\n").slice(1);
+  const body: string[] = [];
+  for (const l of lines) {
+    if (l.trim() !== "" && !l.startsWith("          ")) break;
+    body.push(l.replace(/^ {10}/, ""));
+  }
+  return body.join("\n");
+}
+
+/** The `push:` trigger block of a workflow's `on:` section ("" if it has none). */
+function pushTrigger(file: string): string {
+  const head = stripComments(readFileSync(join(WORKFLOWS, file), "utf8").split(/^jobs:\s*$/m)[0]);
+  const m = head.match(/^ {2}push:\s*\n((?: {4,}.*\n|\s*\n)*)/m);
+  return m ? m[1] : "";
+}
+
+describe("change detection watches its own workflow file", () => {
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", ...args], {
+      cwd,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@example.invalid",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@example.invalid",
+      },
+    }).trim();
+
+  let repo = "";
+  let scratch = "";
+  let base = "";
+  let n = 0;
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), "changes-"));
+    scratch = mkdtempSync(join(tmpdir(), "changes-run-"));
+    git(repo, "init", "-q");
+    writeFileSync(join(repo, "README.md"), "base\n");
+    git(repo, "add", "README.md");
+    git(repo, "commit", "-q", "-m", "base");
+    base = git(repo, "rev-parse", "HEAD");
+  });
+
+  /** Run `file`'s detection for a PR whose only change is `path`; returns run=… */
+  function detect(file: string, path: string): string {
+    const k = ++n;
+    git(repo, "checkout", "-q", "--detach", base);
+    mkdirSync(dirname(join(repo, path)), { recursive: true });
+    writeFileSync(join(repo, path), `change ${k}\n`);
+    git(repo, "add", path);
+    git(repo, "commit", "-q", "-m", `change ${k}`);
+    const out = join(scratch, `out-${k}`);
+    writeFileSync(out, "");
+    const script = join(scratch, `s-${k}.sh`);
+    writeFileSync(script, changesScript(file));
+    execFileSync("bash", [script], {
+      cwd: repo,
+      env: { ...process.env, EVENT: "pull_request", BASE_SHA: base, GITHUB_OUTPUT: out },
+      encoding: "utf8",
+    });
+    return readFileSync(out, "utf8").match(/run=(\w+)/)?.[1] ?? "MISSING";
+  }
+
+  it("self-check: the three gated workflows are found", () => {
+    expect([...gatedWorkflows].sort()).toEqual(["formal.yml", "npm-lockfile.yml", "scrypto.yml"]);
+  });
+
+  it("EXECUTED: a PR that changes only the workflow file runs its jobs", () => {
+    for (const f of gatedWorkflows) {
+      expect(detect(f, `.github/workflows/${f}`), f).toBe("true");
+    }
+  });
+
+  it("EXECUTED self-check: an unrelated change still skips (the detection bites)", () => {
+    for (const f of gatedWorkflows) {
+      expect(detect(f, "unrelated/notes.txt"), f).toBe("false");
+    }
+  });
+
+  it("a main push that changes only the workflow file runs it too (push paths list it)", () => {
+    for (const f of gatedWorkflows) {
+      const push = pushTrigger(f);
+      expect(push, `${f} has no push trigger`).not.toBe("");
+      if (/^\s+paths:/m.test(push)) {
+        expect(push, `${f}'s push paths omit its own file`).toContain(`.github/workflows/${f}`);
+      }
+    }
+  });
+});
+
+/**
+ * secret-scan.yml: every branch push is scanned (the repository is public, so a
+ * pushed branch is public with or without a PR), and the gitleaks binary is checked
+ * against a digest pinned in the workflow, not only against a checksums.txt from
+ * the same release as the binary.
+ */
+describe("secret-scan trigger and gitleaks pin", () => {
+  const gitleaks = allJobs.find((j) => j.name === "gitleaks (secret scan)")!;
+  const body = stripComments(gitleaks.body);
+
+  it("the push trigger is not limited to main", () => {
+    const push = pushTrigger("secret-scan.yml");
+    expect(push).not.toBe("");
+    expect(push).not.toMatch(/\bmain\b/);
+    expect(push).not.toMatch(/^\s+paths(-ignore)?:/m);
+    expect(push).toMatch(/branches:\s*\[\s*'\*\*'\s*\]/);
+  });
+
+  it("pins a 64-hex GITLEAKS_SHA256 beside GITLEAKS_VERSION", () => {
+    expect(body).toMatch(/^\s+GITLEAKS_VERSION:\s*\d+\.\d+\.\d+\s*$/m);
+    expect(body).toMatch(/^\s+GITLEAKS_SHA256:\s*[0-9a-f]{64}\s*$/m);
+  });
+
+  it("checks the asset against the pinned digest, keeps the checksums.txt cross-check, and both run before extraction", () => {
+    const pinned = body.indexOf('echo "${GITLEAKS_SHA256}  ${asset}" | sha256sum -c -');
+    const crossCheck = body.indexOf('grep -F "$asset" checksums.txt | sha256sum -c -');
+    const extract = body.indexOf('tar -xzf "$asset"');
+    expect(pinned, "pinned-digest check missing").toBeGreaterThan(-1);
+    expect(crossCheck, "checksums.txt cross-check missing").toBeGreaterThan(-1);
+    expect(extract).toBeGreaterThan(Math.max(pinned, crossCheck));
+    // ...inside a step that stops at the first failed check.
+    const install = body.indexOf("- name: install gitleaks");
+    const strict = body.indexOf("set -euo pipefail", install);
+    expect(install).toBeGreaterThan(-1);
+    expect(strict).toBeGreaterThan(install);
+    expect(strict).toBeLessThan(pinned);
   });
 });
