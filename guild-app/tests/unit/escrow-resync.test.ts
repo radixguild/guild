@@ -500,6 +500,119 @@ describe("resyncTaskFromChain", () => {
   })
 })
 
+// ── GM-3: a resync the POSTER starts heals claims through the chain fallback ──
+// The user actor refuses the poster with SELF_CLAIM (they can never be the
+// claimer), and that used to land as a pending entry instead of falling through
+// to the chain-derived attribution — so a poster's resync of an expire →
+// re-claim history left the row open/unassigned while the chain said Claimed.
+describe("resyncTaskFromChain — poster-started resync (GM-3)", () => {
+  const POSTER = "account_rdx1poster"
+  const WORKER_A = "account_rdx1workera"
+  const WORKER_B = "account_rdx1workerb"
+
+  /** A confirm core that does what the real one would for these kinds. */
+  const realisticApply = () =>
+    mockApply.mockImplementation(async (t: { status: string }, kind: string, _h: string, actor: { kind: string; userId?: string; resolvedAssignee?: string }) => {
+      if (kind === "claim" && actor.kind === "user") {
+        if (actor.userId === POSTER) return { ok: false, code: "SELF_CLAIM", httpStatus: 403, message: "Cannot claim your own task" }
+        return { ok: false, code: "NOT_CLAIMER", httpStatus: 403, message: "Caller does not hold the active claim receipt" }
+      }
+      if (kind === "claim") return { ok: true, task: task({ status: "assigned", assigneeId: actor.resolvedAssignee }) }
+      if (kind === "expire") return { ok: true, task: task({ status: "open", assigneeId: null }) }
+      return { ok: true, task: t }
+    })
+
+  it("claim(A) → expire → claim(B), DB already assigned B, poster resyncs → ends assigned B with nothing pending", async () => {
+    stubGateway([
+      txItem("txid_rdx1claimA", [ev("TaskClaimedEvent")]),
+      txItem("txid_rdx1expire", [ev("ClaimExpiredEvent")]),
+      txItem("txid_rdx1claimB", [ev("TaskClaimedEvent")]),
+    ])
+    mockClaimInfo.mockResolvedValue({ state: "Claimed", workerAccount: WORKER_B })
+    mockFindUserById.mockResolvedValue({ id: WORKER_B })
+    realisticApply()
+
+    const result = await resyncTaskFromChain(task({ status: "assigned", assigneeId: WORKER_B }), POSTER)
+
+    expect(result).toMatchObject({ ok: true, pending: [] })
+    expect((result as { task: { status: string; assigneeId: string } }).task).toMatchObject({
+      status: "assigned",
+      assigneeId: WORKER_B,
+    })
+    // The re-claim healed off the chain's worker_account, never as the poster.
+    expect(mockApply).toHaveBeenCalledWith(expect.anything(), "claim", "txid_rdx1claimB", {
+      kind: "reconciler",
+      resolvedAssignee: WORKER_B,
+    })
+    expect(mockApply).not.toHaveBeenCalledWith(expect.anything(), "claim", expect.anything(), {
+      kind: "user",
+      userId: POSTER,
+    })
+    expect(mockApply).not.toHaveBeenCalledWith(expect.anything(), "claim", expect.anything(), expect.objectContaining({ resolvedAssignee: WORKER_A }))
+  })
+
+  it("a lost claim confirm (DB open/unassigned, chain Claimed by W): the poster's resync heals it to W", async () => {
+    stubGateway([txItem("txid_rdx1claim", [ev("TaskClaimedEvent")])])
+    mockClaimInfo.mockResolvedValue({ state: "Claimed", workerAccount: WORKER })
+    mockFindUserById.mockResolvedValue({ id: WORKER })
+    realisticApply()
+
+    const result = await resyncTaskFromChain(task({ status: "open" }), POSTER)
+
+    expect(result).toMatchObject({ ok: true, pending: [], applied: [{ kind: "claim", status: "assigned" }] })
+    expect(mockApply).toHaveBeenCalledTimes(1)
+    expect(mockApply).toHaveBeenCalledWith(expect.anything(), "claim", "txid_rdx1claim", {
+      kind: "reconciler",
+      resolvedAssignee: WORKER,
+    })
+  })
+
+  it("a non-poster caller still tries their own claim receipt first", async () => {
+    stubGateway([txItem("txid_rdx1claim", [ev("TaskClaimedEvent")])])
+    mockApply.mockResolvedValue({ ok: true, task: task({ status: "assigned", assigneeId: CALLER }) })
+    await resyncTaskFromChain(task({ status: "open" }), CALLER)
+    expect(mockApply).toHaveBeenCalledWith(expect.anything(), "claim", "txid_rdx1claim", { kind: "user", userId: CALLER })
+  })
+})
+
+// ── GM-8: a scan cut short by the page cap applies NOTHING ────────────────────
+describe("resyncTaskFromChain — truncated scan (GM-8)", () => {
+  it("a stream that still has a next_cursor after the page cap → not ok, nothing applied or ingested", async () => {
+    let streamCalls = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (String(url).includes("/transaction/committed-details")) {
+          return { ok: true, json: async () => ({ transaction: { transaction_status: "CommittedSuccess", state_version: 100 } }) }
+        }
+        streamCalls++
+        return {
+          ok: true,
+          json: async () => ({
+            ledger_state: { state_version: 999 },
+            items: [txItem(`txid_rdx1expire${streamCalls}`, [ev("ClaimExpiredEvent"), settleEv({ poster_entitled: "1" })])],
+            next_cursor: "more",
+          }),
+        }
+      }),
+    )
+    mockApply.mockResolvedValue({ ok: true, task: task({ status: "open" }) })
+
+    const result = await resyncTaskFromChain(task({ status: "assigned", assigneeId: WORKER }), CALLER)
+
+    expect(result).toMatchObject({ ok: false, code: "SCAN_TRUNCATED" })
+    expect(streamCalls).toBe(20)
+    expect(mockApply).not.toHaveBeenCalled()
+    expect(mockRecordEntitlement).not.toHaveBeenCalled()
+  })
+
+  it("a stream that ends inside the cap is applied as before", async () => {
+    stubGateway([txItem("txid_rdx1cancel", [ev("TaskCancelledEvent")])])
+    mockApply.mockResolvedValue({ ok: true, task: task({ status: "cancelled" }) })
+    expect(await resyncTaskFromChain(task({ status: "open" }), CALLER)).toMatchObject({ ok: true })
+  })
+})
+
 /**
  * The WIRE between the entitlement parser and the ledger writer (Phase 4 chunk B).
  *

@@ -284,7 +284,14 @@ export class MockLedger {
   /** The TaskCreatedEvent a given fund tx emitted — feeds readEscrowTaskCreated. */
   taskCreatedEvent(
     intentHash: string,
-  ): { taskId: number; rewardAmount: string; rewardToken: string; insuranceAmount: string } | null {
+  ): {
+    taskId: number
+    rewardAmount: string
+    rewardToken: string
+    insuranceAmount: string
+    poster: string
+    workBriefHash: string
+  } | null {
     const ev = (this.txLog.get(intentHash) ?? []).find((e) => e.name === "TaskCreatedEvent")
     if (!ev) return null
     return {
@@ -292,6 +299,8 @@ export class MockLedger {
       rewardAmount: ev.fields.reward_amount,
       rewardToken: ev.fields.reward_token,
       insuranceAmount: ev.fields.insurance_amount,
+      poster: ev.fields.poster,
+      workBriefHash: ev.fields.work_brief_hash,
     }
   }
 
@@ -602,6 +611,10 @@ export class MockLedger {
         reward_token: reward.resource,
         reward_amount: this.dec(reward.amount),
         insurance_amount: this.dec(insurance.amount),
+        // Carried by the real event too (lib.rs TaskCreatedEvent): the create
+        // confirm binds the row to its poster and its committed brief.
+        poster,
+        work_brief_hash: workBriefHash,
       },
     })
   }

@@ -44,6 +44,7 @@ import {
   readTokenDivisibility,
 } from "@/lib/gateway"
 import { INSURANCE_RATE } from "@/lib/marketplace"
+import { sha256Hex, workBriefHashHex } from "@/lib/work-brief"
 import { apiFetch } from "@/lib/api-fetch"
 import type { RadixDappToolkit } from "@radixdlt/radix-dapp-toolkit"
 
@@ -112,41 +113,15 @@ export interface EscrowTxResult {
 // frames fields with newlines (not length prefixes): the brief hash commits to
 // the combined text, so the exact title/description split is not independently
 // provable from the hash alone.
-
-/** Canonical v1 work-brief string committed on-chain by create_task (FROZEN). */
-export function canonicalWorkBrief(title: string, description: string): string {
-  return `guild-task-brief-v1\n${title}\n\n${description}`
-}
-
-/**
- * Canonical v2 work-brief (FROZEN): v1's layout plus the structured-terms
- * block (task-terms.ts canonicalTermsBlock — itself fixed-order). Only used
- * when at least one term is set, so v1 tasks stay byte-identical forever.
- * A verifier picks the layout by the prefix; the DB picks it by terms
- * presence (tasks.terms IS NULL → v1).
- */
-export function canonicalWorkBriefV2(
-  title: string,
-  description: string,
-  termsBlock: string,
-): string {
-  return `guild-task-brief-v2\n${title}\n\n${description}\n\n-- terms --\n${termsBlock}`
-}
+//
+// The work-brief layouts and the hasher live in src/lib/work-brief.ts (server-
+// safe, no toolkit import) so the create confirm can recompute the same hash;
+// re-exported here so existing imports keep working. Still ONE definition.
+export { canonicalWorkBrief, canonicalWorkBriefV2, sha256Hex } from "@/lib/work-brief"
 
 /** Canonical v1 submission-evidence string committed on-chain by submit_task (FROZEN). */
 export function canonicalSubmissionEvidence(content: string): string {
   return `guild-submission-v1\n${content}`
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/** 32-byte SHA-256 (lowercase hex) of the UTF-8 input — the on-chain commitment hash. */
-export async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input)
-  const digest = await crypto.subtle.digest("SHA-256", data)
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
 }
 
 // Shared submit + Result-mapping for all wrappers.
@@ -334,6 +309,21 @@ export function humanizeTxError(raw: string): HumanizedTxError {
       staleState: true,
     }
   }
+  // Approve / raise-dispute / finalize on a task the chain already moved past:
+  // release_after_review_timeout and auto_resolve_dispute are PUBLIC, so the
+  // task can settle while the DB still says submitted/disputed. Scoped to the
+  // three asserts whose buttons resync on staleState (lib.rs "task must be
+  // Submitted to release" / "...to dispute" / "must be Disputed to
+  // auto-resolve") — NOT the review-timeout release's own "to release on
+  // review timeout", whose button does not resync.
+  if (/must be Submitted to (?:release(?! on review timeout)|dispute)|must be Disputed to auto-resolve/i.test(raw)) {
+    return {
+      summary:
+        "This task already moved on-chain — it was released, disputed or settled before this transaction. Resyncing the status from chain…",
+      detail: raw,
+      staleState: true,
+    }
+  }
   // Structured / long payloads: one-line summary, payload behind the expando.
   if (raw.trimStart().startsWith("{") || raw.length > 160) {
     return { summary: "Transaction failed — open the error details below.", detail: raw }
@@ -379,11 +369,8 @@ export async function sendDepositTx(
   if (!isEscrowDeployed()) return { ok: false, error: "Escrow not deployed" }
   try {
     const insuranceXrd = Math.ceil(params.rewardXrd * INSURANCE_RATE)
-    const workBriefHash = await sha256Hex(
-      params.termsBlock
-        ? canonicalWorkBriefV2(params.title, params.description, params.termsBlock)
-        : canonicalWorkBrief(params.title, params.description),
-    )
+    // The same derivation the create confirm re-checks against this row.
+    const workBriefHash = await workBriefHashHex(params.title, params.description, params.termsBlock)
     const manifest = createTaskManifest(
       ESCROW_COMPONENT,
       params.account,
@@ -541,11 +528,7 @@ export async function sendSubmitTx(
     // create_task — the two MUST agree byte for byte or the on-chain assert
     // rejects an honest submission. Terms presence picks the layout, exactly as
     // it does there.
-    const briefHash = await sha256Hex(
-      params.termsBlock
-        ? canonicalWorkBriefV2(params.title, params.description, params.termsBlock)
-        : canonicalWorkBrief(params.title, params.description),
-    )
+    const briefHash = await workBriefHashHex(params.title, params.description, params.termsBlock)
     const manifest = submitTaskManifest(
       params.escrowComponent || ESCROW_COMPONENT,
       params.account,
@@ -939,9 +922,13 @@ export async function confirmEscrowTx(
   taskDbId: number | string,
   kind: "create" | "claim" | "submit" | "approve" | "dispute" | "resolve" | "cancel",
   intentHash: string,
-): Promise<{ ok: boolean; onChainTaskId?: number; error?: string }> {
+): Promise<{ ok: boolean; onChainTaskId?: number; error?: string; code?: string }> {
   // The Gateway can't see the tx's events until it commits (~5-10s after the
   // wallet submits), so a 422 (event-not-found) is retried before giving up.
+  // A 5xx is retried too (2026-10-06): the confirm is idempotent server-side,
+  // and a committed tx whose confirm gave up on one server hiccup was the
+  // start of the double-fund path. 409/403 still come back at once — they are
+  // deterministic, and `code` lets the caller tell them apart.
   const ATTEMPTS = 4
   for (let i = 0; i < ATTEMPTS; i++) {
     try {
@@ -954,11 +941,12 @@ export async function confirmEscrowTx(
       if (res.ok && json?.ok) {
         return { ok: true, onChainTaskId: json.data?.onChainTaskId ?? undefined }
       }
-      if (res.status === 422 && i < ATTEMPTS - 1) {
+      if ((res.status === 422 || res.status >= 500) && i < ATTEMPTS - 1) {
         await new Promise((r) => setTimeout(r, 4000))
         continue
       }
-      return { ok: false, error: json?.error?.message || "Confirmation failed" }
+      const code = typeof json?.error?.code === "string" ? json.error.code : undefined
+      return { ok: false, error: json?.error?.message || "Confirmation failed", ...(code ? { code } : {}) }
     } catch (e) {
       if (i < ATTEMPTS - 1) {
         await new Promise((r) => setTimeout(r, 4000))

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
 import { withAuth } from "@/lib/auth"
 import { findTaskById, updateTask } from "@/db/queries/tasks"
+import { findEscrowByTask } from "@/db/queries/escrow"
+import { readDisputeEvidenceCommitment } from "@/lib/gateway"
+import { ESCROW_COMPONENT } from "@/lib/config"
 import { fromError } from "@/lib/api-response"
 import { chainWriteGate } from "@/lib/chain-halt-gate"
 import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit"
@@ -85,11 +88,9 @@ export const POST = withAuth(async (req, { params, user }) => {
       )
     }
 
-    // Only the two parties. The blueprint already authorises raise_dispute off
-    // a Task Receipt or the claimer's badge, so a third party cannot have
-    // raised the dispute this statement belongs to — but the DB has no such
-    // proof in hand, and an unauthenticated statement attached to someone
-    // else's dispute would be worse than none.
+    // Only the two parties — a cheap first cut before any chain read. Which of
+    // the two RAISED the dispute is checked against the dispute transaction
+    // further down; this check alone does not decide it.
     if (user.userId !== task.creatorId && user.userId !== task.assigneeId) {
       return NextResponse.json(
         {
@@ -137,6 +138,88 @@ export const POST = withAuth(async (req, { params, user }) => {
     // checking against the ledger.
     const normalized = normalizeDisputeEvidence(evidence)
     const hash = await disputeEvidenceHash(normalized)
+
+    // CHECKED AGAINST THE CHAIN before anything is stored (2026-10-06). The
+    // party check above lets EITHER party through and the write is once-only,
+    // so until this check the first party to file won: the NON-raising party
+    // could file their own text, have it shown as the raiser's statement, and
+    // lock the raiser's real one out with ALREADY_FILED. The dispute
+    // transaction itself says who raised it and which hash they committed;
+    // the statement must come from that party and open that hash.
+    //
+    // The tx is the `dispute` ledger row the dispute confirm wrote (a task is
+    // only `disputed` once that confirm ran). Fail closed: no row, or a ledger
+    // we cannot read, stores nothing.
+    const disputeTx = (await findEscrowByTask(taskId)).find((r) => r.txType === "dispute")?.txHash
+    if (!disputeTx || task.onChainTaskId == null) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "NO_DISPUTE_RECORD",
+            message: "This task has no recorded dispute transaction to check the statement against — nothing was stored",
+          },
+        },
+        { status: 409 },
+      )
+    }
+    const commitment = await readDisputeEvidenceCommitment(
+      disputeTx,
+      task.escrowComponent ?? ESCROW_COMPONENT,
+      task.onChainTaskId,
+    )
+    if (!commitment) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "CHAIN_UNREADABLE",
+            message:
+              "Could not read the dispute transaction from the ledger to check this statement against — nothing was stored. Try again shortly.",
+          },
+        },
+        { status: 503 },
+      )
+    }
+    const raiserId = commitment.raisedBy === "Poster" ? task.creatorId : task.assigneeId
+    if (user.userId !== raiserId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "NOT_RAISER",
+            message: "Only the party who raised this dispute on-chain can file its statement",
+          },
+        },
+        { status: 403 },
+      )
+    }
+    if (commitment.evidenceHash === null) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "NO_COMMITMENT",
+            message:
+              "This dispute was raised without a statement hash, so there is no on-chain commitment for a statement to open — nothing was stored",
+          },
+        },
+        { status: 409 },
+      )
+    }
+    if (commitment.evidenceHash !== hash) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "EVIDENCE_HASH_MISMATCH",
+            message:
+              "This text does not match the statement hash in the dispute transaction — nothing was stored. File the exact statement you raised the dispute with.",
+          },
+        },
+        { status: 409 },
+      )
+    }
 
     const updated = await updateTask(taskId, {
       disputeEvidence: normalized,

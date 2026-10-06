@@ -102,7 +102,7 @@ vi.mock("@/lib/gateway", async (importOriginal) => ({
     if (component !== A.COMPONENT) return null
     const e = A.ledger?.taskCreatedEvent(intentHash)
     return e
-      ? { taskId: e.taskId, rewardAmount: dec(e.rewardAmount), rewardToken: e.rewardToken, insuranceAmount: dec(e.insuranceAmount) }
+      ? { taskId: e.taskId, rewardAmount: dec(e.rewardAmount), rewardToken: e.rewardToken, insuranceAmount: dec(e.insuranceAmount), poster: e.poster, workBriefHash: e.workBriefHash }
       : null
   },
   // Without this the finalize path would reach the REAL Gateway over the network
@@ -254,7 +254,9 @@ async function seedDbTask(overrides: Partial<typeof tasks.$inferInsert> = {}) {
     .insert(tasks)
     .values({
       title: "Port the docs widget",
-      description: "Port the widget to the new stack",
+      // The SAME text fundVM commits on-chain: the create confirm now binds the
+      // row to its work_brief_hash (GM-1), as a real poster's row always is.
+      description: "Port the widget",
       creatorId: POSTER,
       rewardXrd: String(REWARD),
       xpReward: XP_REWARD,

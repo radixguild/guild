@@ -170,17 +170,23 @@ export function DisputeEvidenceCard({
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wide text-muted-foreground">
           <FileText className="h-4 w-4" aria-hidden />
-          Statement from whoever raised the dispute
+          Dispute statement
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="whitespace-pre-wrap text-sm">{evidence}</p>
         <div className="space-y-1 border-t pt-3">
+          {/* Worded to stay true for every stored row. Since 2026-10-06 the
+              route only stores a statement from the party who raised the
+              dispute whose hash matches the dispute transaction's; a row filed
+              before that was never checked, so the card states the rule and
+              the hash and points at the ledger, and does not vouch for the row. */}
           <p className="text-xs text-muted-foreground">
-            The dispute transaction carries a hash of this text, written at the
-            moment the dispute was raised. Hash the statement above yourself and
-            compare — if a single character had changed since, the two would not
-            match.
+            This site stores a statement only from the party who raised the
+            dispute, and only when its hash matches the statement hash in the
+            dispute transaction. Check it yourself: hash the statement above and
+            compare it with that transaction&rsquo;s evidence hash — if a single
+            character had changed, the two would not match.
           </p>
           <p className="break-all font-mono text-[11px] text-muted-foreground">
             {evidenceHash}

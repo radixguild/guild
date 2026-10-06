@@ -378,6 +378,28 @@ function resourceAddressField(fields: any[], fieldName: string): string | null {
 }
 
 /**
+ * Read a ComponentAddress field (the blueprint's `poster` — an account in
+ * practice). Same anchored-shape posture as resourceAddressField: anything else
+ * is null (unknown), never the raw value.
+ */
+function componentAddressField(fields: any[], fieldName: string): string | null {
+  const v = fields.find((x) => x?.field_name === fieldName)?.value;
+  return typeof v === "string" && /^(?:account|component)_rdx[a-z0-9]{20,}$/.test(v) ? v : null;
+}
+
+/**
+ * Read a Scrypto `Hash` field as lowercase hex. Programmatic JSON renders a
+ * Hash as `kind: "Bytes"` with the bytes under a `hex` STRING (not `value`) —
+ * the same shape the agent kit's readOnChainWorkBriefHash decodes. Only a
+ * well-formed 32-byte value counts; anything else is null (unknown).
+ */
+function hashHexField(fields: any[], fieldName: string): string | null {
+  const f = fields.find((x) => x?.field_name === fieldName);
+  if (!f || f.kind !== "Bytes" || typeof f.hex !== "string") return null;
+  return /^[0-9a-fA-F]{64}$/.test(f.hex) ? f.hex.toLowerCase() : null;
+}
+
+/**
  * Read a create_task tx's TaskCreatedEvent. `taskId` is the critical capture —
  * claim/submit/approve all key off it, so this returns null if it can't be read.
  * `rewardAmount` + `rewardToken` are what the tx actually escrowed: the create
@@ -386,6 +408,11 @@ function resourceAddressField(fields: any[], fieldName: string): string | null {
  * on-chain insurance deposit — the auto-resolve finalize flow needs it to route
  * the raiser's insurance leg with the EXACT on-chain decimal (null tolerated by
  * the confirm route, fatal for finalize).
+ *
+ * `poster` and `workBriefHash` are what bind the escrow to ONE row: the create
+ * confirm refuses unless the poster is the row's creator and the hash is the
+ * row's own brief, and refuses when either is null (unreadable). Without them
+ * anyone could link their own row to another poster's public create tx.
  */
 export async function readEscrowTaskCreated(
   intentHash: string,
@@ -395,6 +422,8 @@ export async function readEscrowTaskCreated(
   rewardAmount: string | null;
   rewardToken: string | null;
   insuranceAmount: string | null;
+  poster: string | null;
+  workBriefHash: string | null;
 } | null> {
   const events = await fetchTxEvents(intentHash);
   if (!events) return null;
@@ -407,6 +436,8 @@ export async function readEscrowTaskCreated(
     rewardAmount: decimalField(fields, "reward_amount"),
     rewardToken: resourceAddressField(fields, "reward_token"),
     insuranceAmount: decimalField(fields, "insurance_amount"),
+    poster: componentAddressField(fields, "poster"),
+    workBriefHash: hashHexField(fields, "work_brief_hash"),
   };
 }
 
@@ -436,6 +467,40 @@ export async function readDisputeRaised(
   const raisedBy = enumVariantField(fields, "raised_by");
   if (raisedBy !== "Poster" && raisedBy !== "Worker") return null;
   return { raisedBy, confirmedAt: details.confirmedAt };
+}
+
+/**
+ * Read a raise_dispute tx's DisputeRaisedEvent for what the dispute-evidence
+ * route must check a filed statement against: WHO raised it (`raised_by`) and
+ * the statement hash they committed (`dispute_evidence_hash: Option<Hash>`).
+ *
+ * `evidenceHash: null` is a CONFIRMED absence — the event read cleanly and its
+ * Option is None (a dispute raised without a statement). Anything unreadable —
+ * the tx, the emitter pin, the task id, `raised_by`, or a Some whose bytes are
+ * not a 32-byte hex — returns null for the whole read, never a guess, so the
+ * route fails closed instead of storing prose it could not check.
+ */
+export async function readDisputeEvidenceCommitment(
+  intentHash: string,
+  escrowComponent: string,
+  expectedTaskId: number,
+): Promise<{ raisedBy: "Poster" | "Worker"; evidenceHash: string | null } | null> {
+  const events = await fetchTxEvents(intentHash);
+  if (!events) return null;
+  const fields = findEventFields(events, "DisputeRaisedEvent", escrowComponent);
+  if (!fields) return null;
+  if (u64Field(fields, "task_id") !== expectedTaskId) return null;
+  const raisedBy = enumVariantField(fields, "raised_by");
+  if (raisedBy !== "Poster" && raisedBy !== "Worker") return null;
+  const opt = fields.find((f) => f?.field_name === "dispute_evidence_hash");
+  if (!opt) return null;
+  const variant = opt.variant_name ?? (opt.variant_id === "0" ? "None" : opt.variant_id === "1" ? "Some" : null);
+  if (variant === "None") return { raisedBy, evidenceHash: null };
+  if (variant !== "Some") return null;
+  const inner = Array.isArray(opt.fields) ? opt.fields[0] : null;
+  if (!inner || inner.kind !== "Bytes" || typeof inner.hex !== "string") return null;
+  if (!/^[0-9a-fA-F]{64}$/.test(inner.hex)) return null;
+  return { raisedBy, evidenceHash: inner.hex.toLowerCase() };
 }
 
 /**
