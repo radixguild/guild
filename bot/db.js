@@ -1496,9 +1496,9 @@ const ROLL_WEIGHTS = [30, 25, 20, 13, 8, 4]; // must sum to 100
 const ROLL_BONUSES = [0, 5, 10, 25, 50, 100]; // XP bonus per roll
 
 function rollDice() {
-  // crypto.randomInt, not the engine's non-crypto PRNG (2026-10-06). The result still queues
-  // roll_bonus rows (services/xp.js) shaped for an on-chain update_xp that has never been
-  // applied. Integers 0-99 against the cumulative weights give the same 30/25/20/13/8/4.
+  // crypto.randomInt, not the engine's non-crypto PRNG (2026-10-06). services/xp.js no longer
+  // rolls or queues roll_bonus rows (also 2026-10-06); the grid board's dice value still uses
+  // this. Integers 0-99 against the cumulative weights give the same 30/25/20/13/8/4.
   const rand = crypto.randomInt(0, 100);
   let cumulative = 0;
   for (let i = 0; i < ROLL_WEIGHTS.length; i++) {

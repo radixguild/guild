@@ -1,7 +1,7 @@
 require("dotenv").config();
 const { Bot, InlineKeyboard } = require("grammy");
 const db = require("./db");
-const { getBadgeData, getBadgeResult } = require("./services/gateway");
+const { getBadgeResult } = require("./services/gateway");
 const { queueXpReward, getXpQueue } = require("./services/xp");
 const { setupWizard, setupSkipDesc, pendingProposals } = require("./wizard");
 const { setupGuidedWizards } = require("./wizards");
@@ -215,18 +215,23 @@ bot.command("start", async (ctx) => {
     // once linked) is secondary, and only needed to claim. Until 2026-09-20 this
     // offered "Step 2: Mint Badge" to anyone with a linked wallet — badge or not —
     // and put governance ("View Proposals") ahead of the marketplace; until 2026-10-03
-    // the wallet-link button came before the board.
-    const badge = user ? await getBadgeData(user.radix_address).catch(() => null) : null;
+    // the wallet-link button came before the board. A Gateway outage is not "no badge"
+    // (2026-10-06): an unread badge gets a retry button, not the mint one.
+    const badgeRead = user ? await getBadgeResult(user.radix_address).catch(() => ({ error: true })) : { data: null };
+    const badgeUnknown = !!badgeRead.error;
+    const badge = badgeUnknown ? null : badgeRead.data;
     const kb = new InlineKeyboard();
     kb.url(badge ? "Browse open tasks" : "See the task board", PORTAL + "/tasks");
     if (!user) {
       kb.row().text("Link your wallet (to claim)", "onboard_register");
+    } else if (badgeUnknown) {
+      kb.row().text("Check my badge", "onboard_check_badge");
     } else if (!badge) {
       kb.row().text("Mint your badge (to claim)", "onboard_mint");
     }
 
     ctx.reply(
-      copy.startDm({ portal: PORTAL, linkedAddress: user ? user.radix_address : null, hasBadge: !!badge,
+      copy.startDm({ portal: PORTAL, linkedAddress: user ? user.radix_address : null, hasBadge: !!badge, badgeUnknown,
         mustLink: !!(user && verify && verify.linkEnabled && !db.getWalletLink(ctx.from.id)) }),
       { reply_markup: kb }
     );
@@ -250,9 +255,9 @@ bot.command("register", async (ctx) => {
   if (!claim.ok) return ctx.reply(claim.reason === "taken" ? copy.registerAddressTaken() : copy.registerKeepsProven({ last8: claim.last8 }));
   db.registerUser(ctx.from.id, address, ctx.from.username || ctx.from.first_name);
   // Look before telling someone to mint: until 2026-09-20 this told a wallet that
-  // already held a badge to go and mint one.
-  const badge = await getBadgeData(address).catch(() => null);
-  ctx.reply(copy.registered({ portal: PORTAL, hasBadge: !!badge, mustLink: claim.mustLink }));
+  // already held a badge to go and mint one; until 2026-10-06 a Gateway outage did too.
+  const badgeRead = await getBadgeResult(address).catch(() => ({ error: true }));
+  ctx.reply(copy.registered({ portal: PORTAL, hasBadge: !badgeRead.error && !!badgeRead.data, badgeUnknown: !!badgeRead.error, mustLink: claim.mustLink }));
 });
 
 // ── /badge ──────────────────────────────────────────────
@@ -262,7 +267,10 @@ bot.command("register", async (ctx) => {
 bot.command(["badge", "badges"], async (ctx) => {
   const user = db.getUser(ctx.from.id);
   if (!user) return ctx.reply("Register first: /register <account_rdx1...>");
-  const badge = await getBadgeData(user.radix_address);
+  // A Gateway outage is not "no badge" (2026-10-06): noBadge tells the holder to mint.
+  const badgeRead = await getBadgeResult(user.radix_address).catch(() => ({ error: true }));
+  if (badgeRead.error) return ctx.reply(copy.badgeCheckUnavailable());
+  const badge = badgeRead.data;
   if (!badge) return ctx.reply(copy.noBadge({ portal: PORTAL }));
   ctx.reply(copy.badgeCard({ badge, trust: db.getTrustScore(ctx.from.id) }));
 });
@@ -1286,10 +1294,12 @@ bot.command("faq", (ctx) => ctx.reply(copy.faq({ portal: PORTAL })));
 bot.command("wallet", async (ctx) => {
   const user = db.getUser(ctx.from.id);
   if (!user) return ctx.reply("Register first: /register <account_rdx1...>");
-  const badge = await getBadgeData(user.radix_address);
-  const badgePart = badge
-    ? copy.badgeCard({ badge, trust: db.getTrustScore(ctx.from.id) })
-    : copy.noBadge({ portal: PORTAL });
+  const badgeRead = await getBadgeResult(user.radix_address).catch(() => ({ error: true }));
+  const badgePart = badgeRead.error
+    ? copy.badgeCheckUnavailable()
+    : badgeRead.data
+      ? copy.badgeCard({ badge: badgeRead.data, trust: db.getTrustScore(ctx.from.id) })
+      : copy.noBadge({ portal: PORTAL });
   ctx.reply("Wallet: " + user.radix_address.slice(0, 25) + "...\n\n" + badgePart + "\n\n" + copy.WALLET_FOOTNOTE);
 });
 
