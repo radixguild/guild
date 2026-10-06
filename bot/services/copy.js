@@ -156,8 +156,17 @@ function tasksNotice({ portal }) {
   );
 }
 
-/** @param {{ portal: string, hasBadge: boolean }} o */
-function registered({ portal, hasBadge }) {
+/** @param {{ portal: string, hasBadge: boolean, mustLink?: boolean }} o */
+function registered({ portal, hasBadge, mustLink = false }) {
+  // With /link on (mustLink), a /register claim opens no gate, so it isn't "linked" and
+  // nobody is "set" until they prove the wallet.
+  if (mustLink) {
+    return (
+      "Wallet saved" + (hasBadge ? " — it holds a Guild badge." : ".") + "\n\n" +
+      "To propose, run temp checks or vote, prove it's yours: open a private chat with me and send /link." +
+      (hasBadge ? "" : "\n\nNo badge yet? Mint your free Guild badge (network fee only): " + portal + "/mint")
+    );
+  }
   return hasBadge
     ? "Wallet linked — and it already holds a Guild badge. You're set.\n\n" +
       "Browse tasks: " + portal + "/tasks\n" +
@@ -433,6 +442,14 @@ function linkRequired() {
   return (
     "First prove the wallet that holds your badge: open a private chat with me and send /link. " +
     "You sign in on radixguild.com once, and from then on the badge checks use the wallet you proved."
+  );
+}
+
+// /register when this account already proved a different wallet with /link.
+function registerKeepsProven({ last8 }) {
+  return (
+    "Your proven wallet is " + last8 + ", and the badge checks use it. /register can't replace it. " +
+    "To prove a different wallet, open a private chat with me and send /link."
   );
 }
 
@@ -739,7 +756,7 @@ module.exports = {
   startDm, startGroup, welcomeMember, help, tasksNotice, registered, mint, noBadge, badgeCard, badgeFound,
   mintStep, faq, readme, support, feedbackUsage, feedbackSaved, feedbackGone, myStatus, FEEDBACK_SAVED, sourceStatus,
   verifyResult, verifyTeamList, verifyUsernameNotTeam, verifyNoPerson, verifySelfBot, verifyOtherBot,
-  linkInGroup, linkDisabled, linkRequired, linkRequiredShort, linkStart, linkFailed, linkDone,
+  linkInGroup, linkDisabled, linkRequired, linkRequiredShort, registerKeepsProven, linkStart, linkFailed, linkDone,
   voteRecorded, pollClosedHeadline, pollClosed, pollStatusWords, pollResults, pollHistory, cancelReply,
   disputesOnTheWeb, cv3Parked, diceGameClosed, noGuildDao, groupsOnTheWeb, projectsOnTheWeb, milestonesOffBoard,
   cv2Parked, workSubmittedDm,

@@ -289,6 +289,21 @@ describe('verify', () => {
       }
     });
 
+    it('checkClaim: /link off lets /register store anything, as before', () => {
+      assert.deepEqual(makeVerify({ env: { WALLET_LINK_ENABLED: 'false' } }).checkClaim(70, ADMIN_ADDR), { ok: true, mustLink: false });
+    });
+
+    it('checkClaim: /link on and nothing proven: the claim is stored but the reply must point to /link', () => {
+      assert.deepEqual(makeVerify().checkClaim(71, USER_ADDR), { ok: true, mustLink: true });
+    });
+
+    it('checkClaim: /link on never lets /register replace a proven wallet', async () => {
+      const ctx = fakeCtx({ fromId: 72, chatType: 'private', match: code({ tg: 72 }) });
+      await makeVerify().handleLink(ctx);
+      assert.deepEqual(makeVerify().checkClaim(72, USER_ADDR), { ok: true, mustLink: false });
+      assert.deepEqual(makeVerify().checkClaim(72, ADMIN_ADDR), { ok: false, last8: '…' + USER_ADDR.slice(-8) });
+    });
+
     it('nobody at all: unregistered with /link off, unlinked with it on', () => {
       assert.deepEqual(makeVerify({ env: { WALLET_LINK_ENABLED: 'false' } }).memberAddress(63), { ok: false, reason: 'unregistered' });
       assert.deepEqual(makeVerify().memberAddress(63), { ok: false, reason: 'unlinked' });

@@ -204,6 +204,17 @@ function createVerify(options = {}) {
     return user ? { ok: true, address: user.radix_address, proven: false } : { ok: false, reason: "unregistered" };
   }
 
+  // /register while /link is on (2026-10-06): a claim no longer opens any gate, so the reply
+  // has to say so, and a claim must never overwrite the wallet a member proved (the users
+  // row feeds /wallet, /badge and attribution).
+  /** @returns {{ ok: true, mustLink: boolean } | { ok: false, last8: string }} */
+  function checkClaim(tgId, address) {
+    if (!linkEnabled) return { ok: true, mustLink: false };
+    const link = db.getWalletLink(tgId);
+    if (link && link.radix_address !== address) return { ok: false, last8: last8(link.radix_address) };
+    return { ok: true, mustLink: !link };
+  }
+
   async function handleLink(ctx) {
     const arg = (ctx.match || "").trim();
     if (ctx.chat.type !== "private") {
@@ -227,7 +238,7 @@ function createVerify(options = {}) {
     return ctx.reply(copy.linkDone({ last8: last8(res.address) }));
   }
 
-  return { handleVerify, handleLink, makeTicket, checkCode, linkEnabled, memberAddress };
+  return { handleVerify, handleLink, makeTicket, checkCode, linkEnabled, memberAddress, checkClaim };
 }
 
 module.exports = { createVerify, encodeToken, decodeToken };

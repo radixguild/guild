@@ -65,8 +65,9 @@ export const isAgentLaneLive = (): boolean =>
 // encodes the VPS IP by construction, and that host has 301'd to
 // radixguild.com since the :3002 dashboard was decommissioned 2026-07-03 —
 // so the old default was both a needless IP disclosure and a redirect hop.
-// Caddy routes radixguild.com/api/* to the bot on :3003, so this is the same
-// endpoint by a name that does not embed the address.
+// Note: since 2026-09-24 Caddy forwards only /api/agent/* to the bot (:3003);
+// other /api/* paths answer 404 at the edge. Nothing in the app reads this
+// constant today.
 export const BOT_API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "https://radixguild.com/api";

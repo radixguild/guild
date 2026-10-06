@@ -65,13 +65,18 @@ describe('index.js badge gates resolve the wallet through memberAddress', () => 
     const body = fnBody(/async function requireBadge\(ctx\)/, /\n}\n/);
     assert.match(body, /memberAddress\(ctx\.from\.id\)/);
     assert.match(body, /copy\.linkRequired\(\)/);
+    // A Gateway outage must not read as "no badge" (hasBadge swallowed the error).
+    assert.match(body, /getBadgeResult\(user\.radix_address\)/);
+    assert.match(body, /badge\.error/);
+    assert.doesNotMatch(body, /hasBadge\(/);
     assert.doesNotMatch(body, /const user = db\.getUser\(ctx\.from\.id\);\s*\n\s*if \(!user\)/);
   });
 
   it('the vote buttons check and record the memberAddress wallet', () => {
     const body = fnBody(/if \(!data\.startsWith\("vote_"\)\) return await next\(\);/, /\n}\);\n/);
     assert.match(body, /memberAddress\(ctx\.from\.id\)/);
-    assert.match(body, /hasBadge\(who\.address\)/);
+    assert.match(body, /getBadgeResult\(who\.address\)/);
+    assert.match(body, /badge\.error/);
     assert.match(body, /db\.recordVote\(proposalId, ctx\.from\.id, who\.address, voteChoice\)/);
     assert.match(body, /wallet_already_voted/);
     assert.doesNotMatch(body, /\buser\.radix_address\b/);

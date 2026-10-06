@@ -1,5 +1,6 @@
 const Database = require("better-sqlite3");
 const path = require("path");
+const crypto = require("node:crypto");
 
 const DB_PATH = process.env.BOT_DB_PATH || path.join(__dirname, "guild.db");
 
@@ -1490,7 +1491,9 @@ const ROLL_WEIGHTS = [30, 25, 20, 13, 8, 4]; // must sum to 100
 const ROLL_BONUSES = [0, 5, 10, 25, 50, 100]; // XP bonus per roll
 
 function rollDice() {
-  const rand = Math.random() * 100;
+  // crypto.randomInt, not the engine's non-crypto PRNG (2026-10-06): the result queues XP for an on-chain
+  // update_xp. Integers 0-99 against the cumulative weights give the same 30/25/20/13/8/4.
+  const rand = crypto.randomInt(0, 100);
   let cumulative = 0;
   for (let i = 0; i < ROLL_WEIGHTS.length; i++) {
     cumulative += ROLL_WEIGHTS[i];
