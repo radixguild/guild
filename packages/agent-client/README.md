@@ -587,6 +587,12 @@ exactly (a pure on-chain collection with no DB step at all). This asymmetry is
 inherited, not invented — `approve-task.mjs` already took a DB id while
 `guild-worker withdraw` already read the escrow directly by on-chain id; see
 `guild-poster help` and each command's doc comment in `src/guild-poster.ts`.
+On-chain ids restart at 1 on every escrow component, so these four DB-id
+commands also check that the task was funded on the component you are
+configured for. A task on a different component is refused in either mode, and
+nothing is signed. A task whose component the API does not report is refused
+too, unless you pass `--allow-unverified-component` after checking it on chain
+yourself.
 
 **DB-FIRST, always.** `post`'s live path creates the DB row (`POST
 /api/v1/tasks`) BEFORE funding on-chain, and hashes the row's OWN

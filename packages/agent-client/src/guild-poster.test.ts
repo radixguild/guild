@@ -99,6 +99,9 @@ function fakeTask(overrides: Partial<GuildTask> = {}): GuildTask {
     requiredTier: null,
     xpReward: 10,
     onChainTaskId: null,
+    // Funded on the configured component by default, so the DB-id legs'
+    // component pin passes; the pin itself is tested with explicit overrides.
+    escrowComponent: CONFIG.escrowComponent,
     deadline: null,
     createdAt: '2026-09-15T00:00:00.000Z',
     updatedAt: '2026-09-15T00:00:00.000Z',
