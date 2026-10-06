@@ -181,6 +181,7 @@ describe('runWorkerCycle — claim leg hardening (dedup + confirm recovery)', ()
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // Default-deny gate: without this the worker claims nothing and these
       // fixtures test the gate instead of the claim leg they are about.
       trustedPosters: ['account_rdx1other'],
@@ -226,6 +227,7 @@ describe('runWorkerCycle — claim leg hardening (dedup + confirm recovery)', ()
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // Default-deny gate: without this the worker claims nothing and these
       // fixtures test the gate instead of the claim leg they are about.
       trustedPosters: ['account_rdx1other'],
@@ -261,6 +263,7 @@ describe('runWorkerCycle — claim leg hardening (dedup + confirm recovery)', ()
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // Default-deny gate: without this the worker claims nothing and these
       // fixtures test the gate instead of the claim leg they are about.
       trustedPosters: ['account_rdx1other'],
@@ -295,6 +298,7 @@ describe('runWorkerCycle — claim leg hardening (dedup + confirm recovery)', ()
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // Default-deny gate: without this the worker claims nothing and these
       // fixtures test the gate instead of the claim leg they are about.
       trustedPosters: ['account_rdx1other'],
@@ -328,6 +332,7 @@ describe('runWorkerCycle — claim leg hardening (dedup + confirm recovery)', ()
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // Default-deny gate: without this the worker claims nothing and these
       // fixtures test the gate instead of the claim leg they are about.
       trustedPosters: ['account_rdx1other'],
@@ -365,6 +370,7 @@ describe('runWorkerCycle — claim leg hardening (dedup + confirm recovery)', ()
         api: fakeApi(state),
         identity,
         onChain: true,
+        claimOnly: true,
         // Default-deny gate: without this the worker claims nothing and these
         // fixtures test the gate instead of the claim leg they are about.
         trustedPosters: ['account_rdx1other'],
@@ -414,6 +420,7 @@ describe('runWorkerCycle — claim allowlist (default-deny, CRITICAL fix)', () =
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // trustedPosters intentionally omitted — this is the field's default.
       txFns,
       resolveClaimReceiptId: () => Promise.resolve(null),
@@ -439,6 +446,7 @@ describe('runWorkerCycle — claim allowlist (default-deny, CRITICAL fix)', () =
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       trustedPosters: [],
       txFns,
       resolveClaimReceiptId: () => Promise.resolve(null),
@@ -466,6 +474,7 @@ describe('runWorkerCycle — claim allowlist (default-deny, CRITICAL fix)', () =
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       trustedPosters: ['account_rdx1someone_else', 'account_rdx1trusted'],
       txFns,
       resolveClaimReceiptId: () => Promise.resolve(null),
@@ -489,6 +498,7 @@ describe('runWorkerCycle — claim allowlist (default-deny, CRITICAL fix)', () =
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       trustedPosters: ['account_rdx1someone_else'], // does not include the poster
       txFns,
       resolveClaimReceiptId: () => Promise.resolve(null),
@@ -536,6 +546,7 @@ describe('runWorkerCycle — claim allowlist (default-deny, CRITICAL fix)', () =
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       trustedPosters: [ME],
       txFns,
       resolveClaimReceiptId: () => Promise.resolve(null),

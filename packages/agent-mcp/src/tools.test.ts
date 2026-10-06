@@ -37,6 +37,8 @@ const FAKE_TASK: GuildTask = {
   requiredTier: 'member',
   xpReward: 100,
   onChainTaskId: 42,
+  // Funded on the configured component, so task_chain_state's pin passes.
+  escrowComponent: loadConfig().escrowComponent,
   deadline: null,
   createdAt: '2026-07-19T00:00:00.000Z',
   updatedAt: '2026-07-19T00:00:00.000Z',
@@ -302,6 +304,18 @@ describe('resolve_badge', () => {
     expect(state.lastBadgeArgs?.resource).toBe('resource_rdx1other');
   });
 
+  test('unreadable Gateway answer → isError, never holds:false', async () => {
+    const { deps } = fakeDeps({
+      resolveBadgeLocalId: async () => {
+        throw new Error('could not read its badge holdings');
+      },
+    });
+    const res = await invokeTool(tool(deps, 'resolve_badge'), { address: 'account_rdx1holder' });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toContain('could not read');
+    expect(textOf(res)).not.toContain('"holds"');
+  });
+
   test('rejects a non-account address (zod)', async () => {
     await expect(
       invokeTool(tool(fakeDeps().deps, 'resolve_badge'), { address: 'resource_rdx1nope' })
@@ -388,6 +402,43 @@ describe('task_chain_state', () => {
     expect(out.chainState).toBeNull();
     expect(out.claimable).toBe(false);
     expect(out.note).toContain('Unknown');
+  });
+
+  test('funded on a retired component → not claimable, and the chain is NOT read', async () => {
+    // The Wave B cutover's superseded component (agent-client config.ts).
+    const retired = 'component_rdx1cz468eqyr0fklyrlcsznadrwfnqnesw37vlm9j0xmq2s7427akd82f';
+    const { deps, state } = fakeDeps({
+      client: {
+        listTasks: async () => FAKE_PAGE,
+        getTask: async (id: number) => ({ ...FAKE_TASK, id, escrowComponent: retired }),
+        getStats: async () => FAKE_STATS,
+      },
+      // Would answer Open for the colliding id on the configured component.
+      readTaskState: async () => 'Open',
+    });
+    const res = await invokeTool(tool(deps, 'task_chain_state'), { id: 5 });
+    const out = jsonOf(res) as ChainStateOut & { taskEscrowComponent: string | null };
+    expect(out.claimable).toBe(false);
+    expect(out.chainState).toBeNull();
+    expect(out.taskEscrowComponent).toBe(retired);
+    expect(out.note).toContain(retired);
+    expect(state.lastChainRead).toBeNull();
+  });
+
+  test('component not reported by the API (null) → never claimable, even when the chain says Open', async () => {
+    const { deps } = fakeDeps({
+      client: {
+        listTasks: async () => FAKE_PAGE,
+        getTask: async (id: number) => ({ ...FAKE_TASK, id, escrowComponent: null }),
+        getStats: async () => FAKE_STATS,
+      },
+    });
+    const res = await invokeTool(tool(deps, 'task_chain_state'), { id: 5 });
+    const out = jsonOf(res) as ChainStateOut & { taskEscrowComponent: string | null };
+    expect(out.chainState).toBe('Open');
+    expect(out.claimable).toBe(false);
+    expect(out.taskEscrowComponent).toBeNull();
+    expect(out.note).toContain('cannot be pinned');
   });
 
   test('missing task → clean isError (getTask boundary), not a throw', async () => {
