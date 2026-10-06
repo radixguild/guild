@@ -80,6 +80,20 @@ export const isAccountAddress = (s: unknown): s is string => typeof s === "strin
 export const isLocalId = (s: unknown): s is string => typeof s === "string" && LOCAL_ID_RE.test(s)
 export const isDecimalString = (s: unknown): s is string => typeof s === "string" && DECIMAL_RE.test(s)
 
+/**
+ * The one spelling of a local id the ledger stores. The Radix parser reads
+ * "#01#" as integer 1 and hex in either case, so "#01#" / "#1#" and "[AB]" /
+ * "[ab]" name the same NFT — compare ids only through this. String ids are
+ * case-sensitive and stay as written. Anything that is not a local id comes
+ * back unchanged (callers check isLocalId first).
+ */
+export function canonicalLocalId(id: string): string {
+  if (!isLocalId(id)) return id
+  if (id.startsWith("#")) return `#${id.slice(1, -1).replace(/^0+(?=\d)/, "")}#`
+  if (id.startsWith("[") || id.startsWith("{")) return id.toLowerCase()
+  return id
+}
+
 // ── Parsing the Gateway's programmatic JSON ─────────────────────────────────
 
 type Field = { field_name?: string; value?: unknown; variant_name?: string; fields?: unknown; elements?: unknown }
@@ -228,7 +242,7 @@ export function normalizeDecimal(s: string): string {
 export function sameAsk(a: SwapAsk, b: SwapAsk): boolean {
   if (a.kind !== b.kind || a.resource !== b.resource) return false
   if (a.kind === "fungible" && b.kind === "fungible") return normalizeDecimal(a.amount) === normalizeDecimal(b.amount)
-  if (a.kind === "nonFungible" && b.kind === "nonFungible") return a.id === b.id
+  if (a.kind === "nonFungible" && b.kind === "nonFungible") return canonicalLocalId(a.id) === canonicalLocalId(b.id)
   return false
 }
 
@@ -273,7 +287,9 @@ export function askProblems(
     } else {
       if (info.kind !== "nonFungible") return "not_non_fungible"
       if (!isLocalId(ask.id)) return "bad_id"
-      if (asset && ask.resource === asset.resource && ask.id === asset.id) return "same_as_asset"
+      if (asset && ask.resource === asset.resource && canonicalLocalId(ask.id) === canonicalLocalId(asset.id)) {
+        return "same_as_asset"
+      }
     }
     if (asks.slice(0, i).some((prev) => sameAsk(prev, ask))) return "duplicate"
     return null
@@ -299,15 +315,25 @@ export function shortAddress(a: string): string {
 }
 
 /** Only an https URL that parses is ever put in an <img src>. NFT metadata
- *  is written by whoever minted the NFT. */
+ *  is written by whoever minted the NFT, and every viewer's browser fetches
+ *  it — so nothing that points into the viewer's own network (an IP literal,
+ *  localhost, a .local or dotless name, an odd port) and no credentials. */
 export function safeImageUrl(u: unknown): string | null {
   if (typeof u !== "string" || u.length > 2048) return null
+  let url: URL
   try {
-    const url = new URL(u)
-    return url.protocol === "https:" ? url.toString() : null
+    url = new URL(u)
   } catch {
     return null
   }
+  if (url.protocol !== "https:" || url.username || url.password || url.port) return null
+  // WHATWG URL lowercases the host and normalises IPv4 spellings ("0x7f.1")
+  // to dotted quads, so these patterns see every form.
+  const host = url.hostname.replace(/\.$/, "")
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith("[")) return null
+  // A dotless name resolves through the viewer's own search domain.
+  if (!host.includes(".") || /(^|\.)localhost$|\.(local|internal|lan)$/.test(host)) return null
+  return url.toString()
 }
 
 /** Display text from NFT or resource metadata: trimmed, one line, bounded. */
@@ -322,15 +348,23 @@ export function displayText(s: unknown, max = 80): string | null {
 
 /** Comma-separated listing ids or resource addresses from env, for the
  *  operator to hide a listing from these pages (an app-layer filter, never a
- *  chain rule: the listing stays fillable by anyone with its id). */
-export function parseHiddenList(raw: string | undefined): { ids: Set<number>; resources: Set<string> } {
+ *  chain rule: the listing stays fillable by anyone with its id). A token that
+ *  is neither comes back in `invalid` — a typo must be visible, since the
+ *  operator would otherwise believe the listing hidden. */
+export function parseHiddenList(raw: string | undefined): {
+  ids: Set<number>
+  resources: Set<string>
+  invalid: string[]
+} {
   const ids = new Set<number>()
   const resources = new Set<string>()
+  const invalid: string[] = []
   for (const part of (raw ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
     if (/^\d+$/.test(part)) ids.add(Number(part))
     else if (isResourceAddress(part)) resources.add(part)
+    else invalid.push(part)
   }
-  return { ids, resources }
+  return { ids, resources, invalid }
 }
 
 export function isHidden(l: SwapListing, hidden: { ids: Set<number>; resources: Set<string> }): boolean {

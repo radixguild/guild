@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   askProblems,
+  canonicalLocalId,
   displayText,
   expiryForDays,
   extendedExpiry,
@@ -174,6 +175,29 @@ describe("askProblems — the list() checks, before the wallet opens", () => {
     expect(run([{ kind: "nonFungible", resource: NFT, id: "#1#" }])).toEqual(["same_as_asset"])
     expect(run([{ kind: "fungible", resource: "resource_rdx1unknownunknownunknownunknown", amount: "1" }])).toEqual(["bad_resource"])
   })
+  // The ledger parses "#01#" as integer 1 and hex in either case, so these
+  // are the same NFT and list() would see the same ask.
+  it("compares NFT ids in their canonical form", () => {
+    expect(run([{ kind: "nonFungible", resource: NFT, id: "#001#" }])).toEqual(["same_as_asset"])
+    expect(run([{ kind: "nonFungible", resource: NFT, id: "#2#" }, { kind: "nonFungible", resource: NFT, id: "#02#" }])).toEqual([null, "duplicate"])
+    expect(run([{ kind: "nonFungible", resource: NFT, id: "[ab01]" }, { kind: "nonFungible", resource: NFT, id: "[AB01]" }])).toEqual([null, "duplicate"])
+    expect(run([{ kind: "nonFungible", resource: NFT, id: "<Gold>" }, { kind: "nonFungible", resource: NFT, id: "<gold>" }])).toEqual([null, null])
+  })
+})
+
+describe("canonicalLocalId", () => {
+  it.each([
+    ["#007#", "#7#"],
+    ["#0#", "#0#"],
+    ["#000#", "#0#"],
+    ["#10#", "#10#"],
+    ["[ABcd]", "[abcd]"],
+    ["{AAAAAAAAAAAAAAAA-BBBBBBBBBBBBBBBB-CCCCCCCCCCCCCCCC-DDDDDDDDDDDDDDDD}", "{aaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-cccccccccccccccc-dddddddddddddddd}"],
+    ["<Gold_01>", "<Gold_01>"],
+    ["not an id", "not an id"],
+  ])("%s → %s", (raw, canonical) => {
+    expect(canonicalLocalId(raw)).toBe(canonical)
+  })
 })
 
 describe("display helpers", () => {
@@ -198,6 +222,27 @@ describe("display helpers", () => {
     expect(safeImageUrl("data:image/png;base64,AAAA")).toBeNull()
     expect(safeImageUrl(42)).toBeNull()
   })
+  // Every viewer's browser fetches these, so none may point into the
+  // viewer's own network or carry credentials.
+  it.each([
+    "https://192.168.0.1/x",
+    "https://0x7f.1/x",
+    "https://[::1]/x",
+    "https://localhost/x",
+    "https://router.localhost/x",
+    "https://printer.local/x",
+    "https://nas.internal/x",
+    "https://intranet/x",
+    "https://user:p@a.com/x",
+    "https://user@a.com/x",
+    "https://a.com:8443/x",
+  ])("refuses %s", (u) => {
+    expect(safeImageUrl(u)).toBeNull()
+  })
+  it("keeps ordinary public hosts, the default port included", () => {
+    expect(safeImageUrl("https://ipfs.io/ipfs/abc")).toBe("https://ipfs.io/ipfs/abc")
+    expect(safeImageUrl("https://a.com:443/x.png")).toBe("https://a.com/x.png")
+  })
   it("displayText strips control and bidi characters and bounds the length", () => {
     expect(displayText("  Wefty‮ V2\n")).toBe("Wefty V2")
     expect(displayText("x".repeat(100), 10)).toBe("xxxxxxxxx…")
@@ -213,5 +258,12 @@ describe("the operator's hide list", () => {
     expect(isHidden(l, parseHiddenList(XRD))).toBe(true)
     expect(isHidden(l, parseHiddenList("2, junk,"))).toBe(false)
     expect(isHidden(l, parseHiddenList(undefined))).toBe(false)
+  })
+  it("reports the tokens it could not use instead of dropping them silently", () => {
+    const h = parseHiddenList(`12;13, ${SELLER}, 7, ${NFT}`)
+    expect(h.invalid).toEqual(["12;13", SELLER])
+    expect([...h.ids]).toEqual([7])
+    expect([...h.resources]).toEqual([NFT])
+    expect(parseHiddenList(undefined).invalid).toEqual([])
   })
 })

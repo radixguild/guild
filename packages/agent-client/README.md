@@ -675,17 +675,28 @@ guild-poster list-swap --nft resource_rdx1…:#12# --price 5000 --ask-nft resour
 guild-poster cancel-swap <listingId>       # take a Listed NFT back (expired or not)
 guild-poster withdraw-swap <listingId>     # collect a Filled listing's payment
 
-# Worker key (GUILD_AGENT_PRIVATE_KEY): pay alternative 0 of listing 3, receive the NFT
-guild-worker fill-swap 3 --alternative 0
+# Worker key (GUILD_AGENT_PRIVATE_KEY): pay alternative 0 of listing 3 (at most 5000 XRD), receive the NFT
+guild-worker fill-swap 3 --alternative 0 --max-price 5000 --live
 ```
 
 - **What a fill pays is read from the chain, never typed.** `fill-swap` takes a listing id and an
   alternative index; the amount and resource come from the listing the component stores. There is
   no `--amount` to get wrong. `--alternative` is required when a listing has more than one.
-- **Every revert is checked first, against the chain**, and a failed check signs nothing: the
+- **`--live` needs your own bound on the spend**, because the listing id is still typed and a
+  transposed one would pay a different listing's ask in full. For a token alternative pass
+  `--max-price <amount>[:<resource>]` (the resource defaults to XRD); for an NFT alternative pass
+  `--expect-nft <resource>:<id>`. `--live` signs nothing when the bound is missing, names another
+  resource or NFT, or is below the chain's amount (compared exactly, in attos). A dry run takes the
+  same flags and prints the comparison, or says `--live` will need them.
+- **Numbers are plain digits.** A listing id, `--alternative` and `--days` must match `^\d+$`;
+  anything else (`""`, `0x1`, `1e1`, `1.0`, a blank `"$VAR"`) is a usage error (exit 2), never
+  read as a number. NFT local ids are compared and sent in the ledger's spelling (`#01#` is `#1#`).
+- **These are checked first, against the chain**, and a failed check signs nothing: the
   listing's state at the **ledger** clock (an expired listing cannot be filled), who holds the
   listing receipt (`cancel-swap` / `withdraw-swap` need it in this account), whether the NFT to list
-  is in this account, and each ask's resource kind and divisibility.
+  is in this account, each ask's resource kind and divisibility, and the fill royalty (below).
+  **Not checked:** whether the buyer holds the payment. That reverts on chain, and a revert costs
+  only the network fee.
 - **Proceeds go to the seller pinned at listing time** — the account that ran `list-swap` — whoever
   later presents the receipt. The receipt is a transferable NFT: keep it, it is the only credential
   that can cancel or collect.
@@ -694,8 +705,19 @@ guild-worker fill-swap 3 --alternative 0
 - **Fees:** `fill` and `extend_listing` carry component royalties set by a dial (read live and printed
   by `fill-swap`); every other call is free beyond the network fee. Creator royalties are not
   collected, and a listing is not proof the NFT is genuine — compare the collection address.
-- `GUILD_NFT_SWAP_COMPONENT` overrides the component; anything whose blueprint is not `NftSwap` is
-  refused. The listing-receipt resource is read from the component itself, never configured.
+- **`fill-swap --live` refuses a royalty it cannot pay.** Every kit transaction locks a fixed 5 XRD
+  for fees and the royalty is paid out of that lock, so `--live` signs nothing when the royalty
+  could not be read, is set in USD, or leaves less than 1.5 XRD of the lock (above 3.5 XRD). The
+  dry run prints the live fee and says when `--live` would refuse; fill on radixguild.com instead,
+  where the wallet sizes the fee lock.
+- **A transaction still unresolved after the 60 s poll** comes back `refused` with status `Unknown`
+  and "outcome unknown — the transaction was submitted; look up `<intentHash>` before retrying".
+  It may still commit: look it up before running the verb again.
+- `GUILD_NFT_SWAP_COMPONENT` overrides the component, and `GUILD_NFT_SWAP_PACKAGE` the package it
+  must come from. Every run checks the Gateway reports blueprint `NftSwap` **and** that package —
+  the blueprint name alone proves nothing, since any package can use it. Move the two together:
+  a component from another package with the package left at its default refuses every swap verb.
+  The listing-receipt resource is read from the component itself, never configured.
 
 ## What works today vs. what waits for the pilot
 
@@ -742,7 +764,8 @@ live-mainnet defaults baked in — override only to re-point.
 | `GUILD_API_URL` | Guild app base URL | `https://radixguild.com` |
 | `GUILD_GATEWAY_URL` | Babylon Gateway | `https://mainnet.radixdlt.com` |
 | `GUILD_ESCROW_COMPONENT` | Marketplace escrow component | live Wave B component (2026-09-13 cutover) |
-| `GUILD_NFT_SWAP_COMPONENT` | The NFT swap component the swap verbs act on (refused unless its blueprint is `NftSwap`; its receipt resource is read from it, never configured) | the live component (2026-09-15) |
+| `GUILD_NFT_SWAP_COMPONENT` | The NFT swap component the swap verbs act on (refused unless the Gateway reports blueprint `NftSwap` from `GUILD_NFT_SWAP_PACKAGE`; its receipt resource is read from it, never configured) | the live component (2026-09-15) |
+| `GUILD_NFT_SWAP_PACKAGE` | The package the swap component must be instantiated from. Set it together with `GUILD_NFT_SWAP_COMPONENT` | the live package (2026-09-15) |
 | `GUILD_BADGE_MANAGER` | BadgeManager (`public_mint`) component | live mainnet manager |
 | `GUILD_ESCROW_CLAIM_BOND_XRD` | ⚠️ NOT used to sign a claim (Wave B derives the real bond live from chain, per task). Only a rough, unverified `doctor`/`onboard` funding estimate, used solely when the live figure can't be read. | `76.45` (mirrors the live `claim_bond_floor`) |
 | `GUILD_ESCROW_CLAIM_RECEIPT_RESOURCE` | Claim Receipt NFT resource (component-scoped — see the cutover note below) | live Wave B claim receipt |

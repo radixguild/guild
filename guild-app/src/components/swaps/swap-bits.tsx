@@ -5,7 +5,7 @@
 import { useCallback, useRef, useState } from "react"
 import { ImageOff } from "lucide-react"
 import { useWallet } from "@/hooks/useWallet"
-import { humanizeTxError } from "@/lib/escrow-utils"
+import { humanizeTxError, type HumanizedTxError } from "@/lib/escrow-utils"
 import { formatAmount, shortAddress, type SwapAsk, type SwapStatus } from "@/lib/nft-swap"
 import type { SwapResourceView } from "@/lib/nft-swap-service"
 import { Badge } from "@/components/ui/badge"
@@ -106,8 +106,9 @@ export const utcStamp = (secs: number) =>
  * Send one swap transaction from the connected account. Same contract as the
  * escrow buttons: a synchronous re-entry guard (disabled={busy} alone leaves
  * a batching window where a second click sends a second transaction), and
- * every outcome is reported — the wallet result's own error goes through the
- * shared humanizer, so a request that never reached the wallet says so.
+ * every outcome is reported — the wallet result's own error goes through
+ * humanizeSwapTxError, so a request that never reached the wallet says so.
+ * One instance per page: the guard only holds across the buttons that share it.
  */
 export function useSwapTx() {
   const { account, rdt } = useWallet()
@@ -163,9 +164,55 @@ export function useSwapTx() {
   return { account, connected: Boolean(account && rdt), send, busy, error, txId, reset }
 }
 
+export type SwapTx = ReturnType<typeof useSwapTx>
+
+/** The blueprint's own refusals (nft_swap.rs assert/panic text, which the
+ *  engine carries into the error), in words. First match wins, so the more
+ *  specific line sits above the shorter one it contains. Only refusals this
+ *  site's own manifests can reach are here: the ones they rule out by
+ *  construction (one escrowed NFT, the component's receipt resource, an
+ *  alternative index from the rendered listing) fall through to the generic
+ *  line with the raw detail kept, rather than as copy nobody can trigger. */
+const SWAP_REFUSALS: readonly [RegExp, string][] = [
+  [/listing is not Listed/, "This listing is no longer open: it was filled or cancelled before your transaction ran. Nothing changed hands. Reload the page to see where it stands."],
+  [/listing is not Filled/, "This listing has not been filled, so there are no proceeds to withdraw. Nothing changed hands."],
+  [/listing has expired/, "This listing passed its expiry before your fill ran, so it can no longer be filled. Nothing changed hands."],
+  [/payment (resource|amount|NFT id) does not match|payment must be exactly the one NFT/, "The payment did not match the alternative you picked, so the component refused it. Nothing changed hands. Reload the page and pick again."],
+  [/proceeds already withdrawn/, "These proceeds were already withdrawn, to the account the listing pays. Nothing changed hands."],
+  [/cannot burn the receipt while the listing is still Listed/, "The receipt cannot be burned while the listing is still listed. Cancel the listing first."],
+  [/cannot burn the receipt while proceeds are still owed/, "The receipt cannot be burned while proceeds are still owed. Withdraw them first."],
+  [/expires_at must be/, "The component refused the expiry: it must be in the future and at most thirty days out on the ledger clock. Nothing was listed. Pick the term again."],
+]
+
+const SWAP_NFT_MISSING =
+  "This account does not hold the NFT this transaction withdraws (the listing receipt, or the NFT offered as payment), so nothing changed hands."
+const SWAP_BALANCE =
+  "This account does not hold enough for this transaction: the payment it sends, or XRD for the fees. Nothing changed hands."
+const SWAP_FAILED = "The transaction failed and nothing changed hands. Open the error details below."
+
+/**
+ * A raw wallet/engine error, in words for a swap page. The task humanizer
+ * (humanizeTxError) is used for what is not about tasks: the wallet-transport
+ * outcomes and its neutral fallback. Its signature lines speak of tasks and
+ * promise a resync this page does not run, so a swap meaning of the same
+ * engine error is matched here first, and any staleState line it still
+ * returns is replaced.
+ */
+export function humanizeSwapTxError(raw: string): Omit<HumanizedTxError, "staleState"> {
+  for (const [pattern, summary] of SWAP_REFUSALS) if (pattern.test(raw)) return { summary, detail: raw }
+  if (/NonFungible(Vault)?Error.*Missing|MissingNonFungible/i.test(raw)) return { summary: SWAP_NFT_MISSING, detail: raw }
+  // Same guard as humanizeTxError: a WorktopError is a manifest fault, not
+  // the account's balance. Its "add XRD" wording does not fit here — a fill
+  // can withdraw any token the seller asked for.
+  if (!/WorktopError/i.test(raw) && /InsufficientBalance/i.test(raw)) return { summary: SWAP_BALANCE, detail: raw }
+  const h = humanizeTxError(raw)
+  if (h.staleState) return { summary: SWAP_FAILED, detail: raw }
+  return h.detail === undefined ? { summary: h.summary } : { summary: h.summary, detail: h.detail }
+}
+
 export function TxErrorLine({ error }: { error: string | null }) {
   if (!error) return null
-  const h = humanizeTxError(error)
+  const h = humanizeSwapTxError(error)
   return (
     <div className="space-y-1 text-xs" role="alert">
       <p className="text-destructive">{h.summary}</p>

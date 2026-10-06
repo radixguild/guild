@@ -44,6 +44,7 @@ import {
   TxErrorLine,
   useSwapTx,
   utcStamp,
+  type SwapTx,
 } from "./swap-bits"
 
 /** A panel reports a committed action up, so the line survives the refresh
@@ -57,6 +58,15 @@ type Done = (text: string, txId: string, settled: (v: SwapDetailView) => boolean
  *  whatever the ledger read says with a "may be behind" note. */
 const SETTLE_TRIES = 6
 const SETTLE_DELAY_MS = 1500
+/** A read that has not answered by then counts as failed, so a hung Gateway
+ *  ends in "Try again" rather than a skeleton forever. */
+const READ_TIMEOUT_MS = 20_000
+
+/** What every action panel gets from the page. One `tx` for the whole page,
+ *  so its re-entry guard covers Fill and the seller actions together;
+ *  `behind` = the view on screen may predate the viewer's own transaction,
+ *  and acting on it would only send a transaction that reverts. */
+type PanelProps = { view: SwapDetailView; tx: SwapTx; behind: boolean; onDone: Done }
 
 type Load =
   | { state: "loading" }
@@ -104,15 +114,15 @@ function AskBlock({ ask, view }: { ask: SwapAsk; view: SwapDetailView }) {
   )
 }
 
-function FillPanel({ view, onDone }: { view: SwapDetailView; onDone: Done }) {
+function FillPanel({ view, tx, behind, onDone }: PanelProps) {
   const l = view.listing
-  const tx = useSwapTx()
   const [picked, setPicked] = useState<number | null>(null)
   const [checked, setChecked] = useState(false)
   const own = tx.account === l.seller
+  const locked = tx.busy || behind
 
   const fill = async () => {
-    if (picked === null) return
+    if (picked === null || behind) return
     const ask = l.asks[picked]
     const id = await tx.send((account) => fillSwapManifest(view.component, account, l.listingId, picked, ask))
     if (id) {
@@ -140,6 +150,7 @@ function FillPanel({ view, onDone }: { view: SwapDetailView; onDone: Done }) {
                 <Button
                   size="sm"
                   variant={picked === i ? "default" : "outline"}
+                  disabled={locked}
                   onClick={() => {
                     setPicked(i)
                     setChecked(false)
@@ -153,6 +164,7 @@ function FillPanel({ view, onDone }: { view: SwapDetailView; onDone: Done }) {
             </li>
           ))}
         </ol>
+        {view.moreAsks && <p className="text-xs text-muted-foreground">{DETAIL_COPY.moreAsks}</p>}
         <p className="text-xs text-muted-foreground">
           Fill fee: {feeText(view.fees.fill)} (a component royalty, read from the component just now), plus the Radix
           network fee. Your wallet shows the total before you sign.
@@ -160,6 +172,7 @@ function FillPanel({ view, onDone }: { view: SwapDetailView; onDone: Done }) {
 
         {!tx.connected && <p className="text-xs text-muted-foreground">{DETAIL_COPY.fillNoWallet}</p>}
         {own && <p className="text-xs text-muted-foreground">{DETAIL_COPY.ownListing}</p>}
+        {behind && <p className="text-xs text-muted-foreground">{DETAIL_COPY.behind}</p>}
 
         {picked !== null && (
           <div className="space-y-3 rounded-lg bg-muted/50 p-3">
@@ -177,24 +190,23 @@ function FillPanel({ view, onDone }: { view: SwapDetailView; onDone: Done }) {
               />
               <span>{DETAIL_COPY.fillConfirmCheck}</span>
             </label>
-            <Button onClick={() => void fill()} disabled={!checked || tx.busy}>
+            <Button onClick={() => void fill()} disabled={!checked || locked}>
               <Wallet className="mr-2 h-4 w-4" />
-              {tx.busy ? "Check your wallet…" : "Open my wallet to fill"}
+              Open my wallet to fill
             </Button>
           </div>
         )}
-        <TxErrorLine error={tx.error} />
-        {tx.error && <TxDoneLine txId={tx.txId}>The transaction:</TxDoneLine>}
       </CardContent>
     </Card>
   )
 }
 
-function SellerPanel({ view, onDone }: { view: SwapDetailView; onDone: Done }) {
+function SellerPanel({ view, tx, behind, onDone }: PanelProps) {
   const l = view.listing
-  const tx = useSwapTx()
+  const locked = tx.busy || behind
 
   const act = async (label: string, build: (account: string) => string, settled: (v: SwapDetailView) => boolean) => {
+    if (behind) return
     const id = await tx.send(build)
     if (id) onDone(label, id, settled)
   }
@@ -207,13 +219,14 @@ function SellerPanel({ view, onDone }: { view: SwapDetailView; onDone: Done }) {
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
         <p className="text-muted-foreground">{DETAIL_COPY.sellerIntro}</p>
+        {behind && <p className="text-xs text-muted-foreground">{DETAIL_COPY.behind}</p>}
 
         {l.state === "Listed" && (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
-                disabled={tx.busy}
+                disabled={locked}
                 onClick={() =>
                   void act(
                     "Cancelled — the NFT is back in your account.",
@@ -226,7 +239,7 @@ function SellerPanel({ view, onDone }: { view: SwapDetailView; onDone: Done }) {
               </Button>
               <Button
                 variant="outline"
-                disabled={tx.busy}
+                disabled={locked}
                 onClick={() =>
                   void act(
                     "Extended.",
@@ -249,10 +262,10 @@ function SellerPanel({ view, onDone }: { view: SwapDetailView; onDone: Done }) {
         {proceedsOwed(l) && owed && (
           <div className="space-y-2">
             <Button
-              disabled={tx.busy}
+              disabled={locked}
               onClick={() =>
                 void act(
-                  "Withdrawn — the proceeds are in the seller account.",
+                  "Withdrawn — the proceeds went to the account this listing pays.",
                   (a) => withdrawSwapProceedsManifest(view.component, a, view.receiptResource, l.listingId),
                   (v) => v.listing.proceedsWithdrawn,
                 )
@@ -272,7 +285,7 @@ function SellerPanel({ view, onDone }: { view: SwapDetailView; onDone: Done }) {
             <Button
               variant="outline"
               size="sm"
-              disabled={tx.busy}
+              disabled={locked}
               onClick={() =>
                 void act(
                   "Receipt burned.",
@@ -286,10 +299,6 @@ function SellerPanel({ view, onDone }: { view: SwapDetailView; onDone: Done }) {
             <p className="text-xs text-muted-foreground">{DETAIL_COPY.burnHint}</p>
           </div>
         )}
-
-        {tx.busy && <p className="text-xs text-muted-foreground">Check your wallet…</p>}
-        <TxErrorLine error={tx.error} />
-        {tx.error && <TxDoneLine txId={tx.txId}>The transaction:</TxDoneLine>}
       </CardContent>
     </Card>
   )
@@ -297,7 +306,9 @@ function SellerPanel({ view, onDone }: { view: SwapDetailView; onDone: Done }) {
 
 async function readDetail(listingId: string): Promise<{ view: SwapDetailView } | { code: string; message: string }> {
   try {
-    const res = await apiFetch(`/api/v1/swaps/${encodeURIComponent(listingId)}`)
+    const res = await apiFetch(`/api/v1/swaps/${encodeURIComponent(listingId)}`, {
+      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+    })
     const body = await res.json().catch(() => null)
     if (res.ok && body?.ok) return { view: body.data as SwapDetailView }
     return {
@@ -310,7 +321,8 @@ async function readDetail(listingId: string): Promise<{ view: SwapDetailView } |
 }
 
 /** `justListed`: the viewer arrived from their own `list` transaction, so a
- *  "no such listing" answer is retried before it is believed. */
+ *  "no such listing" answer — or one whose receipt holder is not readable
+ *  yet, which would hide the seller panel — is retried before it is believed. */
 export function SwapDetail({ listingId, justListed = false }: { listingId: string; justListed?: boolean }) {
   const tx = useSwapTx()
   const [load, setLoad] = useState<Load>({ state: "loading" })
@@ -323,8 +335,12 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
   // transaction (null = nothing pending). A ref: written by event handlers,
   // read in the read's callback, never during render.
   const awaiting = useRef<{ settled: (v: SwapDetailView) => boolean; tries: number } | null>(
-    justListed ? { settled: () => true, tries: 0 } : null,
+    justListed ? { settled: (v) => Boolean(v.receipt?.holder), tries: 0 } : null,
   )
+  // The predicate a give-up left unmet. "Try again" re-reads against it, so
+  // a later read that still shows the old view stays stale: any answer
+  // re-arming the buttons would offer the same Extend (or Fill) again.
+  const unmet = useRef<((v: SwapDetailView) => boolean) | null>(null)
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // State is set only in the promise callback (react-hooks/set-state-in-effect).
@@ -343,6 +359,7 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
         return
       }
       awaiting.current = null
+      unmet.current = caughtUp ? null : (a?.settled ?? null)
       setWaiting(false)
       setLoad((prev) =>
         "view" in r
@@ -362,6 +379,11 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
     setNotice({ text, txId })
     awaiting.current = { settled, tries: 0 }
     setWaiting(true)
+    refresh()
+  }
+  // One read, no retry loop (tries already spent): the viewer asked for it.
+  const tryAgain = () => {
+    if (unmet.current) awaiting.current = { settled: unmet.current, tries: SETTLE_TRIES }
     refresh()
   }
 
@@ -387,6 +409,7 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
   const name = l.hidden ? `NFT ${l.assetId}` : (l.asset.name ?? (coll ? `${coll} ${l.assetId}` : `NFT ${l.assetId}`))
   const holdsReceipt = Boolean(tx.account && view.receipt?.holder === tx.account)
   const filled = filledAsk(l)
+  const behind = waiting || Boolean(load.stale)
 
   return (
     <div className="space-y-6">
@@ -408,8 +431,9 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
             <Row label="NFT id">
               <span className="font-mono text-xs">{l.assetId}</span>
             </Row>
-            <Row label="Seller">
+            <Row label="Proceeds to">
               <AddressLink address={l.seller} />
+              <p className="text-xs text-muted-foreground">{DETAIL_COPY.payeeCaption}</p>
             </Row>
             <Row label="Listed">{utcStamp(l.createdAt)}</Row>
             <Row label={l.status === "open" ? "Expires" : "Expiry"}>
@@ -423,7 +447,7 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
                 {askText(filled, view.resources)}
                 <span className="text-muted-foreground">
                   {" "}
-                  · proceeds {l.proceedsWithdrawn ? "withdrawn to the seller account" : "waiting to be withdrawn"}
+                  · proceeds {l.proceedsWithdrawn ? "withdrawn to the account this listing pays" : "waiting to be withdrawn"}
                 </span>
               </Row>
             )}
@@ -446,7 +470,7 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
       {load.stale && !waiting && (
         <p className="text-xs text-muted-foreground" role="status">
           This may not show your latest transaction yet — the transaction link is the record.{" "}
-          <button type="button" className="underline" onClick={refresh}>
+          <button type="button" className="underline" onClick={tryAgain}>
             Try again
           </button>
         </p>
@@ -456,9 +480,16 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
           <TxDoneLine txId={notice.txId}>{notice.text}</TxDoneLine>
         </div>
       )}
+      {tx.busy && <p className="text-xs text-muted-foreground" role="status">Check your wallet…</p>}
+      <TxErrorLine error={tx.error} />
+      {tx.error && <TxDoneLine txId={tx.txId}>The transaction:</TxDoneLine>}
 
       {l.hidden && <p className="rounded-lg border p-4 text-sm">{DETAIL_COPY.hidden}</p>}
-      {l.status === "open" && !l.hidden && <FillPanel view={view} onDone={done} />}
+      {/* Keyed on the account: a pick and a ticked check belong to the
+          account that made them. */}
+      {l.status === "open" && !l.hidden && (
+        <FillPanel key={tx.account ?? ""} view={view} tx={tx} behind={behind} onDone={done} />
+      )}
       {l.status === "expired" && <p className="rounded-lg border p-4 text-sm">{DETAIL_COPY.expired}</p>}
       {l.status === "filled" && <p className="rounded-lg border p-4 text-sm">{DETAIL_COPY.filled}</p>}
       {l.status === "cancelled" && <p className="rounded-lg border p-4 text-sm">{DETAIL_COPY.cancelled}</p>}
@@ -476,11 +507,12 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
                 </li>
               ))}
             </ol>
+            {view.moreAsks && <p className="mt-2 text-xs text-muted-foreground">{DETAIL_COPY.moreAsks}</p>}
           </CardContent>
         </Card>
       )}
 
-      {holdsReceipt && <SellerPanel view={view} onDone={done} />}
+      {holdsReceipt && <SellerPanel view={view} tx={tx} behind={behind} onDone={done} />}
       {!holdsReceipt && tx.account === l.seller && view.receipt?.holder && (
         <p className="text-xs text-muted-foreground">{DETAIL_COPY.receiptElsewhere}</p>
       )}

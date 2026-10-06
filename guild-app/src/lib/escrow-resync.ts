@@ -157,7 +157,7 @@ async function collectTaskEvents(
   events: { kind: EscrowConfirmKind; intentHash: string }[]
   entitlements: { rows: EntitlementLedgerRow[]; intentHash: string }[]
   scannedTxs: number
-} | null> {
+} | { truncated: true } | null> {
   const events: { kind: EscrowConfirmKind; intentHash: string }[] = []
   // PULL settle/withdraw legs (§5c). Collected in the SAME pass and pinned by the
   // same emitter check, but kept in their own list: they carry no lifecycle
@@ -218,6 +218,12 @@ async function collectTaskEvents(
     cursor = page?.next_cursor ?? null
     pages++
   } while (cursor && pages < MAX_PAGES)
+
+  // A cursor still set here means the cap cut the walk short. A prefix of the
+  // history is not a smaller truth: applied in order, it can land the row on a
+  // past state (an expire whose re-claim sits past the cap) and silently drop
+  // every later settle/withdraw leg — while reporting ok. Refuse instead (GM-8).
+  if (cursor) return { truncated: true }
 
   return { events, entitlements, scannedTxs }
 }
@@ -323,6 +329,13 @@ export async function resyncTaskFromChain(
   if (scan === null) {
     return fail("GATEWAY_ERROR", 502, "Gateway transaction stream unavailable")
   }
+  if ("truncated" in scan) {
+    return fail(
+      "SCAN_TRUNCATED",
+      502,
+      "This task's chain history is longer than one resync can scan, so nothing was applied — a partial history could set the task to a past state",
+    )
+  }
 
   const applied: ResyncApplied[] = []
   const pending: ResyncPending[] = []
@@ -367,18 +380,27 @@ export async function resyncTaskFromChain(
         })
         continue
       }
-      const result = await applyEscrowConfirm(current, "claim", intentHash, {
-        kind: "user",
-        userId: callerUserId,
-      })
-      if (result.ok) {
-        applied.push({ kind, intentHash, status: result.task.status })
-        current = result.task
-        continue
-      }
-      if (result.code !== "NOT_CLAIMER") {
-        pending.push({ kind, intentHash, reason: result.message })
-        continue
+      // The caller's own claim receipt proves a claim only for the worker. The
+      // POSTER can never be the claimer (the blueprint asserts worker !=
+      // poster), and the user actor refuses them with SELF_CLAIM — which used
+      // to land here as a pending entry, skipping the fallback below. A poster's
+      // resync of an expire → re-claim history then left the row open and
+      // unassigned while the chain said Claimed (GM-3). The poster goes
+      // straight to the chain-derived attribution instead.
+      if (callerUserId !== current.creatorId) {
+        const result = await applyEscrowConfirm(current, "claim", intentHash, {
+          kind: "user",
+          userId: callerUserId,
+        })
+        if (result.ok) {
+          applied.push({ kind, intentHash, status: result.task.status })
+          current = result.task
+          continue
+        }
+        if (result.code !== "NOT_CLAIMER") {
+          pending.push({ kind, intentHash, reason: result.message })
+          continue
+        }
       }
       // The receipt can't prove it (burned at submit, or the caller isn't the
       // worker) — fall back to the chain-derived attribution the cron uses:

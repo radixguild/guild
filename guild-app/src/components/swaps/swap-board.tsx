@@ -12,7 +12,7 @@ import Link from "next/link"
 import { Images, Plus, RefreshCw } from "lucide-react"
 import { useWallet } from "@/hooks/useWallet"
 import { apiFetch } from "@/lib/api-fetch"
-import { shortAddress } from "@/lib/nft-swap"
+import { shortAddress, SWAP_SCAN_CAP } from "@/lib/nft-swap"
 import type { SwapBoardView, SwapFilter, SwapListingView } from "@/lib/nft-swap-service"
 import { BOARD_COPY } from "@/content/swaps"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -31,6 +31,10 @@ const FILTERS: { key: SwapFilter; label: string }[] = [
 ]
 
 type Load = { state: "loading" } | { state: "failed" } | { state: "ok"; board: SwapBoardView }
+
+/** A read that has not answered by then counts as failed ("Try again"),
+ *  not a skeleton forever. */
+const READ_TIMEOUT_MS = 20_000
 
 function SwapCard({ l, board }: { l: SwapListingView; board: SwapBoardView }) {
   const coll = l.hidden ? shortAddress(l.assetResource) : (board.resources[l.assetResource]?.name ?? shortAddress(l.assetResource))
@@ -69,7 +73,7 @@ function SwapCard({ l, board }: { l: SwapListingView; board: SwapBoardView }) {
 /** One board page from the API; null = could not be read. */
 async function readBoard(url: string): Promise<SwapBoardView | null> {
   try {
-    const res = await apiFetch(url)
+    const res = await apiFetch(url, { signal: AbortSignal.timeout(READ_TIMEOUT_MS) })
     const body = await res.json().catch(() => null)
     return res.ok && body?.ok ? (body.data as SwapBoardView) : null
   } catch {
@@ -83,6 +87,18 @@ export function SwapBoard() {
   const [mine, setMine] = useState(false)
   const [load, setLoad] = useState<Load>({ state: "loading" })
   const [more, setMore] = useState<{ busy: boolean; failed: boolean }>({ busy: false, failed: false })
+  // "Pays my account" belongs to the account it was pressed for. On a switch
+  // or a disconnect it turns off, and the board shows loading rather than the
+  // previous account's listings until the unfiltered read answers. Adjusted
+  // during render (React's pattern for state derived from a prop change).
+  const [mineAccount, setMineAccount] = useState(account)
+  if (mineAccount !== account) {
+    setMineAccount(account)
+    if (mine) {
+      setMine(false)
+      setLoad({ state: "loading" })
+    }
+  }
   // Which query the board on screen answers. A "Load more" that returns after
   // the filter changed must not splice old-filter listings into the new page.
   const queryKey = `${filter}|${mine && account ? account : ""}`
@@ -141,6 +157,11 @@ export function SwapBoard() {
     setMore({ busy: false, failed: false })
   }
 
+  // A filtered answer from a truncated read covers only the newest listings;
+  // an empty one must not read as "none exist".
+  const empty = load.state === "ok" && load.board.listings.length === 0
+  const partial = load.state === "ok" && load.board.truncated && (mine || filter !== "all")
+
   return (
     <section className="space-y-4" aria-label="Listings">
       <div className="flex flex-wrap items-center gap-2">
@@ -194,13 +215,17 @@ export function SwapBoard() {
 
       {load.state === "ok" && (
         <>
-          {load.board.listings.length === 0 && load.board.unreadable.length > 0 ? (
+          {empty && load.board.unreadable.length > 0 ? (
             // Fail closed: listings exist that this site could not read, so
             // "nothing is listed" would be a guess presented as a fact.
             <p className="rounded-lg border border-destructive/40 p-4 text-sm" role="alert">
               {BOARD_COPY.unreadableListings(load.board.unreadable.length)}
             </p>
-          ) : load.board.listings.length === 0 ? (
+          ) : empty && partial ? (
+            <p className="rounded-lg border p-4 text-sm" role="status">
+              {BOARD_COPY.truncatedFiltered(SWAP_SCAN_CAP)}
+            </p>
+          ) : empty ? (
             <EmptyState
               icon={<Images />}
               title={filter === "open" && !mine ? BOARD_COPY.empty.open : BOARD_COPY.empty.other}
@@ -228,7 +253,11 @@ export function SwapBoard() {
               ` · ${load.board.unreadable.length} on chain in a shape this site does not read (ids ${load.board.unreadable.slice(0, 5).join(", ")})`}
             . Statuses are at the ledger time {new Date(load.board.ledgerTime * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC.
           </p>
-          {load.board.truncated && <p className="text-xs text-muted-foreground">{BOARD_COPY.truncated}</p>}
+          {load.board.truncated && !(empty && partial) && (
+            <p className="text-xs text-muted-foreground">
+              {partial ? BOARD_COPY.truncatedFiltered(SWAP_SCAN_CAP) : BOARD_COPY.truncated}
+            </p>
+          )}
         </>
       )}
     </section>

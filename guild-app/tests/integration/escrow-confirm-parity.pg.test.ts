@@ -109,7 +109,7 @@ vi.mock("@/lib/gateway", async (importOriginal) => ({
     if (component !== A.COMPONENT) return null
     const e = A.ledger?.taskCreatedEvent(intentHash)
     return e
-      ? { taskId: e.taskId, rewardAmount: dec(e.rewardAmount), rewardToken: e.rewardToken, insuranceAmount: dec(e.insuranceAmount) }
+      ? { taskId: e.taskId, rewardAmount: dec(e.rewardAmount), rewardToken: e.rewardToken, insuranceAmount: dec(e.insuranceAmount), poster: e.poster, workBriefHash: e.workBriefHash }
       : null
   },
   // Without this the finalize path would reach the REAL Gateway over the network
@@ -287,7 +287,9 @@ async function seedDbTask(overrides: Partial<typeof tasks.$inferInsert> = {}) {
     .insert(tasks)
     .values({
       title: "Port the docs widget",
-      description: "Port the widget to the new stack",
+      // The SAME text fundVM commits on-chain: the create confirm now binds the
+      // row to its work_brief_hash (GM-1), as a real poster's row always is.
+      description: "Port the widget",
       creatorId: POSTER,
       rewardXrd: String(REWARD),
       xpReward: XP_REWARD,
@@ -575,7 +577,9 @@ describe("confirm-route DB↔chain parity (pglite + wallet-mock VM)", () => {
     // partial unique index must reject the second, surfaced as a clean CONFLICT
     // (not a raw 23505/500).
     const rowA = await seedDbTask()
-    const rowB = await seedDbTask({ title: "second row", description: "same funded id" })
+    // Same stored text as rowA, so rowB passes the poster + work-brief binding
+    // and it is the partial unique index — not the brief check — that refuses it.
+    const rowB = await seedDbTask()
     const { fundTxHash, chainTaskId } = await fundVM()
 
     const a = await applyEscrowConfirm(rowA, "create", fundTxHash, { kind: "user", userId: POSTER })
