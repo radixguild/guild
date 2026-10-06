@@ -71,16 +71,28 @@ const BADGE_HOLDER_LINE =
   "You hold a Guild badge. Claiming happens on the web app and locks a bond of at least " +
   CLAIM_BOND_FLOOR_XRD + " XRD today (an owner setting).";
 
-/** @param {{ portal: string, linkedAddress?: string|null, hasBadge?: boolean, mustLink?: boolean }} o */
-function startDm({ portal, linkedAddress, hasBadge, mustLink = false }) {
+/**
+ * A badge read that failed: the Gateway didn't answer, which is not "no badge". Until
+ * 2026-10-06 /start, /register, /badge, /wallet and the onboarding check read an outage as
+ * "no badge" and told holders to go and mint one.
+ */
+function badgeCheckUnavailable() {
+  return "Couldn't reach the Radix Gateway to check your badge just now. Try again in a minute.";
+}
+
+/** @param {{ portal: string, linkedAddress?: string|null, hasBadge?: boolean, badgeUnknown?: boolean, mustLink?: boolean }} o */
+function startDm({ portal, linkedAddress, hasBadge, badgeUnknown = false, mustLink = false }) {
   // mustLink: /link is on and this wallet is only a /register claim, so it isn't "linked".
+  // badgeUnknown: the badge read failed, so say that instead of "mint" or "you hold".
   const label = mustLink ? "Wallet saved, not proven yet: " : "Wallet linked: ";
   const prove = mustLink ? "\nTo propose, run temp checks or vote, prove it: send /link." : "";
   const next = !linkedAddress
     ? "Start with the task board — tap below. It is public and needs no wallet. To claim a task you will need to link your Radix wallet, mint a Guild badge and hold some XRD of your own for the claim bond."
-    : !hasBadge
-      ? label + linkedAddress.slice(0, 20) + "...\nNext: mint your free Guild badge (network fee only) — you need one to claim a task." + prove
-      : label + linkedAddress.slice(0, 20) + "...\n" + BADGE_HOLDER_LINE + prove;
+    : badgeUnknown
+      ? label + linkedAddress.slice(0, 20) + "...\n" + badgeCheckUnavailable() + prove
+      : !hasBadge
+        ? label + linkedAddress.slice(0, 20) + "...\nNext: mint your free Guild badge (network fee only) — you need one to claim a task." + prove
+        : label + linkedAddress.slice(0, 20) + "...\n" + BADGE_HOLDER_LINE + prove;
   return (
     "Welcome to Radix Guild\n\n" +
     WHAT_IT_IS + "\n\n" +
@@ -159,16 +171,20 @@ function tasksNotice({ portal }) {
   );
 }
 
-/** @param {{ portal: string, hasBadge: boolean, mustLink?: boolean }} o */
-function registered({ portal, hasBadge, mustLink = false }) {
+/** @param {{ portal: string, hasBadge: boolean, badgeUnknown?: boolean, mustLink?: boolean }} o */
+function registered({ portal, hasBadge, badgeUnknown = false, mustLink = false }) {
   // With /link on (mustLink), a /register claim opens no gate, so it isn't "linked" and
-  // nobody is "set" until they prove the wallet.
+  // nobody is "set" until they prove the wallet. badgeUnknown: the badge read failed.
   if (mustLink) {
     return (
-      "Wallet saved" + (hasBadge ? " — it holds a Guild badge." : ".") + "\n\n" +
+      "Wallet saved" + (hasBadge && !badgeUnknown ? " — it holds a Guild badge." : ".") + "\n\n" +
       "To propose, run temp checks or vote, prove it's yours: open a private chat with me and send /link." +
-      (hasBadge ? "" : "\n\nNo badge yet? Mint your free Guild badge (network fee only): " + portal + "/mint")
+      (badgeUnknown ? "\n\n" + badgeCheckUnavailable() + " /badge checks it."
+        : hasBadge ? "" : "\n\nNo badge yet? Mint your free Guild badge (network fee only): " + portal + "/mint")
     );
+  }
+  if (badgeUnknown) {
+    return "Wallet linked.\n\n" + badgeCheckUnavailable() + " /badge checks it.\n" + "Questions? /faq";
   }
   return hasBadge
     ? "Wallet linked — and it already holds a Guild badge. You're set.\n\n" +
@@ -764,7 +780,7 @@ function workSubmittedDm({ id, title }) {
 
 module.exports = {
   WHAT_IT_IS, BADGE_FOOTNOTE, WALLET_FOOTNOTE, SAFETY_LINE, CLAIM_BOND_FLOOR_XRD, CV2_HEADER,
-  startDm, startGroup, welcomeMember, help, tasksNotice, registered, mint, noBadge, badgeCard, badgeFound,
+  startDm, startGroup, welcomeMember, help, tasksNotice, registered, mint, noBadge, badgeCheckUnavailable, badgeCard, badgeFound,
   mintStep, faq, readme, support, feedbackUsage, feedbackSaved, feedbackGone, myStatus, FEEDBACK_SAVED, sourceStatus,
   verifyResult, verifyTeamList, verifyUsernameNotTeam, verifyNoPerson, verifySelfBot, verifyOtherBot,
   linkInGroup, linkDisabled, linkRequired, linkRequiredShort, registerKeepsProven, registerAddressTaken, linkStart, linkFailed, linkDone,

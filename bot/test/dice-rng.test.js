@@ -1,6 +1,6 @@
 'use strict';
-// rollDice feeds XP rows queued for on-chain update_xp, so it draws from crypto, not
-// Math.random (2026-10-06). The weights must stay 30/25/20/13/8/4.
+// rollDice draws from crypto, not Math.random (2026-10-06): it fed roll_bonus XP rows queued
+// for on-chain update_xp until services/xp.js stopped rolling. The weights must stay 30/25/20/13/8/4.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
