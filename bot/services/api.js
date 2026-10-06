@@ -42,9 +42,10 @@ if (ADMIN_TG_IDS.length === 0) {
 // ⚠️ NO LOOPBACK FALLBACK — and that is deliberate. The upstream guild-saas
 // version of this guard (PR #283) allows the request when no key is configured
 // and req.socket.remoteAddress is loopback. That is UNSAFE in this deployment:
-// this server binds 127.0.0.1 and Caddy reverse-proxies /api/* to it from the
-// public internet, so remoteAddress is ALWAYS 127.0.0.1 here and cannot tell an
-// operator from an attacker. (The rate limiter below documents the same fact —
+// this server binds 127.0.0.1 and Caddy reverse-proxies to it from the public
+// internet (since 2026-09-24 only /api/agent/*; generic /api/* answers 404 at the
+// edge — but routing can be widened again), so remoteAddress is ALWAYS 127.0.0.1
+// for a proxied request and cannot tell an operator from an attacker. (The rate limiter below documents the same fact —
 // it reads X-Forwarded-For precisely because remoteAddress is Caddy's.) A
 // loopback fallback would therefore be open by default. Fail closed instead:
 // no key configured ⇒ the route is denied outright.
