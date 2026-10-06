@@ -1,4 +1,7 @@
 <!-- status: live
+     verified: 2026-10-06 (§6's first two bullets ONLY: replaced with the live /auditor-guide's
+     corrected wording, against lib.rs's owner setters and its note on the arbiter badge's mint
+     role. Nothing else re-checked this pass.)
      verified: 2026-10-02 (§5, §6's source-location line, §2 claim 2's *Check* and §4's agent row
      ONLY: re-checked against the live /trust and /auditor-guide pages, /bug-bounty, the licence
      fields in this repository, lib.rs, and the live Wave B component's transactions and the
@@ -193,10 +196,17 @@ disclosure. No trustee is retained.
 
 ## 6. Known limits — read before relying
 
-- Blueprint upgrades are migrations (new component + env swap), not in-place — config is
-  immutable per instantiation by design. Review the parameter sheet per component address.
-- Wallet-side MFA/multisig UX is not yet on Radix mainnet; arbiter-council M-of-N is
-  enforced at the method-auth layer when activated.
+- Blueprint upgrades are migrations (a new component and an env swap), never in-place: the
+  code behind a component address does not change. Its settings can — the owner badge can move
+  the parameters listed under the owner's powers in §2. Most are pinned into a task at the step
+  that uses them, so a change reaches only tasks that get there afterwards; the two expiry
+  settings apply to claims already in flight. Read the live values per component address, not
+  from this page. *(Corrected 2026-10-06: this line said the configuration was fixed per
+  instantiation, which has been false since Wave B's ten owner setters.)*
+- There is one arbiter badge today (supply 1; the operator can mint more) and the operator
+  holds it. The deployed blueprint has no multi-arbiter rule to switch on: a panel with recall
+  and assignment is a next-blueprint design, not a setting. *(Corrected 2026-10-06: this line
+  described a council rule enforced "when activated"; none exists in the deployed blueprint.)*
 - The app, the escrow blueprint and the agent kit are all in this repository under
   Apache-2.0. *(Rewritten 2026-10-02 to say where the code is, the same on both sides of the
   open-source flip decided 2026-08-14.)*

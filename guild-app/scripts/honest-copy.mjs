@@ -979,6 +979,15 @@ export const BANNED = [
     label: "arbiter-council-exists — there is one arbiter badge and no M-of-N rule in the deployed blueprint",
     re: /\b(?:arbiter[-\s]council|council\s+of\s+arbiters|m-of-n|multi-?sig(?:nature)?\s+arbit\w+)\b[^.;!?]{0,60}\b(?:is|are)\s+(?:enforced|live|active|in\s+place|enabled)\b|\b(?:arbiter[-\s]council|m-of-n)\b[^.;!?]{0,60}\bwhen\s+activated\b/i,
   },
+  // (2b, added 2026-10-06) The opposite overclaim: "supply 1" read as a limit the
+  // contract enforces. The arbiter badge's mint role is the operator's badge, not
+  // deny_all (lib.rs, the AUTH note in resolve_dispute), so the operator can mint
+  // more units, each assigned to one account, and any of them can rule a dispute
+  // whose worker is not that account. One arbiter is a choice today, not a rule.
+  {
+    label: "arbiter-supply-fixed — the operator can mint more arbiter badges; supply 1 is today's count, not a limit the contract enforces",
+    re: /\b(?:no|never\s+an?)\s+(?:second|other|another|additional|new)\s+arbiter(?:\s+badge)?s?\s+(?:can|could|will)\s+(?:ever\s+)?(?:exist|be\s+(?:minted|issued|added))\b|\barbiter\s+badge['’]?s?\b[^.;!?]{0,30}\bsupply\s+(?:is\s+)?(?:fixed|capped|locked|permanent)\b|\barbiter\s+badges?\b[^.;!?]{0,30}\b(?:can\s+never|cannot|can['’]t)\s+be\s+(?:minted|issued)\b|\bsupply\s+(?:is\s+)?(?:fixed|capped|locked)\s+at\s+one\b/i,
+  },
   // (3) The admin badge "handed over" to the RAC. Under the RadixDAO framework the
   // RAC is not a recipient of assets (OA §7.2–7.3; assets go to the Company via
   // Asset Transfer), GP-ELECT-1 is not drafted, and the Guild has no arrangement
@@ -1079,6 +1088,40 @@ export const BANNED = [
     allow: [
       /\b(?:not|never|don['’]t|doesn['’]t|isn['’]t|aren['’]t)\b(?:\s+[\w,]+){0,4}\s+(?:(?:build|maintain|develop|steward|run)s?\s+(?:the\s+)?(?:radix|rvm)|(?:maintainers?|stewards?|developers?)\s+of)/i,
     ],
+  },
+
+  // ── The NFT swap family (added 2026-10-06) ─────────────────────────────────
+  // /swaps (P7-03/P7-04) states five load-bearing NEGATIVE facts about the
+  // NftSwap blueprint (src/content/swaps.ts WHAT_THIS_IS_NOT), and until now no
+  // rule stood behind any of them, so a later copy edit could reverse one and
+  // pass every gate. Each is blueprint behaviour (nft_swap.rs): the fill pays the
+  // seller's vault and nothing to a collection's creator; there is no dispute,
+  // insurance or review method; the fill and extend royalties are `updatable`
+  // dials the royalty-admin badge can turn; nothing reviews a listing's terms or
+  // its NFT; and no owner-gated method can move a listed asset. Each regex is
+  // scoped to swap/listing/fill wording or to a phrase only the swap pages use,
+  // so the task board's own dispute and insurance copy stays legal. Pinned to
+  // MUST_CATCH sentences, and to every sentence in src/content/swaps.ts staying
+  // quiet, in tests/unit/honest-copy.test.ts.
+  {
+    label: "swap-creator-royalty — the swap component pays nothing to a collection's creator; creator royalties are not enforced or collected",
+    re: /\bcreator\s+royalt(?:y|ies)\s+(?:are|is)\s+(?:always\s+|fully\s+)?(?:paid|honou?red|enforced|collected|respected|guaranteed)\b|\b(?:pays?|honou?rs?|enforces?|collects?|respects?|guarantees?)\s+(?:the\s+|every\s+|all\s+)?(?:collection['’]s\s+)?creator\s+royalt(?:y|ies)\b/i,
+  },
+  {
+    label: "swap-protections — a swap has no dispute path, no insurance and no review window; a fill cannot be undone",
+    re: /\b(?:swaps?|fills?|listings?)\b[^.;!?]{0,40}\b(?:protected|covered|insured|backed|guaranteed)\s+by\b|\b(?:swaps?|fills?|listings?)\b[^.;!?]{0,60}\b(?:raise|open|file)\s+a\s+dispute\b|\bdispute\s+(?:a|the|your)\s+(?:swap|fill|listing)\b|\b(?:swaps?|fills?)\s+(?:can|may)\s+be\s+(?:undone|reversed|refunded)\b/i,
+  },
+  {
+    label: "swap-fee-fixed — the fill and extend fees are dials the royalty-admin badge can change; never promise them free or fixed forever",
+    re: /\b(?:swaps?|fills?|listings?|extensions?)\b[^.;!?]{0,30}\b(?:free|zero|0\s*XRD)\b[^.;!?]{0,20}\b(?:forever|for\s+good|permanently|for\s+life)\b|\b(?:swap|fill|extension|listing)\s+fees?\b[^.;!?]{0,20}\b(?:can\s*not|can['’]t|will\s+never|never|cannot)\s+(?:be\s+)?(?:change[sd]?|raised|rise|increased?|go\s+up)\b|\b(?:fills?|swaps?)\s+(?:are|is)\s+always\s+free\b/i,
+  },
+  {
+    label: "swap-listing-vetted — nobody reviews a listing's terms or its NFT; a listing is not proof the NFT is genuine",
+    re: /\b(?:listings?|swaps?|collections?)\b[^.;!?]{0,30}\b(?:is|are)\s+(?:all\s+)?(?:verified|vetted|reviewed|checked|authenticated|approved)\s+by\s+(?:the\s+)?(?:Guild|operator|us)\b|\b(?:Guild|operator)[-\s](?:verified|vetted|approved|reviewed)\s+(?:listings?|nfts?|collections?|swaps?)\b/i,
+  },
+  {
+    label: "swap-operator-recovers — no owner-gated method can move a listed asset; only a fill or the receipt holder's cancel moves it",
+    re: /\b(?:Guild|operator|admin|we)\s+(?:can|could|will|may)\s+(?:always\s+)?(?:return|recover|rescue|retrieve|release|move|send\s+back)\s+(?:your\s+|a\s+|the\s+|any\s+)?listed\s+(?:nfts?|assets?)\b/i,
   },
 ];
 

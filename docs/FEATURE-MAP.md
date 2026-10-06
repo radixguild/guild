@@ -1,4 +1,7 @@
 <!-- status: live
+     verified: 2026-10-06 (one phrase in §B's keeper row: "the trustless guarantee" now reads
+     "the guarantee that needs no operator signature", which is what that decision meant;
+     "trustless" is banned copy. Nothing else re-checked.)
      verified: 2026-10-03 (SCOPED: the two lint lines ONLY — §A's "Green e2e CI" row and §F's
      open-findings row — against `bun run lint` in guild-app, which exits 0 with no problems, and
      test.yml's `lint (guild-app)` job, which runs it on every PR. Nothing else re-checked.
@@ -60,7 +63,7 @@ That doc is a June-2026 overhaul tracker; the governing plan is now
 ## B. In-flight / explicitly next
 
 - **Sat 2026-06-13 ~22:46Z: task-2 dispute window lapses** — after lapse, the winner (worker-raised → the worker account) clicks Finalize in the task UI and signs with their own wallet; collects 27.5 XRD, proves resolve vertical `(OVERHAUL-HANDOFF)`
-- **Keeper = WATCHER, not signer** — bigdev decision 2026-06-11 (supersedes the same-day auto-sign activation): NO platform-initiated signing on the money path; the on-chain PUBLIC auto_resolve is the trustless guarantee and the winner triggers it from their own wallet. Cron runs keeper.mjs (kept in the private operations repository) watch-mode every 30 min (detect + verify events + Telegram alert); no KEEPER_* key in prod env. Alerts dormant until `KEEPER_ALERT_TG_CHAT` is set (same chat id wanted for backup alerts)
+- **Keeper = WATCHER, not signer** — bigdev decision 2026-06-11 (supersedes the same-day auto-sign activation): NO platform-initiated signing on the money path; the on-chain PUBLIC auto_resolve is the guarantee that needs no operator signature, and the winner triggers it from their own wallet. Cron runs keeper.mjs (kept in the private operations repository) watch-mode every 30 min (detect + verify events + Telegram alert); no KEEPER_* key in prod env. Alerts dormant until `KEEPER_ALERT_TG_CHAT` is set (same chat id wanted for backup alerts)
 - **W2 ops** — fund 2 pilot agents (~15 XRD), mint MEMBER badges, decommission `:3002`
 - **Private pilot** — bigdev + 2 worker agents until humming; then 5-user invite + announce
 - **Agent client merge** — ✅ DONE and superseded: all legs landed on the fork's `main` (#24/#26/#30/#31), then the whole client was **extracted in-repo 2026-07-18** → `packages/agent-client` (`@radix-guild/agent-client`, 96 tests, CI-gated manifest parity)

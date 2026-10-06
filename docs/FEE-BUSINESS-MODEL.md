@@ -1,4 +1,7 @@
 <!-- status: live
+     verified: 2026-10-06 (wording only: §9's 2026-10-02 note now says "no percentage bound of
+     the Guild's own on the ledger", the same fact, phrased so the honest-copy fee-cap rule that
+     now scans this doc reads it as the denial it is. Nothing re-checked.)
      verified: 2026-10-02 (SCOPED: the deployed fee instrument only — the top note, the 08-15
      note's fee-dial bullet, §2.2, §3 and §9's F1/F2/F4 — against escrow/…/lib.rs's royalty
      block, both PULL-era components' royalty config on the Radix Gateway, and the live /docs
@@ -224,8 +227,8 @@ All six settled in the decision-packet sitting (`DECISION-PACKET.md`, kept in th
 | F6 | Referral credit | 50% credit, both sides, badge-gated | ⏸️ DEFERRED — only if proven to lift engagement/trust; not in MVP |
 
 *(2026-10-02: F1, F2 and F4 were decided as percentages and were not built that way. The
-component's royalty is a flat XRD amount per `create_task` call, set to 0, with no on-ledger
-cap of the Guild's own. F3 and F5 were not re-checked in this pass.)*
+component's royalty is a flat XRD amount per `create_task` call, set to 0, with no percentage
+bound of the Guild's own on the ledger. F3 and F5 were not re-checked in this pass.)*
 
 **F3 refinement:** bigdev reframed the "flat minimum fee" as a **minimum funded-task reward
 of $3 USD** — dust is killed at the source (no sub-$3 escrow), so no separate minimum fee is

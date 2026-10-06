@@ -7,7 +7,9 @@ merely aspirational — before you spend time or money here.
 
 Last reviewed: 2026-10-02. §2–§4 and §6 were re-checked against the live escrow component (read
 from the Radix Gateway), its source and the live site; §1, §5 and §7 were re-read, not
-re-verified.
+re-verified. 2026-10-06: §1's protocol row, §3's royalty-bound sentence and §4's arbiter line
+were corrected against the escrow source in this repository, and §6 step 3 now says where a
+ruling is recorded.
 
 ---
 
@@ -15,7 +17,7 @@ re-verified.
 
 | Layer | Who decides | How you can tell |
 |---|---|---|
-| Protocol (the escrow blueprint) | The operator (`bigdev`) | The deployed package is immutable; changing behaviour means deploying a new component and migrating |
+| Protocol (the escrow blueprint) | The operator (`bigdev`) | The code behind a deployed component does not change; changing it means deploying a new component and migrating. Its settings can change: the owner badge has ten owner-only calls that change twelve of them, each a public on-chain event (`STATE.md` lists them) |
 | The app (this repo) | The operator | Ordinary commits and releases |
 | Money in escrow | **Nobody with discretion — until a dispute.** The blueprint routes undisputed settlement | Undisputed settlement is executed by the component per its published rules, not by an admin action. A *Disputed* task is ruled by the arbiter-badge holder — today the operator (§4) — who may pay the worker, refund the poster, or split |
 | Working groups | Members, by joining and posting | Joining is self-serve; a group is a joinable task category that filters your feed. It binds no vote, treasury, lead or budget. Push notifications are designed, not wired |
@@ -53,8 +55,8 @@ These are the parts you do not have to take on trust:
   included (the source locks those at instantiation). Only the escrow's royalty-admin badge
   (supply 1, held by an account the operator controls) can move the `create_task` dial. It is
   not a fee the app can decide to charge you.
-  Radix caps any per-call royalty at ~166.67 XRD; **there is no Guild-specific on-ledger cap** —
-  the intended dial is stated in copy and metadata, not enforced by the chain. A consequence worth
+  Radix caps any per-call royalty at ~166.67 XRD; **nothing on the ledger bounds the dial below
+  that** — the intended dial is stated in copy and metadata, not enforced by the chain. A consequence worth
   stating plainly, because it cuts against us: anyone can run their own frontend against our
   component, and anyone can redeploy the blueprint with the dial at zero. We are not relying on
   the licence to prevent that.
@@ -67,7 +69,9 @@ to know if we were you:
 
 - **Disputes.** Disputes run in the app (since 2026-08-29) and on-chain. The single arbiter
   badge (supply 1) is held by an account the operator controls, so the operator rules every
-  dispute: there is no second opinion and no appeal. Once a dispute is raised, the worker's
+  dispute: there is no second opinion and no appeal. The operator can also mint more arbiter
+  badges, each assigned to one account, so one arbiter is a choice today, not a limit the
+  contract enforces. Once a dispute is raised, the worker's
   claim bond splits the same way as the reward, whether the arbiter rules (one split for the
   reward, the insurance and the bond) or nobody does: after 72 hours the contract's fixed
   default splits the reward and the bond evenly between poster and worker and returns the
@@ -102,7 +106,9 @@ decision rather than a drift.
 1. Anyone can raise a question — in the Guild Telegram, in a working group, or as an issue
    here.
 2. The operator rules on it, in a sitting, with the reasoning written down.
-3. The ruling lands in the repository's state document, dated, next to what it supersedes.
+3. The ruling is recorded, dated, next to what it supersedes, in the operator's working record,
+   which is kept in the private operations repository and does not ship here. Its conclusion
+   reaches this repository's `STATE.md`, and this file when the ruling changes governance.
 4. If a ruling turns out to rest on a wrong fact, **the correction is recorded next to the
    original rather than replacing it silently.** How a thing went stale is usually more useful
    than the corrected value.
