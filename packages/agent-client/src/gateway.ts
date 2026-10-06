@@ -77,6 +77,11 @@ function heldLocalIds(data: EntityDetailsResponse | null, resource: string): str
  * string-derived (`guild_member_<sanitized_username>`), NOT `#N#`, so this
  * returns the raw NonFungibleLocalId string verbatim.
  *
+ * null means the Gateway ANSWERED (2xx) and the account holds none. A non-2xx
+ * answer THROWS, the same as a network failure: "could not read" is never
+ * "holds no badge" (that reading let mint sign a second badge, and told
+ * withdraw an agent did not hold the badge it claimed with).
+ *
  * Pin `badgeResource` to the Member badge (resource_rdx1n22rq94…) for the pilot,
  * NOT the dormant GAGENT agent badge.
  */
@@ -86,6 +91,12 @@ export async function resolveBadgeLocalId(
   gatewayBaseUrl: string
 ): Promise<string | null> {
   const data = await fetchEntityDetails(gatewayBaseUrl, account);
+  if (data === null) {
+    throw new Error(
+      `The Gateway did not answer /state/entity/details for ${account} — could not read its badge ` +
+        'holdings (that is not the same as holding none). Retry, or check GUILD_GATEWAY_URL.'
+    );
+  }
   const nfIds = heldLocalIds(data, badgeResource);
   return nfIds.length ? nfIds[0] : null;
 }

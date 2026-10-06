@@ -8,14 +8,14 @@
     "source": "github",
     "subfolder": "packages/agent-mcp"
   },
-  "version": "0.3.4",
+  "version": "0.3.5",
   "websiteUrl": "https://radixguild.com/agents",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@radix-guild/agent-mcp",
-      "version": "0.3.4",
+      "version": "0.3.5",
       "transport": {
         "type": "stdio"
       },

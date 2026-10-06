@@ -141,7 +141,7 @@ describe('runWorkerCycle — claim without submit (the setup-driver shape)', () 
     const board = movingBoard();
     const { calls, txFns } = spyTxFns();
 
-    await runWorkerCycle({ ...base, api: board.api, txFns, resolveClaimReceiptId: receiptResolver(calls), dryRun: true });
+    await runWorkerCycle({ ...base, api: board.api, txFns, resolveClaimReceiptId: receiptResolver(calls), dryRun: true, claimOnly: true });
 
     expect(calls.claim).toEqual([42]);
     // The brief rides the claim even on a dryRun cycle — dryRun gates section 2
@@ -157,7 +157,7 @@ describe('runWorkerCycle — claim without submit (the setup-driver shape)', () 
     const board = movingBoard();
     const { calls, txFns } = spyTxFns();
 
-    await runWorkerCycle({ ...base, api: board.api, txFns, resolveClaimReceiptId: receiptResolver(calls), dryRun: true });
+    await runWorkerCycle({ ...base, api: board.api, txFns, resolveClaimReceiptId: receiptResolver(calls), dryRun: true, claimOnly: true });
 
     // The claim moved it into the assigned list inside this same cycle...
     expect(board.assigned.map(t => t.id)).toEqual([30]);

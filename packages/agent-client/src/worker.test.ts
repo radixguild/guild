@@ -419,6 +419,7 @@ describe('runWorkerCycle — on-chain claim leg', () => {
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // The gate is default-deny: without this the worker claims NOTHING, which
       // is exactly what these fixtures proved when it shipped. Naming the poster
       // here keeps them testing the claim leg rather than the gate.
@@ -445,6 +446,7 @@ describe('runWorkerCycle — on-chain claim leg', () => {
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // The gate is default-deny: without this the worker claims NOTHING, which
       // is exactly what these fixtures proved when it shipped. Naming the poster
       // here keeps them testing the claim leg rather than the gate.
@@ -481,6 +483,7 @@ describe('runWorkerCycle — on-chain claim leg', () => {
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // The gate is default-deny: without this the worker claims NOTHING, which
       // is exactly what these fixtures proved when it shipped. Naming the poster
       // here keeps them testing the claim leg rather than the gate.
@@ -512,6 +515,7 @@ describe('runWorkerCycle — on-chain claim leg', () => {
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // The gate is default-deny: without this the worker claims NOTHING, which
       // is exactly what these fixtures proved when it shipped. Naming the poster
       // here keeps them testing the claim leg rather than the gate.
@@ -538,6 +542,7 @@ describe('runWorkerCycle — on-chain claim leg', () => {
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // The gate is default-deny: without this the worker claims NOTHING, which
       // is exactly what these fixtures proved when it shipped. Naming the poster
       // here keeps them testing the claim leg rather than the gate.
@@ -566,6 +571,7 @@ describe('runWorkerCycle — on-chain claim leg', () => {
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // The gate is default-deny: without this the worker claims NOTHING, which
       // is exactly what these fixtures proved when it shipped. Naming the poster
       // here keeps them testing the claim leg rather than the gate.
@@ -592,6 +598,7 @@ describe('runWorkerCycle — on-chain claim leg', () => {
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // The gate is default-deny: without this the worker claims NOTHING, which
       // is exactly what these fixtures proved when it shipped. Naming the poster
       // here keeps them testing the claim leg rather than the gate.
@@ -632,6 +639,7 @@ describe('runWorkerCycle — on-chain claim leg', () => {
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // trustedPosters deliberately omitted — this IS the default configuration.
       txFns,
       resolveClaimReceiptId: () => Promise.resolve(null),
@@ -660,6 +668,7 @@ describe('runWorkerCycle — on-chain claim leg', () => {
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       trustedPosters: ['account_rdx1other'],
       maxClaimsPerCycle: 5, // budget must not be what stops the hostile one
       txFns,
@@ -688,6 +697,7 @@ describe('runWorkerCycle — on-chain claim leg', () => {
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // The gate is default-deny: without this the worker claims NOTHING, which
       // is exactly what these fixtures proved when it shipped. Naming the poster
       // here keeps them testing the claim leg rather than the gate.
@@ -718,6 +728,7 @@ describe('runWorkerCycle — on-chain claim leg', () => {
       api: fakeApi(state),
       identity,
       onChain: true,
+      claimOnly: true,
       // The gate is default-deny: without this the worker claims NOTHING, which
       // is exactly what these fixtures proved when it shipped. Naming the poster
       // here keeps them testing the claim leg rather than the gate.

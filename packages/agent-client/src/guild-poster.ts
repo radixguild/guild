@@ -169,6 +169,11 @@ usage: guild-poster <command> [flags]
                               the worker's claim bond returns to THEM in full.
   release-timeout <dbTaskId>      finalize a task whose review window lapsed
                               (public on-chain; pays exactly what approve does).
+                              These four refuse a task funded on a different
+                              escrow component than the one configured (on-chain
+                              ids collide across components), and a task whose
+                              component the API does not report, unless you pass
+                              --allow-unverified-component (the null case only).
 
   withdraw <onChainTaskId>    collect the poster's settled entitlement (the
                               insurance, a refunded reward, or the poster's
@@ -564,6 +569,14 @@ export interface RunOnChainLegOptions {
   api?: PosterApiLike;
   deps?: Partial<PosterCliDeps>;
   log?: (line: string) => void;
+  /**
+   * Proceed when the API reports NO escrow component for the task (null or
+   * missing — an older server build, or the backfill window). Default false:
+   * an unpinned task is refused, because its on-chain id may name a different
+   * task on the configured component. Never overrides a component MISMATCH.
+   * CLI: --allow-unverified-component.
+   */
+  allowUnverifiedComponent?: boolean;
 }
 
 /** Shared plumbing for approve / cancel / cancel-after-claim / release-timeout:
@@ -601,11 +614,39 @@ async function runDbResolvedLeg(
     };
   }
   const onChainTaskId = task.onChainTaskId;
+  // On-chain ids restart at 1 per escrow component (api.ts escrowComponent
+  // doc), so the manifest below — always built against the CONFIGURED
+  // component — is only about THIS task when the task was funded there.
+  // Refused in either mode, so the preview shows what --live would do.
+  const taskComponent = task.escrowComponent ?? null;
+  if (taskComponent !== null && taskComponent !== config.escrowComponent) {
+    return {
+      dryRun: !live,
+      refused: true,
+      message:
+        `Task ${dbTaskId} was funded on escrow component ${taskComponent}, not the configured ` +
+        `${config.escrowComponent}. Its on-chain id #${onChainTaskId} would name a different task on the ` +
+        `configured component, so ${verbName} signs nothing.`,
+    };
+  }
+  if (taskComponent === null && opts.allowUnverifiedComponent !== true) {
+    return {
+      dryRun: !live,
+      refused: true,
+      message:
+        `The API does not report which escrow component task ${dbTaskId} was funded on, so on-chain id ` +
+        `#${onChainTaskId} cannot be pinned to the configured ${config.escrowComponent}. ${verbName} signs ` +
+        'nothing. If you have checked the task on chain yourself, re-run with --allow-unverified-component.',
+    };
+  }
   const account = identity?.address ?? DRYRUN_ACCOUNT;
   const manifest = buildManifest(config.escrowComponent, account, config.taskReceiptResource, onChainTaskId);
 
   if (!live) {
-    log(`DRY-RUN ${verbName} dbTaskId=${dbTaskId} onChainTaskId=${onChainTaskId}`);
+    log(
+      `DRY-RUN ${verbName} dbTaskId=${dbTaskId} onChainTaskId=${onChainTaskId} ` +
+        `escrowComponent=${taskComponent ?? 'unverified (--allow-unverified-component)'}`
+    );
     log(identity ? '' : '(no POSTER_PRIVATE_KEY in env — previewing against a placeholder account)');
     return { dryRun: true, manifest, dbId: dbTaskId, onChainTaskId };
   }
@@ -1043,6 +1084,7 @@ export async function main(
         api: overrides.api,
         deps: overrides.deps,
         log,
+        allowUnverifiedComponent: args.flags.has('allow-unverified-component'),
       });
       if (result.refused) {
         console.error(`\nCannot ${args.command} task ${dbTaskId}: ${result.message}\n`);

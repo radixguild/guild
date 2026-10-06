@@ -147,6 +147,18 @@ describe('stage 3: badge', () => {
     expect(lines.join('\n')).toContain('minted guild_member_worker1');
   });
 
+  test('unreadable badge holdings + --live + --username → refuses; never mints', async () => {
+    const { deps, calls } = world({
+      resolveBadgeLocalId: async () => {
+        throw new Error('could not read its badge holdings');
+      },
+    });
+    await expect(
+      run({ env: { GUILD_AGENT_PRIVATE_KEY: KEY_HEX }, live: true, username: 'worker1' }, deps)
+    ).rejects.toThrow(/could not read its badge holdings/);
+    expect(calls.minted).toHaveLength(0);
+  });
+
   test('badge held → env persist lines printed when badge env is unset', async () => {
     const { deps, calls } = world();
     const { outcome, lines } = await run({ env: { GUILD_AGENT_PRIVATE_KEY: KEY_HEX } }, deps);
