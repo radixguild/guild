@@ -1,3 +1,4 @@
+import { sessionFailure } from "@/lib/session-outcome"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react"
 import "@testing-library/jest-dom/vitest"
@@ -54,6 +55,7 @@ const H = vi.hoisted(() => ({
   claimedRows: [] as unknown[],
   postedRows: [] as unknown[],
   signIn: vi.fn(),
+  signInDetailed: vi.fn(),
   apiFetch: vi.fn(),
 }))
 
@@ -76,6 +78,7 @@ vi.mock("@/hooks/useWallet", () => ({
     account: H.account,
     connected: !!H.account,
     signIn: H.signIn,
+    signInDetailed: H.signInDetailed,
   }),
 }))
 
@@ -125,6 +128,7 @@ describe("/profile/[address] Archived section vs a lapsed guild_session (2026-09
     H.claimedRows = []
     H.postedRows = []
     H.signIn.mockReset()
+    H.signInDetailed.mockReset().mockResolvedValue({ ok: true })
     H.apiFetch.mockReset().mockImplementation(async (path: string) => {
       if (path.startsWith("/api/v1/tasks?")) {
         if (H.listFails) throw new Error("network down")
@@ -243,10 +247,10 @@ describe("/profile/[address] Archived section vs a lapsed guild_session (2026-09
   it("a successful sign-in from the prompt re-reads the lists and swaps the prompt for the populated cards", async () => {
     // Session lapsed on first load; signing in re-establishes it, and the
     // re-read now comes back as the owner's view WITH the archived row.
-    H.signIn.mockImplementation(async () => {
+    H.signInDetailed.mockImplementation(async () => {
       H.ownerView = true
       H.claimedRows = [CANCELLED_CLAIMED]
-      return true
+      return { ok: true }
     })
 
     render(<ProfilePage />)
@@ -259,7 +263,7 @@ describe("/profile/[address] Archived section vs a lapsed guild_session (2026-09
     expect(await screen.findByText(/Archived — Claimed \(1\)/)).toBeInTheDocument()
     expect(screen.getByText("Cancelled-after-claim job")).toBeInTheDocument()
     expect(screen.queryByText(PROMPT_TITLE)).not.toBeInTheDocument()
-    expect(H.signIn).toHaveBeenCalledTimes(1)
+    expect(H.signInDetailed).toHaveBeenCalledTimes(1)
     // Both lists were re-read under the new session, not just one.
     await waitFor(() => {
       expect(listCalls("assignee").length).toBeGreaterThan(before)
@@ -268,7 +272,7 @@ describe("/profile/[address] Archived section vs a lapsed guild_session (2026-09
   })
 
   it("a declined signature keeps the prompt (with SignInPrompt's own error) and does not re-read", async () => {
-    H.signIn.mockResolvedValue(false)
+    H.signInDetailed.mockResolvedValue(sessionFailure("wallet-declined"))
 
     render(<ProfilePage />)
     await screen.findByText(PROMPT_TITLE)
@@ -276,7 +280,7 @@ describe("/profile/[address] Archived section vs a lapsed guild_session (2026-09
 
     fireEvent.click(signInButton()!)
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/Signature declined/i)
+    expect(await screen.findByRole("alert")).toHaveTextContent(/declined the sign-in request in your wallet/i)
     expect(screen.getByText(PROMPT_TITLE)).toBeInTheDocument()
     expect(listCalls("assignee").length).toBe(before)
   })

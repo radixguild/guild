@@ -61,7 +61,7 @@ vi.mock("@/lib/use-xrd-usd", () => ({
 }))
 
 import MintPage from "@/app/mint/page"
-import { ALCHEMY_PAY_XRD_URL, KUCOIN_XRD_URL } from "@/components/get-xrd-links"
+import { KUCOIN_XRD_URL } from "@/components/get-xrd-links"
 
 const PENDING = () => new Promise<number | null>(() => {})
 const mintButton = () => screen.getByRole("button", { name: /Mint Guild Badge/ })
@@ -87,17 +87,18 @@ describe("/mint balance pre-flight — wired through useXrdBalance", () => {
     expect(mintButton()).toBeDisabled()
   })
 
-  it("the no-XRD notice says where to get XRD: Alchemy Pay and KuCoin, each in a new tab", async () => {
+  it("the no-XRD notice says where to get XRD: KuCoin, in a new tab", async () => {
     H.account = A
     H.impl = () => Promise.resolve(0)
     render(<MintPage />)
     typeValidUsername()
     await waitFor(() => expect(noXrdNotice()).toBeInTheDocument())
-    const alchemy = screen.getByRole("link", { name: /alchemy pay/i })
-    expect(alchemy).toHaveAttribute("href", ALCHEMY_PAY_XRD_URL)
-    expect(alchemy).toHaveAttribute("target", "_blank")
-    expect(alchemy).toHaveAttribute("rel", "noopener noreferrer")
-    expect(screen.getByRole("link", { name: /kucoin/i })).toHaveAttribute("href", KUCOIN_XRD_URL)
+    const kucoin = screen.getByRole("link", { name: /kucoin/i })
+    expect(kucoin).toHaveAttribute("href", KUCOIN_XRD_URL)
+    expect(kucoin).toHaveAttribute("target", "_blank")
+    expect(kucoin).toHaveAttribute("rel", "noopener noreferrer")
+    // 2026-10-06: Alchemy Pay's ramp would not sell XRD, so it is not offered.
+    expect(screen.queryByRole("link", { name: /alchemy pay/i })).toBeNull()
   })
 
   it("control: a funded wallet with a valid username can mint", async () => {

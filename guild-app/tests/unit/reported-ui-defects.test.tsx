@@ -56,12 +56,13 @@ describe("reported UI defects (2026-09-16 external report)", () => {
     })
 
     it("marks the row busy across the wallet round-trip, not just the fetch", () => {
-      // setBusy has to bracket ensureSession() too, or the button looks inert
+      // setBusy has to bracket the sign-in gate too, or the button looks inert
       // while a wallet signature is pending — which is indistinguishable from
-      // the bug this test exists to prevent.
+      // the bug this test exists to prevent. (The gate is ensureSessionDetailed()
+      // since 2026-10-06; it reports why when it fails.)
       const body = groups().slice(groups().indexOf("const mutate = useCallback"))
       const setBusyAt = body.indexOf("setBusy(slug)")
-      const ensureAt = body.indexOf("await ensureSession()")
+      const ensureAt = body.indexOf("await ensureSessionDetailed()")
       expect(setBusyAt).toBeGreaterThan(-1)
       expect(setBusyAt).toBeLessThan(ensureAt)
     })
