@@ -1,4 +1,7 @@
 <!-- status: live
+     verified: 2026-10-06 (one word: "all 4 audited blueprints" now reads "all 4 blueprints it
+     covered" — the sweep was the operator's own pre-audit pass, and no blueprint here has had an
+     audit. Nothing else re-checked.)
      verified: 2026-10-03 (the References list ONLY: it now says which sources are unpublished and
      where. The 2026-09-30 stamp below said the architecture-2026-05 links pointed at archive/;
      they did not until this pass. Nothing else re-checked.)
@@ -20,7 +23,7 @@ Project-wide authorization convention for Guild's Scrypto blueprints. Every blue
 
 ## Why this exists
 
-The 2026-05-23 pre-audit sweep surfaced a recurring class of authorization issues across all 4 audited blueprints (6 Medium findings, see audit reports). The class:
+The 2026-05-23 pre-audit sweep surfaced a recurring class of authorization issues across all 4 blueprints it covered (6 Medium findings, see audit reports). The class:
 
 > **Proof-vs-bucket auth bypass.** A method checks that a passed `Proof` is for the correct resource address, but does not verify that the caller actually holds the badge. A third party who obtains a proof (via a compromised wallet, a delegated proof, or a signed-but-unbroadcast manifest) can pass it to satisfy the check.
 

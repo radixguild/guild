@@ -20,7 +20,7 @@ many of them authored by automated agent tooling rather than a human typing dire
 `NOTICE` — "Ralph (Archon)", "Copilot" and "vps-claude" among others name that tooling, all of
 it operated by the one copyright holder, not third-party contributors), and squashing to one
 commit avoids publishing an authorship trail that would misrepresent who is answerable for the
-code as a named individual. The single public commit is authored `bigdevxrd
+code as a named individual. The initial public commit is authored `bigdevxrd
 <212289383+bigdevxrd@users.noreply.github.com>` — the GitHub account of the copyright holder named in
 [`NOTICE`](./NOTICE) — because everything in it, regardless of which tool produced the diff,
 was directed by and is owned by that one person.
@@ -56,7 +56,9 @@ There is no ambiguity to soften here: **one person, `bigdev`, holds it all.**
   open (`AllowAll`) rule to one requiring this same admin badge** — independently checkable by
   reading any Guild package's role assignments from the Radix Gateway.
 - **The separate arbiter badge that rules disputes** is also held by `bigdev` today, and has a
-  supply of one. See `STATE.md`'s "Disputes" section for the limits that follow from that.
+  supply of one. That count is a choice, not a limit the contract enforces: `bigdev` holds the
+  badge that mints arbiter badges and can issue more, each assigned to one account. See
+  `STATE.md`'s "Disputes" section for the limits that follow from that.
 - **There is no other legal entity.** No company, no foundation, no DAO, no token. See
   `GOVERNANCE.md` §1–2 for what is, and is not, governed by anything other than this one
   person's decision, today.

@@ -18,6 +18,7 @@ import {
   visibleText,
 } from "../../scripts/honest-copy.mjs";
 import { LIB_RS_PATH } from "../../scripts/gen-instantiate-manifest.mjs";
+import * as swaps from "@/content/swaps";
 
 /**
  * scripts/honest-copy.mjs is a DEPLOY GATE — launch-check.sh CHECK 4 imports it
@@ -1983,5 +1984,113 @@ describe("the pages this audit rewrote clear EVERY rule, not just the new ones (
   it("the scan can fail (control): the shipped draft sentence trips tier-gating", () => {
     const tierGating = ruleFor("tier-gating")
     expect(violation("A tier on your badge is its own field. Tiers gate nothing.", tierGating)).toBeTruthy()
+  })
+})
+
+describe("the NFT swap family + arbiter-supply-fixed — the swap pages' negative facts, as rules (added 2026-10-06)", () => {
+  // src/content/swaps.ts states what a swap is NOT (no creator royalty, no dispute
+  // path or insurance, a fee that is a live dial, nobody reviews a listing, nothing
+  // the Guild can do to a listed asset). Until these rules, a copy edit reversing one
+  // passed every gate. Each fires on the reversal and stays quiet on every string the
+  // swap pages show today.
+  const cases: { rule: string; fires: string[] }[] = [
+    {
+      rule: "swap-creator-royalty",
+      fires: [
+        "Creator royalties are paid on every fill.",
+        "Creator royalties are honoured on every fill.",
+        "Every fill pays the creator royalty.",
+        "The swap enforces creator royalties.",
+      ],
+    },
+    {
+      rule: "swap-protections",
+      fires: [
+        "Every swap is protected by escrow insurance.",
+        "Swaps are covered by the Guild's escrow insurance.",
+        "If a swap goes wrong you can raise a dispute.",
+        "You can dispute a fill within 72 hours.",
+        "Fills can be reversed if something goes wrong.",
+      ],
+    },
+    {
+      rule: "swap-fee-fixed",
+      fires: [
+        "Fills are free forever.",
+        "The fill fee is zero, forever.",
+        "The swap fee can never change.",
+        "Fills are always free.",
+      ],
+    },
+    {
+      rule: "swap-listing-vetted",
+      fires: ["Every listing is verified by the Guild.", "Browse Guild-verified listings."],
+    },
+    {
+      rule: "swap-operator-recovers",
+      fires: ["The Guild can return your listed NFT.", "The operator can recover a listed asset."],
+    },
+    {
+      rule: "arbiter-supply-fixed",
+      fires: [
+        "The arbiter badge has a supply of one, so no second arbiter can ever exist.",
+        "The arbiter badge's supply is fixed at one.",
+        "Arbiter badges can never be minted again.",
+      ],
+    },
+  ]
+
+  // Every user-facing string the swap pages render from the content module.
+  const swapStrings = (): string[] => {
+    const out: string[] = []
+    const visit = (v: unknown) => {
+      if (typeof v === "string") out.push(v)
+      else if (typeof v === "function") out.push(String((v as (n: number) => string)(1)), String((v as (n: number) => string)(2)))
+      else if (Array.isArray(v)) v.forEach(visit)
+      else if (v && typeof v === "object") Object.values(v).forEach(visit)
+    }
+    Object.values(swaps).forEach(visit)
+    return out
+  }
+
+  for (const c of cases) {
+    it(`${c.rule} fires on its reversal`, () => {
+      const rule = ruleFor(c.rule)
+      for (const text of c.fires) expect(violation(text, rule), text).toBeTruthy()
+    })
+  }
+
+  it("all six stay quiet on every string in src/content/swaps.ts, and on the true arbiter copy", () => {
+    const strings = swapStrings()
+    // Floor: WHAT_THIS_IS_NOT (5) + HOW_IT_WORKS (5 x 2) + DETAIL_COPY alone clear this.
+    expect(strings.length).toBeGreaterThan(40)
+    for (const line of swaps.WHAT_THIS_IS_NOT) expect(strings).toContain(line)
+    const quiet = [
+      ...strings,
+      "There is one arbiter badge today (supply 1; the operator can mint more) and the operator holds it.",
+      "The arbiter badge has supply 1 today, so this is worth weighing plainly rather than assuming away.",
+      "the live arbiter badge has a supply of one, cannot be withdrawn from its account, and is held by an account the operator controls",
+      // The task board's own protections, which these rules must leave alone.
+      "A poster's only on-chain answer to a junk submission is to raise a dispute inside the 72-hour review window.",
+    ]
+    for (const c of cases) {
+      const rule = ruleFor(c.rule)
+      for (const text of quiet) expect(violation(text, rule), `${c.rule}: ${text}`).toBeNull()
+    }
+  })
+
+  it("the facts they rest on are still what the NftSwap blueprint says", () => {
+    const SWAP_RS = readFileSync(join(LIB_RS_PATH, "..", "nft_swap.rs"), "utf8")
+    const methods = SWAP_RS.match(/enable_method_auth!\s*\{\s*methods\s*\{([\s\S]*?)\}/)?.[1] ?? ""
+    expect(methods).toMatch(/fill\s*=>\s*PUBLIC/)
+    // swap-operator-recovers: no owner-gated method at all, so none can move a listed asset.
+    expect(methods).not.toMatch(/restrict_to/)
+    // swap-protections: no dispute method on the component.
+    expect(methods).not.toMatch(/dispute/)
+    // swap-fee-fixed: the fill royalty is a dial, not locked.
+    expect(SWAP_RS).toMatch(/fill\s*=>\s*Xrd\([^)]*\),\s*updatable/)
+    // arbiter-supply-fixed: the escrow's own AUTH note says the mint role is the owner badge.
+    const LIB_RS = readFileSync(LIB_RS_PATH, "utf8")
+    expect(LIB_RS).toMatch(/mint_roles[\s/]+are\s+`require\(owner_badge\)`,\s+not\s+`deny_all`/)
   })
 })

@@ -16,9 +16,14 @@ Anything that could let someone move money out of escrow they don't own or aren'
 entitled to, bypass a role or access-control check, forge or replay authorization
 for an on-chain method call, or otherwise get the deployed component to do
 something its published rules don't allow — in the escrow blueprints (`escrow/`),
-the badge/agent-badge blueprints (`badge-manager/`, `blueprints/`), or the
-application code that constructs and submits transactions against them
-(`guild-app/`).
+the badge/agent-badge blueprints (`badge-manager/`, `blueprints/`), or any code that
+builds, signs or submits a transaction against them, or decides who is paid: the
+dashboard (`guild-app/`), the agent kit (`packages/agent-client/`, which builds and,
+with `--live`, signs claim, withdraw and swap transactions with the agent's own key),
+the MCP server (`packages/agent-mcp/`, read-only, whose answers an agent may act on),
+and the Telegram bot (`bot/`, which links Telegram accounts to wallets and contains a
+transaction-signing service). A flaw in one of these is a security finding even when
+no blueprint is at fault, for example a manifest that pays the wrong account.
 
 ## Reporting a security issue
 
@@ -47,6 +52,6 @@ handled the same way regardless of whether a reward is on offer.
 ## What this policy does not cover
 
 General usage questions, feature requests, and non-security bugs in the app, the
-CI, or the docs are fine as a public issue — see `.github/ISSUE_TEMPLATE/`. A
+kit, the bot, the CI, or the docs are fine as a public issue — see `.github/ISSUE_TEMPLATE/`. A
 governance or business-model disagreement (see `GOVERNANCE.md`) is not a security
 finding either, however strongly held.
