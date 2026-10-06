@@ -242,6 +242,28 @@ describe('withdrawWorkerReward — end to end with injected chain reads', () => 
     expect(r.manifest).toContain('1u64');
   });
 
+  test('an unreadable badge read is reported as such, never as "does not hold", and signs nothing', async () => {
+    let signed = false;
+    const run = withdrawWorkerReward({
+      taskId: 1,
+      live: true,
+      identity,
+      config,
+      deps: {
+        readWorkerEntitlement: async () => entitlement(),
+        resolveBadgeLocalId: async () => {
+          throw new Error('could not read its badge holdings');
+        },
+        withdrawWorkerOnChain: (async () => {
+          signed = true;
+          return { intentHash: 'x', status: 'CommittedSuccess' };
+        }) as never,
+      },
+    });
+    await expect(run).rejects.toThrow(/could not read its badge holdings/);
+    expect(signed).toBe(false);
+  });
+
   test('the manifest passes NO destination — the payee is pinned on chain', async () => {
     const r = await withdrawWorkerReward({
       taskId: 1,

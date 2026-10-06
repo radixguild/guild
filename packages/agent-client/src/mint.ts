@@ -275,7 +275,9 @@ export async function mintMemberBadge(options: {
   if (server.paired) throw new PairedAgentMintError(server.reason);
 
   // Idempotency first: an account that already holds a Member badge gets its
-  // existing id back instead of a second NFT.
+  // existing id back instead of a second NFT. An unreadable Gateway answer
+  // THROWS here (gateway.ts) and nothing signs — "could not read" is never
+  // taken as "holds none", or a retry could mint a second badge.
   const held = await deps.resolveBadgeLocalId(account, badgeResource, config.gatewayBaseUrl);
   if (held) {
     log(`Account already holds a Member badge (${held}) — nothing to mint.`);
@@ -309,7 +311,11 @@ export async function mintMemberBadge(options: {
 
   // Confirm on-ledger (Gateway indexing can lag the commit by a few seconds).
   for (let attempt = 0; attempt < RESOLVE_ATTEMPTS; attempt++) {
-    const resolved = await deps.resolveBadgeLocalId(account, badgeResource, config.gatewayBaseUrl);
+    // The mint has already committed: an unreadable answer here is the same as
+    // "not indexed yet" — retry, and never throw a committed mint away.
+    const resolved = await deps
+      .resolveBadgeLocalId(account, badgeResource, config.gatewayBaseUrl)
+      .catch(() => null);
     if (resolved) {
       return {
         dryRun: false,

@@ -141,6 +141,33 @@ function localBadgeSource(
   }
 }
 
+/**
+ * Badge holdings read that keeps "could not read" apart from "holds none":
+ * resolveBadgeLocalId throws on an unreadable Gateway answer, and doctor
+ * reports that as its own failing check instead of crashing or saying the
+ * account holds no badge.
+ */
+async function readBadge(
+  deps: DoctorDeps,
+  account: string,
+  resource: string,
+  gatewayBaseUrl: string
+): Promise<{ held: string | null; error: string | null }> {
+  try {
+    return { held: await deps.resolveBadgeLocalId(account, resource, gatewayBaseUrl), error: null };
+  } catch (error) {
+    return { held: null, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+const badgeUnreadable = (why: string): CheckResult => ({
+  id: 'badge',
+  label: 'badge',
+  status: 'fail',
+  detail: `could not read the account's badge holdings: ${why}`,
+  hint: 'A Gateway hiccup, not a missing badge. Re-run doctor in a minute, or check GUILD_GATEWAY_URL.',
+});
+
 const skip = (id: string, label: string, why: string): CheckResult => ({
   id,
   label,
@@ -458,13 +485,16 @@ export async function runDoctor(options: {
   } else if (config.agentBadgeResource && config.agentBadgeLocalId) {
     const isMemberResource = config.agentBadgeResource === config.workerBadgeResource;
     const laneName = isMemberResource ? 'member-badge' : 'agent-badge';
-    const held = await deps.resolveBadgeLocalId(
+    const { held, error: badgeReadError } = await readBadge(
+      deps,
       identity.address,
       config.agentBadgeResource,
       config.gatewayBaseUrl
     );
     const expected = normalizeLocalId(config.agentBadgeLocalId);
-    if (!held) {
+    if (badgeReadError !== null) {
+      checks.push(badgeUnreadable(badgeReadError));
+    } else if (!held) {
       checks.push({
         id: 'badge',
         label: 'badge',
@@ -494,12 +524,15 @@ export async function runDoctor(options: {
       });
     }
   } else {
-    const heldMember = await deps.resolveBadgeLocalId(
+    const { held: heldMember, error: memberReadError } = await readBadge(
+      deps,
       identity.address,
       config.workerBadgeResource,
       config.gatewayBaseUrl
     );
-    if (heldMember) {
+    if (memberReadError !== null) {
+      checks.push(badgeUnreadable(memberReadError));
+    } else if (heldMember) {
       checks.push({
         id: 'badge',
         label: 'badge',

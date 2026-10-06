@@ -11,6 +11,8 @@ const ACCOUNT = 'account_rdx1_worker';
 const BADGE = 'resource_rdx1n22rq94kh6ugwnrvc65m2pwhle3s6ez6j7702vkn2ctkaxemz4ppwl';
 const CLAIM_RECEIPT = 'resource_rdx1n2x2epej0dyahwjga5rrwnx893rq4f7dxvs9psh74kqak5e9delc4w';
 const ESCROW = 'component_rdx1_escrow';
+// Accounts the fake Gateway answers with an error status (rate limit / outage).
+const BUSY: Record<string, number> = { account_rdx1_ratelimited: 429, account_rdx1_outage: 503 };
 const TASKS_KV = 'internal_keyvaluestore_rdx1_tasks';
 // on-chain task id -> TaskState variant (43 is Claimed → exercises the pin skip).
 const TASK_STATES: Record<string, string> = { '42': 'Open', '43': 'Claimed' };
@@ -35,6 +37,8 @@ beforeAll(() => {
       const body = (await req.json()) as any;
 
       if (path === '/state/entity/details') {
+        const busy = BUSY[body.addresses?.[0]];
+        if (busy) return new Response('busy', { status: busy });
         // The escrow component's state exposes its `tasks` KV store address.
         if (body.addresses?.[0] === ESCROW) {
           return Response.json({
@@ -113,6 +117,12 @@ describe('resolveBadgeLocalId', () => {
   test('returns null when the account holds no such badge', async () => {
     expect(await resolveBadgeLocalId('account_rdx1_stranger', BADGE, gw)).toBeNull();
     expect(await resolveBadgeLocalId(ACCOUNT, 'resource_rdx1_unheld', gw)).toBeNull();
+  });
+
+  test('a non-2xx Gateway answer (429 / 503) THROWS — never read as "holds no badge"', async () => {
+    for (const account of Object.keys(BUSY)) {
+      await expect(resolveBadgeLocalId(account, BADGE, gw)).rejects.toThrow(/could not read its badge holdings/);
+    }
   });
 });
 

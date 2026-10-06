@@ -214,6 +214,36 @@ describe('live happy paths', () => {
   });
 });
 
+describe('an unreadable Gateway answer is never "holds no badge"', () => {
+  test('pre-mint holdings read throws ⇒ refuses, signAndSubmit never called', async () => {
+    const { deps, calls } = liveDeps({
+      resolveBadgeLocalId: async () => {
+        throw new Error('The Gateway did not answer — could not read its badge holdings');
+      },
+    });
+    await expect(
+      mintMemberBadge({ username: 'alice', live: true, identity: await identity(), config: CONFIG, deps })
+    ).rejects.toThrow(/could not read its badge holdings/);
+    expect(calls.signed).toHaveLength(0);
+  });
+
+  test('post-commit read throwing is treated as indexing lag, not a failed mint', async () => {
+    let reads = 0;
+    const { deps, calls } = liveDeps({
+      resolveBadgeLocalId: async () => {
+        reads += 1;
+        if (reads === 1) return null; // pre-mint: holds none
+        if (reads === 2) throw new Error('503');
+        return '<guild_member_alice>';
+      },
+    });
+    const result = await mintMemberBadge({ username: 'alice', live: true, identity: await identity(), config: CONFIG, deps });
+    expect(calls.signed).toHaveLength(1);
+    expect(result.intentHash).toBe('txid_rdx1fake');
+    expect(result.badgeLocalId).toBe('guild_member_alice');
+  });
+});
+
 // K2 (bring-your-agent.md §3.3): a paired agent's badge comes with its owner's
 // Fund & activate transaction. A self-mint under the pairing's name makes that
 // transaction abort whole — so mint-badge refuses, on the local record first
