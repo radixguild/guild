@@ -4,6 +4,7 @@ import { cookies } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { fromError } from "./api-response"
 import { findUserById } from "@/db/queries/users"
+import { crossOriginRefusal } from "./same-origin"
 
 let _jwtSecret: Uint8Array | undefined
 function getJwtSecret(): Uint8Array {
@@ -57,6 +58,12 @@ export async function setSessionCookie(token: string) {
   })
 }
 
+// ⚠ Sign-out deletes the cookie in THIS browser only. The JWT itself is not
+// revoked: a copy of it (another device, a HAR file, an extension) keeps
+// authenticating until its 7-day exp. Killing one session needs a per-user
+// session version checked in withAuth (a users column + migration), which is
+// not built; today the only levers are suspending the account or rotating
+// JWT_SECRET (which signs everyone out).
 export async function clearSessionCookie() {
   const cookieStore = await cookies()
   cookieStore.delete(COOKIE_NAME)
@@ -98,6 +105,11 @@ export async function isSuspended(userId: string): Promise<boolean> {
 export function withAuth(handler: AuthenticatedHandler): RouteHandler {
   return async (req, ctx) => {
     try {
+      // CSRF: a cookie-authed write must come from our own pages (see
+      // same-origin.ts). Checked before the session so a foreign page learns
+      // nothing about the visitor's sign-in state.
+      const refused = crossOriginRefusal(req)
+      if (refused) return refused
       const user = await getSessionUser()
       if (!user) {
         return NextResponse.json(

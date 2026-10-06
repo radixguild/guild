@@ -9,7 +9,7 @@ import { SubmissionCard } from "@/components/tasks/submission-card"
 import { ReviewForm } from "@/components/tasks/review-form"
 import { SignInPrompt } from "@/components/wallet/sign-in-prompt"
 import { apiFetch } from "@/lib/api-fetch"
-import { extractPrUrl, prMatchesRepo } from "@/lib/pr-verify"
+import { extractPrUrl, prMatchesRepo, verdictMatchesRepo } from "@/lib/pr-verify"
 import { DONE_LABELS, type DoneCheck } from "@/lib/task-terms"
 import type { Submission, Task, User } from "@/lib/marketplace-types"
 import { FileText, Lock, AlertCircle, GitPullRequest } from "lucide-react"
@@ -168,7 +168,7 @@ function SubmissionsList({ task, onReload }: SubmissionsSectionProps & { onReloa
           {isCreator &&
             submission.status === "pending" &&
             task.status === "submitted" && (
-              <ReviewForm submission={submission} onReviewed={onReviewed} />
+              <ReviewForm submission={submission} repoUrl={task.terms?.repoUrl} onReviewed={onReviewed} />
             )}
         </div>
       ))}
@@ -209,18 +209,20 @@ export function deriveGithubReality(
   task: Pick<Task, "terms">,
   submissions: Submission[],
 ): GithubRealitySummary | null {
+  const repoUrl = task.terms?.repoUrl
   // "Latest" = the last one in the array the page already gets back from
-  // GET /api/v1/tasks/[id]/submissions — no independent re-sort here.
+  // GET /api/v1/tasks/[id]/submissions — no independent re-sort here. Only a
+  // verdict whose PR sits under the task's committed repo counts: one stored
+  // with no pin (before verify-pr required it) proves nothing about this task.
   let latestWithVerdict: Submission | undefined
   for (const s of submissions) {
-    if (s.prVerification) latestWithVerdict = s
+    if (verdictMatchesRepo(s.prVerification, repoUrl)) latestWithVerdict = s
   }
   if (latestWithVerdict?.prVerification) {
     const v = latestWithVerdict.prVerification
     return { state: v.overall, prUrl: v.prUrl, doneChecks: v.doneChecks, checkedAt: v.checkedAt }
   }
 
-  const repoUrl = task.terms?.repoUrl
   // No stored verdict anywhere. Only worth saying something when the task
   // actually committed to a repo — otherwise there is no "GitHub reality" to
   // be not-yet-verified about.
@@ -309,7 +311,11 @@ function PrVerificationPanel({
   const ref = extractPrUrl(submission.content)
   if (!ref) return null
 
-  const v = submission.prVerification
+  const stored = submission.prVerification
+  // A verdict counts only against the task's committed repo (see
+  // verdictMatchesRepo). An unpinned one is shown as such, never in green.
+  const unpinned = stored != null && !verdictMatchesRepo(stored, task.terms?.repoUrl)
+  const v = unpinned ? null : stored
 
   async function handleVerify() {
     setChecking(true)
@@ -352,6 +358,10 @@ function PrVerificationPanel({
               checked {new Date(v.checkedAt).toLocaleString()}
             </span>
           </>
+        ) : unpinned ? (
+          <span className="text-muted-foreground">
+            an earlier check is not tied to this task&apos;s repository, so it does not count
+          </span>
         ) : (
           <span className="text-muted-foreground">not verified against GitHub yet</span>
         )}

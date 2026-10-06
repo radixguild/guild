@@ -51,10 +51,14 @@ describe("deriveGithubReality — render gate", () => {
     expect(deriveGithubReality(makeTask(), [])).toBeNull()
   })
 
-  it("still renders from a stored verdict alone, even with no committed repoUrl", () => {
+  // Until 2026-10-06 a stored verdict rendered even with no committed repoUrl,
+  // and verify-pr stored one for ANY merged PR anywhere when the task pinned no
+  // repo — so a green "Verified" could sit beside Approve proving nothing about
+  // the task. A verdict now counts only against the task's committed repo.
+  it("a stored 'verified' verdict on a task with NO repoUrl is not rendered as verified", () => {
     const s = makeSubmission({
       prVerification: {
-        prUrl: PR_URL,
+        prUrl: OTHER_REPO_PR_URL,
         merged: true,
         mergedAt: "2026-09-01T00:00:00Z",
         doneChecks: {},
@@ -62,7 +66,23 @@ describe("deriveGithubReality — render gate", () => {
         checkedAt: "2026-09-02T00:00:00Z",
       },
     })
-    expect(deriveGithubReality(makeTask(), [s])?.state).toBe("verified")
+    expect(deriveGithubReality(makeTask(), [s])).toBeNull()
+  })
+
+  it("a stored 'verified' verdict for a PR outside the committed repo is ignored (not_yet_verified)", () => {
+    const s = makeSubmission({
+      prVerification: {
+        prUrl: OTHER_REPO_PR_URL,
+        merged: true,
+        mergedAt: "2026-09-01T00:00:00Z",
+        doneChecks: {},
+        overall: "verified",
+        checkedAt: "2026-09-02T00:00:00Z",
+      },
+    })
+    const result = deriveGithubReality(makeTask(REPO), [s])
+    expect(result?.state).toBe("not_yet_verified")
+    expect(result?.prUrl).toBeNull()
   })
 })
 

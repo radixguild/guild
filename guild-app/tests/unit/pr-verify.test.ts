@@ -9,7 +9,23 @@ import {
   prMatchesRepo,
   evaluatePr,
   fetchPrVerification,
+  verdictMatchesRepo,
 } from "../../src/lib/pr-verify"
+
+describe("verdictMatchesRepo — a stored verdict counts only against the committed repo", () => {
+  const v = { prUrl: "https://github.com/radixguild/guild/pull/12" }
+  it("true when the verdict's PR is under the task's repoUrl", () => {
+    expect(verdictMatchesRepo(v, "https://github.com/radixguild/guild")).toBe(true)
+  })
+  it("false when the task committed no repoUrl", () => {
+    expect(verdictMatchesRepo(v, undefined)).toBe(false)
+    expect(verdictMatchesRepo(v, "")).toBe(false)
+  })
+  it("false when the PR is in another repo, and for no verdict at all", () => {
+    expect(verdictMatchesRepo(v, "https://github.com/nodejs/node")).toBe(false)
+    expect(verdictMatchesRepo(null, "https://github.com/radixguild/guild")).toBe(false)
+  })
+})
 
 describe("extractPrUrl", () => {
   it("finds the first PR link in prose", () => {
@@ -80,6 +96,7 @@ describe("fetchPrVerification — stubbed GitHub", () => {
   afterEach(() => vi.unstubAllGlobals())
 
   const ref = { owner: "o", repo: "r", number: 9, url: "https://github.com/o/r/pull/9" }
+  const PUBLIC = { repo: { private: false } }
 
   function stubGitHub(responses: Record<string, unknown>) {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
@@ -92,7 +109,7 @@ describe("fetchPrVerification — stubbed GitHub", () => {
 
   it("composes pr + check-runs + reviews into a stored verdict", async () => {
     stubGitHub({
-      "/repos/o/r/pulls/9": { merged: true, merged_at: "2026-06-10T10:00:00Z", state: "closed", head: { sha: "abc" } },
+      "/repos/o/r/pulls/9": { merged: true, merged_at: "2026-06-10T10:00:00Z", state: "closed", head: { sha: "abc" }, base: PUBLIC },
       "/repos/o/r/commits/abc/check-runs": { check_runs: [{ status: "completed", conclusion: "success" }, { status: "completed", conclusion: "skipped" }] },
       "/repos/o/r/pulls/9/reviews": [{ state: "COMMENTED" }, { state: "APPROVED" }],
     })
@@ -105,7 +122,7 @@ describe("fetchPrVerification — stubbed GitHub", () => {
 
   it("zero check runs → null ciGreen (human judgement), still verified when merged", async () => {
     stubGitHub({
-      "/repos/o/r/pulls/9": { merged: true, merged_at: "2026-06-10T10:00:00Z", state: "closed", head: { sha: "abc" } },
+      "/repos/o/r/pulls/9": { merged: true, merged_at: "2026-06-10T10:00:00Z", state: "closed", head: { sha: "abc" }, base: PUBLIC },
       "/repos/o/r/commits/abc/check-runs": { check_runs: [] },
     })
     const v = await fetchPrVerification(ref, ["ci-green"])
@@ -115,11 +132,37 @@ describe("fetchPrVerification — stubbed GitHub", () => {
 
   it("skips the extra GitHub calls when the done checks need none", async () => {
     stubGitHub({
-      "/repos/o/r/pulls/9": { merged: false, merged_at: null, state: "open", head: { sha: "abc" } },
+      "/repos/o/r/pulls/9": { merged: false, merged_at: null, state: "open", head: { sha: "abc" }, base: PUBLIC },
     })
     const v = await fetchPrVerification(ref, ["deployed"])
     expect(v.overall).toBe("pending")
     expect(vi.mocked(fetch).mock.calls.length).toBe(1)
+  })
+
+  // GITHUB_TOKEN may reach private repos; anyone who can post a task can pin
+  // one. A private PR must answer exactly like one GitHub hides (the 404), so
+  // the route never confirms it exists or shows its state.
+  describe("private-repo gate", () => {
+    afterEach(() => vi.unstubAllEnvs())
+    const privatePr = { merged: true, merged_at: "2026-06-10T10:00:00Z", state: "closed", head: { sha: "abc" }, base: { repo: { private: true } } }
+
+    it("a private PR throws the same 'GitHub 404' as an invisible one, and makes no further calls", async () => {
+      stubGitHub({ "/repos/o/r/pulls/9": privatePr, "/repos/o/r/pulls/9/reviews": [{ state: "APPROVED" }] })
+      await expect(fetchPrVerification(ref, ["code-reviewed"])).rejects.toThrow("GitHub 404 for /repos/o/r/pulls/9")
+      expect(vi.mocked(fetch).mock.calls.length).toBe(1)
+    })
+
+    it("a PR payload with no visibility flag counts as private", async () => {
+      stubGitHub({ "/repos/o/r/pulls/9": { merged: true, merged_at: null, state: "closed", head: { sha: "abc" } } })
+      await expect(fetchPrVerification(ref, [])).rejects.toThrow("GitHub 404")
+    })
+
+    it("verifies a private repo the operator listed in PR_VERIFY_PRIVATE_REPOS (case-insensitive)", async () => {
+      vi.stubEnv("PR_VERIFY_PRIVATE_REPOS", "x/y, O/R")
+      stubGitHub({ "/repos/o/r/pulls/9": privatePr })
+      const v = await fetchPrVerification(ref, [])
+      expect(v.overall).toBe("verified")
+    })
   })
 
   it("surfaces GitHub errors as throws (route maps to 502)", async () => {
