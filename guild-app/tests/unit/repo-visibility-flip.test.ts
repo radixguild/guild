@@ -5,7 +5,7 @@ import { join, relative, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 import { REPO_IS_PUBLIC } from "@/lib/config"
 import { REPO_ROOT, REQUIRE_PRIVATE_INPUTS } from "../support/private-input"
-import { BANNED, STALE_PRIVATE_CLAIM, violation } from "../../scripts/honest-copy.mjs"
+import { BANNED, PULL_BANNED, STALE_PRIVATE_CLAIM, violation } from "../../scripts/honest-copy.mjs"
 
 /**
  * The open-source flip makes every "the source is not public yet" sentence false.
@@ -252,6 +252,239 @@ describe("the shipped docs make no 'not public yet' claim, on either side of the
   it.skipIf(COMPOSED)("says where the code is, never that it is not public yet", () => {
     const hits = claims(docs, false)
     expect(hits, `shipped docs must be true before and after the flip; reword:\n${hits.join("\n")}`).toEqual([])
+  })
+})
+
+// ── the honest-copy rules over the shipped docs (added 2026-10-06) ─────────────
+// Until this block, the only honest-copy rule run over the shipped docs was the stale-private
+// regex above. The rules launch-check applies to every page never reached the repository the
+// site sends readers to, so GOVERNANCE.md said the escrow's behaviour could not change without
+// a migration, THESIS.md's banner said BUG-7 was open, and docs/AUDITOR-GUIDE.md still said the
+// configuration was immutable and an arbiter council existed — each a sentence the site's own
+// gate refuses. This scans every shipped doc with a named subset of BANNED + PULL_BANNED: the
+// claims about money, audits, fees, owner powers and the swap component, which a doc must state
+// the same way the site does. (Badge, tier and governance-era rules stay off: the design and
+// strategy docs discuss those mechanisms by name, under their own status banners.)
+//
+// HTML comments are dropped before the scan: GitHub does not render them, and the docs' status
+// headers quote the claims they corrected. Everything else a reader sees is scanned. A hit that
+// is a fenced historical quote gets an entry in DOC_ALLOW, scoped to the exact text it sits in
+// (so a new claim elsewhere in the same file still fails), with the reason. An entry that no
+// longer excuses anything fails too, so the list cannot rot.
+const DOC_RULES = [
+  "trustless",
+  "audited",
+  "audit-claim",
+  "fee-cap",
+  "config-immutable",
+  "arbiter-council-exists",
+  "arbiter-supply-fixed",
+  "bug7-open",
+  "approval-pays",
+  "swap-creator-royalty",
+  "swap-protections",
+  "swap-fee-fixed",
+  "swap-listing-vetted",
+  "swap-operator-recovers",
+]
+
+type Rule = { label: string; re: RegExp; allow?: RegExp[] }
+const ruleName = (label: string) => label.split(" — ")[0].replace(/^"|"$/g, "")
+const ALL_RULES = [...BANNED, ...PULL_BANNED] as Rule[]
+const docRules = (): Rule[] =>
+  DOC_RULES.map((name) => {
+    const found = ALL_RULES.filter((r) => ruleName(r.label) === name)
+    if (found.length !== 1) throw new Error(`honest-copy has ${found.length} rules named "${name}"`)
+    return found[0]
+  })
+
+type DocAllow = { file: string; rule: string; within: string; why: string }
+const DOC_ALLOW: DocAllow[] = [
+  {
+    file: "docs/AUDITOR-GUIDE.md",
+    rule: "bug7-open",
+    within: 'that meant "BUG-7 remains open"',
+    why: "quotes the superseded line, inside the note that says PULL closed BUG-7",
+  },
+  {
+    file: "docs/ESCROW-DESIGN.md",
+    rule: "audited",
+    within: "Once this escrow is built + audited",
+    why: "status: historical design doc; a plan's condition, not a claim that an audit happened",
+  },
+  {
+    file: "docs/ESCROW-DESIGN.md",
+    rule: "audited",
+    within: "the existing audited surface",
+    why: "status: historical design doc, describing 2026-05 legacy escrows",
+  },
+  {
+    file: "docs/FEATURE-MAP.md",
+    rule: "audited",
+    within: "Port is pre-audited",
+    why: "a never-built port's old plan, corrected in the same row (\"not live in this form anywhere\")",
+  },
+  {
+    file: "docs/FEE-BUSINESS-MODEL.md",
+    rule: "fee-cap",
+    within: "the 2.5% cap (F1)",
+    why: "the top banner naming the 2026-06 percentages as design, not what runs",
+  },
+  {
+    file: "docs/FEE-BUSINESS-MODEL.md",
+    rule: "fee-cap",
+    within: "on-ledger cap.** *(Superseded 2026-08-17",
+    why: "the 08-04 shape, quoted with its own supersession note",
+  },
+  {
+    file: "docs/FEE-BUSINESS-MODEL.md",
+    rule: "fee-cap",
+    within: "dial toward **2.5% cap**",
+    why: "§3's phase table, which the top banner names as the 2026-06 design",
+  },
+  {
+    file: "docs/FEE-BUSINESS-MODEL.md",
+    rule: "fee-cap",
+    within: "an on-ledger fee cap they can verify",
+    why: "§8, the 2026-06 design under the top banner (\"not what runs\")",
+  },
+  {
+    file: "docs/PROJECT-COMPONENTS.md",
+    rule: "bug7-open",
+    within: 'this sentence used to also say "BUG-7 is open',
+    why: "quotes the superseded sentence inside its 2026-08-23 correction",
+  },
+  {
+    file: "docs/THESIS.md",
+    rule: "trustless",
+    within: '"Trustless payment — Yes (escrow)"',
+    why: "the banner naming the table row as banned copy",
+  },
+  {
+    file: "docs/THESIS.md",
+    rule: "trustless",
+    within: 'and **"trustless',
+    why: "the banner naming the bottom line as banned copy",
+  },
+  {
+    file: "docs/THESIS.md",
+    rule: "trustless",
+    within: "| Trustless payment | No | No | No | Yes (escrow) |",
+    why: "the table row the banner disowns (status: proposal, \"not copy source\")",
+  },
+  {
+    file: "docs/THESIS.md",
+    rule: "trustless",
+    within: "transparent governance, trustless payments, portable reputation",
+    why: "the bottom line the banner disowns",
+  },
+  {
+    file: "docs/architecture/custom-contracts.md",
+    rule: "audit-claim",
+    within: "**Security Audit**",
+    why: "the name of a proposed task template (a job someone could post), not an audit claim",
+  },
+  {
+    file: "docs/decisions/ADR-002-escrow-deploy-and-integration-gates.md",
+    rule: "bug7-open",
+    within: "live disputes MOCK-ONLY, BUG-7 open",
+    why: "the ADR's 2026-08 status, followed by the 2026-10-02 note that PULL closed BUG-7",
+  },
+]
+
+/** What a reader of the rendered markdown sees, collapsed as the page gates collapse it, with
+ *  a map from each collapsed offset back to its line. HTML comments are not rendered, and
+ *  blockquote markers are not part of the sentence. */
+function readable(raw: string): { text: string; lineAt: (i: number) => number } {
+  const blank = (c: string) => c.replace(/[^\n]/g, " ")
+  // A blockquote's ">" markers do not break a sentence (CONTINUATION, above, for the same reason).
+  const visible = raw.replace(/<!--[\s\S]*?-->/g, blank).replace(/^[ \t]*(?:>[ \t]*)+/gm, blank)
+  let text = ""
+  const lines: number[] = []
+  let line = 1
+  let gap = false
+  for (const ch of visible) {
+    if (/\s/.test(ch)) {
+      if (ch === "\n") line++
+      if (!gap && text.length > 0) {
+        text += " "
+        lines.push(line)
+      }
+      gap = true
+    } else {
+      text += ch
+      lines.push(line)
+      gap = false
+    }
+  }
+  return { text, lineAt: (i) => lines[i] ?? line }
+}
+
+const collapse = (s: string) => s.replace(/\s+/g, " ").trim()
+
+function spansOf(text: string, re: RegExp): [number, number][] {
+  const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g")
+  const out: [number, number][] = []
+  let m: RegExpExecArray | null
+  while ((m = g.exec(text)) !== null) {
+    out.push([m.index, m.index + m[0].length])
+    if (m.index === g.lastIndex) g.lastIndex++
+  }
+  return out
+}
+
+type DocHit = { file: string; rule: string; line: number; match: string; allowedBy?: DocAllow }
+
+/** Every hit of the doc rules in one doc, each marked with the DOC_ALLOW entry that excuses it. */
+function docHits(file: string, raw: string, allow: DocAllow[] = DOC_ALLOW): DocHit[] {
+  const { text, lineAt } = readable(raw)
+  const hits: DocHit[] = []
+  for (const rule of docRules()) {
+    const name = ruleName(rule.label)
+    const ruleAllow = (rule.allow ?? []).flatMap((a) => spansOf(text, a))
+    const fenced = allow
+      .filter((a) => a.file === file && a.rule === name)
+      .flatMap((a) => spansOf(text, new RegExp(collapse(a.within).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).map((sp) => ({ a, sp })))
+    for (const [start, end] of spansOf(text, rule.re)) {
+      if (ruleAllow.some(([as, ae]) => as < end && start < ae)) continue // the rule's own allow
+      const by = fenced.find(({ sp: [fs, fe] }) => fs <= start && end <= fe)?.a
+      hits.push({ file, rule: name, line: lineAt(start), match: text.slice(start, end), allowedBy: by })
+    }
+  }
+  return hits
+}
+
+describe("the shipped docs clear the honest-copy rules the site is held to", () => {
+  const COMPOSED = REQUIRE_PRIVATE_INPUTS && !existsSync(EXPORTER)
+  const docs = COMPOSED ? [] : shippedDocs()
+  const hits = docs.flatMap((f) => docHits(f, readFileSync(join(REPO_ROOT, f), "utf8")))
+
+  it("names only rules that exist, and each still catches its own phrasing (controls)", () => {
+    expect(docRules()).toHaveLength(DOC_RULES.length)
+    const planted = [
+      "Settlement returns funds via the caller's manifest (BUG-7, open), so check the manifest.",
+      "The deployed configuration is immutable per instantiation by design.",
+      "Payouts here are trustless.",
+      "Every swap is protected by escrow insurance.",
+    ].join("\n\n")
+    const caught = docHits("sample.md", planted, []).map((h) => h.rule)
+    expect(caught).toEqual(expect.arrayContaining(["bug7-open", "config-immutable", "trustless", "swap-protections"]))
+  })
+
+  it("reads a claim wrapped across lines and inside a blockquote, and skips HTML comments", () => {
+    const wrapped = "> The escrow's settings are\n> immutable per instantiation.\n\n<!-- BUG-7 is open -->\nDone."
+    expect(docHits("sample.md", wrapped, []).map((h) => `${h.rule}:${h.line}`)).toEqual(["config-immutable:1"])
+  })
+
+  it.skipIf(COMPOSED)("no shipped doc makes one of these claims outside a listed historical quote", () => {
+    const open = hits.filter((h) => !h.allowedBy).map((h) => `${h.file}:${h.line}: ${h.rule} "${h.match}"`)
+    expect(open, `shipped docs must say what the site says; reword (or, for a fenced historical quote, add a DOC_ALLOW entry):\n${open.join("\n")}`).toEqual([])
+  })
+
+  it.skipIf(COMPOSED)("every DOC_ALLOW entry still excuses a hit (no stale exemptions)", () => {
+    const used = new Set(hits.flatMap((h) => (h.allowedBy ? [h.allowedBy] : [])))
+    const stale = DOC_ALLOW.filter((a) => !used.has(a)).map((a) => `${a.file} ${a.rule}: ${a.within}`)
+    expect(stale, "remove these entries; the text they excused is gone").toEqual([])
   })
 })
 

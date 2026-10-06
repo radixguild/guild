@@ -44,12 +44,14 @@ authority today, and why that is meant to change.
 This is a **beta**, built by **one pseudonymous developer working with AI assistance**, with
 **no independent audit** of the deployed contract. **Nobody outside the operator's own accounts
 has completed a task here yet** — everything settled to date, on both sides of every task,
-traces back to the operator. The escrow's owner badge can change ten of the contract's
-settings (the claim bond, the review window, the arbiter-fee cap, and others); it cannot
+traces back to the operator. The escrow's owner badge can change twelve of the contract's
+settings through ten owner-only calls (the claim bond, the review window, the arbiter-fee cap,
+and others); it cannot
 withdraw a task's reward or a live claim bond, redirect a settlement, or reverse one. That
 owner badge, and the separate arbiter badge that rules disputes, are both held by `bigdev`
-today; the stated aim is to hand the admin badge to the Radix DAO once it is formed — an
-intention with no date attached, not a commitment. See [`STATE.md`](./STATE.md) for the
+today, and the operator can mint more arbiter badges; the stated aim is to hand the admin
+badge to the Radix DAO once it is formed — an intention with no date attached, not a
+commitment. See [`STATE.md`](./STATE.md) for the
 full, dated list, mirroring the live site's own [Trust & Verification](https://radixguild.com/trust)
 page.
 
