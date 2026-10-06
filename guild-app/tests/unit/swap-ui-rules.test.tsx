@@ -18,6 +18,11 @@
  *      committed list until the listing id is read back.
  *   6. The board: "Pays my account" turns off when the account changes, a
  *      filter answered from a truncated read says so, and reads time out.
+ *
+ * Follow-up (2026-10-06): "Try again" on a view that gave up waiting re-reads
+ * against the same settle rule, so only a caught-up read re-arms the page; a
+ * failed ask lookup on the List form says so and offers Try again; the
+ * humanizer maps only the refusals this site's manifests can reach.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react"
@@ -136,17 +141,26 @@ describe("humanizeSwapTxError", () => {
     ["payment resource does not match the chosen alternative", /did not match the alternative/],
     ["payment amount does not match the chosen alternative", /did not match the alternative/],
     ["payment NFT id does not match the chosen alternative", /did not match the alternative/],
-    ["alternative index out of range", /not on this listing/],
-    ["wrong receipt resource", /not this component's listing receipt/],
     ["proceeds already withdrawn", /already withdrawn/],
     ["cannot burn the receipt while the listing is still Listed — cancel first", /Cancel the listing first/],
     ["cannot burn the receipt while proceeds are still owed — withdraw first", /Withdraw them first/],
     ["expires_at must be at most 30 days out (S2 — mandatory expiry ceiling)", /refused the expiry/],
-    ["listing must escrow exactly one NFT", /exactly one NFT/],
   ])("maps the blueprint's %j to a plain line", (msg, line) => {
     const raw = engine(msg)
     const h = humanizeSwapTxError(raw)
     expect(h.summary).toMatch(line)
+    expect(h.detail).toBe(raw)
+  })
+
+  it.each([
+    "listing must escrow exactly one NFT",
+    "wrong receipt resource",
+    "must present exactly 1 receipt",
+    "alternative index out of range",
+  ])("has no row for %j, which the site's own manifests rule out — the generic line, raw detail kept", (msg) => {
+    const raw = engine(msg)
+    const h = humanizeSwapTxError(raw)
+    expect(h.summary).toBe(humanizeTxError(raw).summary)
     expect(h.detail).toBe(raw)
   })
 
@@ -226,6 +240,19 @@ describe("SwapDetail", () => {
     expect(screen.getByRole("button", { name: "Extend by 30 days" })).toBeDisabled()
     expect(screen.getAllByText(DETAIL_COPY.behind).length).toBeGreaterThan(0)
 
+    // "Try again" answered with the SAME old view: still behind the Extend,
+    // so nothing re-arms — a second Extend would commit and charge again.
+    const before = F.apiFetch.mock.calls.length
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }))
+    await waitFor(() => expect(F.apiFetch.mock.calls.length).toBe(before + 1))
+    await act(() => vi.advanceTimersByTimeAsync(1600))
+    expect(F.apiFetch.mock.calls.length).toBe(before + 1) // one read per press, no retry loop
+    await screen.findByRole("button", { name: "Try again" })
+    expect(screen.getByRole("button", { name: "Extend by 30 days" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Cancel listing" })).toBeDisabled()
+    for (const b of fillPicks()) expect(b).toBeDisabled()
+    expect(screen.getAllByText(DETAIL_COPY.behind).length).toBeGreaterThan(0)
+
     // A read that catches up re-arms the page.
     F.apiFetch.mockResolvedValue(answer(detail({ expiresAt: T + 86_400 * 31 })))
     fireEvent.click(screen.getByRole("button", { name: "Try again" }))
@@ -268,6 +295,17 @@ describe("SwapDetail", () => {
     for (const s of all) {
       expect(s, s).not.toMatch(/signs the listing|You made this listing|My listings|seller account named/i)
     }
+  })
+
+  it("says when the listing has more asks than the page looked up, and only then", async () => {
+    F.apiFetch.mockResolvedValue(answer({ ...detail(), moreAsks: true }))
+    render(<SwapDetail listingId="7" />)
+    await screen.findByText(DETAIL_COPY.moreAsks)
+    cleanup()
+    F.apiFetch.mockResolvedValue(answer({ ...detail(), moreAsks: false }))
+    render(<SwapDetail listingId="7" />)
+    await screen.findByText("Proceeds to")
+    expect(screen.queryByText(DETAIL_COPY.moreAsks)).toBeNull()
   })
 
   it("bounds the detail read with a timeout and treats a failed read as unreadable", async () => {
@@ -357,6 +395,32 @@ describe("ListNftForm", () => {
     await screen.findByText(/NFTs in this account could not be read/)
     expect(screen.queryByRole("button", { name: /#1#/ })).toBeNull()
     expect(screen.getByRole("button", { name: /Open my wallet to list/ })).toBeDisabled()
+  })
+
+  it("a failed ask-resource lookup says so with Try again, which re-reads it — never 'Looking up…' for good", async () => {
+    holdings(new Map([[ASSET, { address: ASSET, kind: "nonFungible", divisibility: null, name: "Dinos", symbol: null, iconUrl: null, withdraw: "open" }]]))
+    const xrd = { address: XRD, kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open" }
+    let askReads = 0
+    G.readResourceDisplay.mockImplementation(async (addrs: string[]) => {
+      if (addrs.includes(ASSET)) return new Map([[ASSET, { address: ASSET, kind: "nonFungible", divisibility: null, name: "Dinos", symbol: null, iconUrl: null, withdraw: "open" }]])
+      askReads++
+      return askReads === 1 ? null : new Map([[XRD, xrd]])
+    })
+    render(<ListNftForm />)
+
+    await screen.findByText(/This resource could not be read/)
+    expect(screen.queryByText("Looking up…")).toBeNull()
+    expect(askReads).toBe(1) // a failure is not re-read in a loop
+    fireEvent.click(await screen.findByRole("button", { name: /#1#/ }))
+    fireEvent.change(screen.getByLabelText("Alternative 1 amount"), { target: { value: "5" } })
+    expect(screen.getByRole("button", { name: /Open my wallet to list/ })).toBeDisabled()
+
+    const retry = screen.getAllByRole("button", { name: "Try again" }).at(-1)!
+    fireEvent.click(retry)
+    await screen.findByText("Radix (XRD)")
+    expect(askReads).toBe(2)
+    expect(screen.queryByText(/This resource could not be read/)).toBeNull()
+    await waitFor(() => expect(screen.getByRole("button", { name: /Open my wallet to list/ })).toBeEnabled())
   })
 
   it("stays disarmed from a committed list until the listing id is read back, showing the transaction", async () => {

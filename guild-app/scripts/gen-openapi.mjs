@@ -292,9 +292,11 @@ const ROUTE_META = {
     ],
     description:
       "Each listing is the component's own record (seller, asset, asks as exact decimal strings, unix-second times, state) " +
-      "plus `status` and best-effort NFT display data, with `resources` carrying name / symbol / divisibility for every " +
-      "resource named. `fees` are the live `fill` and `extend_listing` royalties. Listings the operator hid are left " +
-      "off (counted in `hidden`) unless `seller` is given, where they appear with `hidden: true` and no NFT display data. " +
+      "plus `status` and best-effort NFT display data. `resources` carries name / symbol / divisibility for each " +
+      "listing's asset resource and its FIRST ask's resource only (a hidden listing contributes only XRD); any other " +
+      "resource is absent — show its address. `fees` are the live `fill` and `extend_listing` royalties. Listings the " +
+      "operator hid are left off unless `seller` is given, where they appear with `hidden: true` and no NFT display data; " +
+      "`hidden` counts the ones left off that would otherwise have matched `status` and `before`. " +
       "503 CHAIN_UNREADABLE when the Gateway cannot be read — never an empty list in its place. 429 RATE_LIMITED (60/min per address).",
   },
   "GET /swaps/{id}": {
@@ -304,6 +306,8 @@ const ROUTE_META = {
       "`receipt.holder` is the account holding the listing receipt — the only credential that can cancel, extend or " +
       "withdraw proceeds (proceeds always go to the listing's pinned `seller`). A listing the operator hid from the " +
       "site answers 200 with `listing.hidden: true` and no NFT display data, so its receipt holder is never locked out. " +
+      "`resources` and `askNfts` cover the asset and the FIRST 8 asks only (a hidden listing: XRD only, no `askNfts`); " +
+      "`moreAsks: true` says the listing has more asks than that, and those carry no display data or burn check. " +
       "404 NOT_FOUND, 502 LISTING_UNREADABLE (the record exists but did not parse), 503 CHAIN_UNREADABLE, " +
       "429 RATE_LIMITED (60/min per address).",
   },

@@ -669,13 +669,19 @@ guild-poster list-swap --nft resource_rdx1…:#12# --price 5000 --ask-nft resour
 guild-poster cancel-swap <listingId>       # take a Listed NFT back (expired or not)
 guild-poster withdraw-swap <listingId>     # collect a Filled listing's payment
 
-# Worker key (GUILD_AGENT_PRIVATE_KEY): pay alternative 0 of listing 3, receive the NFT
-guild-worker fill-swap 3 --alternative 0
+# Worker key (GUILD_AGENT_PRIVATE_KEY): pay alternative 0 of listing 3 (at most 5000 XRD), receive the NFT
+guild-worker fill-swap 3 --alternative 0 --max-price 5000 --live
 ```
 
 - **What a fill pays is read from the chain, never typed.** `fill-swap` takes a listing id and an
   alternative index; the amount and resource come from the listing the component stores. There is
   no `--amount` to get wrong. `--alternative` is required when a listing has more than one.
+- **`--live` needs your own bound on the spend**, because the listing id is still typed and a
+  transposed one would pay a different listing's ask in full. For a token alternative pass
+  `--max-price <amount>[:<resource>]` (the resource defaults to XRD); for an NFT alternative pass
+  `--expect-nft <resource>:<id>`. `--live` signs nothing when the bound is missing, names another
+  resource or NFT, or is below the chain's amount (compared exactly, in attos). A dry run takes the
+  same flags and prints the comparison, or says `--live` will need them.
 - **Numbers are plain digits.** A listing id, `--alternative` and `--days` must match `^\d+$`;
   anything else (`""`, `0x1`, `1e1`, `1.0`, a blank `"$VAR"`) is a usage error (exit 2), never
   read as a number. NFT local ids are compared and sent in the ledger's spelling (`#01#` is `#1#`).

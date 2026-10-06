@@ -260,16 +260,20 @@ export async function getSwapBoard(opts: {
 
   // A seller-filtered view ("My listings") still shows that seller's hidden
   // listings — flagged, with no NFT name or picture — so the hide lever cannot
-  // strand anyone's own listing; the public board drops them.
+  // strand anyone's own listing; the public board drops them. A dropped one is
+  // counted only once it passed every other filter: the count sits beside
+  // this filter's results, so it says how many of THOSE the operator hid, not
+  // how many hidden listings exist anywhere.
   let hiddenCount = 0
   const matching = board.listings.filter((l) => {
     if (opts.seller && l.seller !== opts.seller) return false
+    if (opts.before !== undefined && l.listingId >= opts.before) return false
+    if (status !== "all" && swapStatus(l, ledgerTime) !== status) return false
     if (!opts.seller && isHidden(l, hidden)) {
       hiddenCount++
       return false
     }
-    if (opts.before !== undefined && l.listingId >= opts.before) return false
-    return status === "all" || swapStatus(l, ledgerTime) === status
+    return true
   })
   const page = matching.slice(0, limit)
   const shown = page.filter((l) => !isHidden(l, hidden))

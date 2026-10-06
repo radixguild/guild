@@ -82,6 +82,11 @@ export function ListNftForm() {
   const picked = pickedRaw && pickedRaw.account === account ? { resource: pickedRaw.resource, id: pickedRaw.id } : null
   const [asks, setAsks] = useState<SwapAsk[]>([{ kind: "fungible", resource: XRD_ADDRESS, amount: "" }])
   const [askRes, setAskRes] = useState<Map<string, ResourceDisplay | null>>(new Map())
+  // Resources whose lookup the Gateway failed (not "no such resource": that
+  // is a null in askRes). Kept apart so the effect does not re-read them in a
+  // loop, and so the form can say "could not be read" rather than wait on a
+  // read that is never coming.
+  const [askUnread, setAskUnread] = useState<ReadonlySet<string>>(new Set())
   const [days, setDays] = useState<number>(7)
   const [ledgerNow, setLedgerNow] = useState<number | null>(null)
   const [componentOk, setComponentOk] = useState<boolean | null>(null)
@@ -119,11 +124,15 @@ export function ListNftForm() {
   // Live kind/divisibility for every resource an ask names.
   const askResources = useMemo(() => [...new Set(asks.map((a) => a.resource).filter(isResourceAddress))], [asks])
   useEffect(() => {
-    const missing = askResources.filter((r) => !askRes.has(r))
+    const missing = askResources.filter((r) => !askRes.has(r) && !askUnread.has(r))
     if (missing.length === 0) return
     let live = true
     void readResourceDisplay(missing).then((m) => {
-      if (!live || !m) return
+      if (!live) return
+      if (!m) {
+        setAskUnread((prev) => new Set([...prev, ...missing]))
+        return
+      }
       setAskRes((prev) => {
         const next = new Map(prev)
         for (const r of missing) next.set(r, m.get(r) ?? null)
@@ -133,7 +142,13 @@ export function ListNftForm() {
     return () => {
       live = false
     }
-  }, [askResources, askRes])
+  }, [askResources, askRes, askUnread])
+  const rereadAsk = (r: string) =>
+    setAskUnread((prev) => {
+      const next = new Set(prev)
+      next.delete(r)
+      return next
+    })
 
   const kindOf = useCallback(
     (r: string): AskResourceKind | null => {
@@ -353,9 +368,18 @@ export function ListNftForm() {
                     />
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  {d ? `${d.name ?? "Unnamed"}${d.symbol ? ` (${d.symbol})` : ""}` : isResourceAddress(a.resource) ? "Looking up…" : ""}
-                </p>
+                {!d && askUnread.has(a.resource) ? (
+                  <p className="text-xs text-destructive" role="alert">
+                    This resource could not be read from the Radix Gateway.{" "}
+                    <button type="button" className="underline" onClick={() => rereadAsk(a.resource)}>
+                      Try again
+                    </button>
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {d ? `${d.name ?? "Unnamed"}${d.symbol ? ` (${d.symbol})` : ""}` : isResourceAddress(a.resource) ? "Looking up…" : ""}
+                  </p>
+                )}
                 {p && !empty(a) && <p className="text-xs text-destructive">{ASK_PROBLEM_TEXT[p]}</p>}
               </div>
             )

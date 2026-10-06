@@ -22,7 +22,7 @@ import { isMainModule } from './runtime.js';
 import { sweepToOwner, type SweepResult } from './sweep.js';
 import { withdrawWorkerReward } from './withdraw.js';
 import { workerCliMain } from './worker-cli.js';
-import { parseWholeNumber, runFillSwap } from './swap.js';
+import { parseMaxPrice, parseNftRef, parseWholeNumber, runFillSwap } from './swap.js';
 
 export interface ParsedArgs {
   command: string;
@@ -33,7 +33,7 @@ export interface ParsedArgs {
 }
 
 /** Flags that take a value (`--username bob` or `--username=bob`). */
-const VALUE_OPTIONS = new Set(['--username', '--reason', '--owner', '--sweep-to', '--to', '--alternative']);
+const VALUE_OPTIONS = new Set(['--username', '--reason', '--owner', '--sweep-to', '--to', '--alternative', '--max-price', '--expect-nft']);
 
 /**
  * Parse `<command> [flags]` argv into a command + flags/options/rest.
@@ -130,8 +130,12 @@ usage: guild-worker <command> [flags]
                typed — and receives the NFT in the same transaction. --alternative
                is required when the listing has more than one. Refuses (signs
                nothing) unless the listing is open at the ledger clock. DRY-RUN by
-               default; --live signs with GUILD_AGENT_PRIVATE_KEY. A fill cannot be
-               undone, and a listing is not proof the NFT is genuine.
+               default; --live signs with GUILD_AGENT_PRIVATE_KEY and needs your
+               own bound on the spend: --max-price <amount>[:<resource>] for a
+               token alternative (resource defaults to XRD), or --expect-nft
+               <resource>:<id> for an NFT one — refused if the chain's ask is
+               above it or in another resource. A fill cannot be undone, and a
+               listing is not proof the NFT is genuine.
   run          the worker loop — flags pass through: [--live] [--loop] [--on-chain]
                [--auto-withdraw] (collects every entitlement the post-submit
                survey reports, each cycle; needs --live — see README)
@@ -368,7 +372,7 @@ export async function main(argv: string[] = process.argv.slice(2), overrides: Pa
     case 'fill-swap': {
       const listingId = parseWholeNumber(args.rest[0]);
       if (listingId === null || listingId <= 0) {
-        console.error('fill-swap needs a positive listing id:  guild-worker fill-swap <listingId> [--alternative <n>]');
+        console.error('fill-swap needs a positive listing id:  guild-worker fill-swap <listingId> [--alternative <n>] [--max-price <amount>[:<resource>] | --expect-nft <resource>:<id>]');
         return 2;
       }
       let alternative: number | undefined;
@@ -380,11 +384,34 @@ export async function main(argv: string[] = process.argv.slice(2), overrides: Pa
         }
         alternative = parsed;
       }
+      // A malformed bound is a usage error, never "no bound": the leg would
+      // then only refuse later for a missing one, or a dry run would say
+      // nothing about the bound the caller meant to set.
+      let maxPrice: { amount: string; resource: string } | undefined;
+      if (args.options.has('max-price')) {
+        const parsed = parseMaxPrice(args.options.get('max-price'));
+        if (!parsed) {
+          console.error('--max-price must be <amount>[:<resource address>], e.g. 5000 or 12.5:resource_rdx1… (the resource defaults to XRD)');
+          return 2;
+        }
+        maxPrice = parsed;
+      }
+      let expectNft: { resource: string; id: string } | undefined;
+      if (args.options.has('expect-nft')) {
+        const parsed = parseNftRef(args.options.get('expect-nft'));
+        if (!parsed) {
+          console.error('--expect-nft must be <resource address>:<local id>, e.g. resource_rdx1…:#1#');
+          return 2;
+        }
+        expectNft = parsed;
+      }
       const live = args.flags.has('live');
       const identity = await deps.loadIdentity();
       const result = await deps.runFillSwap({
         listingId,
         alternative,
+        maxPrice,
+        expectNft,
         live,
         identity,
         config: loadConfig(),

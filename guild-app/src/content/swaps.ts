@@ -110,6 +110,10 @@ export const DETAIL_COPY = {
   hidden:
     "The operator has hidden this listing from this site, so its NFT is not shown and it cannot be filled here. It is still on the ledger. Whoever holds its listing receipt can still cancel it, extend it or collect from it on this page.",
   burnedAsk: "That NFT has been burned, so this alternative can never be filled.",
+  /** view.moreAsks: past the display cap the page has no names, pictures or
+   *  burn check, so a burned NFT there still shows a Fill button. */
+  moreAsks:
+    "This listing has more alternatives than this page looks up. The later ones show by address and id only, and this page has not checked whether an NFT among them still exists.",
   waiting: "Waiting for the ledger read to show your transaction…",
   ownListing:
     "This listing pays your account. Filling it is still allowed: your payment becomes this listing's proceeds, and the network fee and any fill fee are spent.",

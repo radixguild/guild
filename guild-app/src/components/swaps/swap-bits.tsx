@@ -168,19 +168,20 @@ export type SwapTx = ReturnType<typeof useSwapTx>
 
 /** The blueprint's own refusals (nft_swap.rs assert/panic text, which the
  *  engine carries into the error), in words. First match wins, so the more
- *  specific line sits above the shorter one it contains. */
+ *  specific line sits above the shorter one it contains. Only refusals this
+ *  site's own manifests can reach are here: the ones they rule out by
+ *  construction (one escrowed NFT, the component's receipt resource, an
+ *  alternative index from the rendered listing) fall through to the generic
+ *  line with the raw detail kept, rather than as copy nobody can trigger. */
 const SWAP_REFUSALS: readonly [RegExp, string][] = [
   [/listing is not Listed/, "This listing is no longer open: it was filled or cancelled before your transaction ran. Nothing changed hands. Reload the page to see where it stands."],
   [/listing is not Filled/, "This listing has not been filled, so there are no proceeds to withdraw. Nothing changed hands."],
   [/listing has expired/, "This listing passed its expiry before your fill ran, so it can no longer be filled. Nothing changed hands."],
   [/payment (resource|amount|NFT id) does not match|payment must be exactly the one NFT/, "The payment did not match the alternative you picked, so the component refused it. Nothing changed hands. Reload the page and pick again."],
-  [/alternative index out of range/, "That alternative is not on this listing. Nothing changed hands. Reload the page and pick again."],
-  [/wrong receipt resource|must present exactly 1 receipt/, "What was presented is not this component's listing receipt, so the component refused it. Nothing changed hands."],
   [/proceeds already withdrawn/, "These proceeds were already withdrawn, to the account the listing pays. Nothing changed hands."],
   [/cannot burn the receipt while the listing is still Listed/, "The receipt cannot be burned while the listing is still listed. Cancel the listing first."],
   [/cannot burn the receipt while proceeds are still owed/, "The receipt cannot be burned while proceeds are still owed. Withdraw them first."],
   [/expires_at must be/, "The component refused the expiry: it must be in the future and at most thirty days out on the ledger clock. Nothing was listed. Pick the term again."],
-  [/must escrow exactly one NFT/, "A listing escrows exactly one NFT, so the component refused this one. Nothing was listed."],
 ]
 
 const SWAP_NFT_MISSING =

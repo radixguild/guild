@@ -164,6 +164,7 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
             </li>
           ))}
         </ol>
+        {view.moreAsks && <p className="text-xs text-muted-foreground">{DETAIL_COPY.moreAsks}</p>}
         <p className="text-xs text-muted-foreground">
           Fill fee: {feeText(view.fees.fill)} (a component royalty, read from the component just now), plus the Radix
           network fee. Your wallet shows the total before you sign.
@@ -336,6 +337,10 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
   const awaiting = useRef<{ settled: (v: SwapDetailView) => boolean; tries: number } | null>(
     justListed ? { settled: (v) => Boolean(v.receipt?.holder), tries: 0 } : null,
   )
+  // The predicate a give-up left unmet. "Try again" re-reads against it, so
+  // a later read that still shows the old view stays stale: any answer
+  // re-arming the buttons would offer the same Extend (or Fill) again.
+  const unmet = useRef<((v: SwapDetailView) => boolean) | null>(null)
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // State is set only in the promise callback (react-hooks/set-state-in-effect).
@@ -354,6 +359,7 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
         return
       }
       awaiting.current = null
+      unmet.current = caughtUp ? null : (a?.settled ?? null)
       setWaiting(false)
       setLoad((prev) =>
         "view" in r
@@ -373,6 +379,11 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
     setNotice({ text, txId })
     awaiting.current = { settled, tries: 0 }
     setWaiting(true)
+    refresh()
+  }
+  // One read, no retry loop (tries already spent): the viewer asked for it.
+  const tryAgain = () => {
+    if (unmet.current) awaiting.current = { settled: unmet.current, tries: SETTLE_TRIES }
     refresh()
   }
 
@@ -459,7 +470,7 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
       {load.stale && !waiting && (
         <p className="text-xs text-muted-foreground" role="status">
           This may not show your latest transaction yet — the transaction link is the record.{" "}
-          <button type="button" className="underline" onClick={refresh}>
+          <button type="button" className="underline" onClick={tryAgain}>
             Try again
           </button>
         </p>
@@ -496,6 +507,7 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
                 </li>
               ))}
             </ol>
+            {view.moreAsks && <p className="mt-2 text-xs text-muted-foreground">{DETAIL_COPY.moreAsks}</p>}
           </CardContent>
         </Card>
       )}
