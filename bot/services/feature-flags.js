@@ -19,7 +19,10 @@ function escrowSurfaceEnabled(env = process.env) {
   return env.FEATURE_ESCROW === "true";
 }
 
-/** The bot's legacy in-Telegram bounty board, wizard and milestones. Default off. */
+/**
+ * The bot's legacy in-Telegram bounty board, wizard and milestones, and (since 2026-10-06)
+ * the agent API's claim/submit legs, which write only that board's table. Default off.
+ */
 function legacyBountyBoardEnabled(env = process.env) {
   return env.FEATURE_LEGACY_BOUNTY === "true";
 }

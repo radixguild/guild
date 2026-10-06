@@ -455,6 +455,14 @@ function linkDisabled() {
   return "Wallet linking isn't switched on yet. /verify still works.";
 }
 
+// /agent, /signer, /adminfeedback and /banned typed outside a private chat (2026-10-06):
+// /agent create used to print a raw API key in whatever chat it was typed in.
+// The bot tries to delete the command message, but may lack the right to, so this
+// does not claim the message is gone.
+function adminCommandDmOnly() {
+  return "Admin commands answer only in a private chat with me. Open a DM and send it there; nothing was run here.";
+}
+
 // A badge gate (propose, temp check, poll, bounty, milestone) when /link is on and this
 // Telegram account has not proven a wallet. /register alone no longer counts there.
 function linkRequired() {
@@ -528,6 +536,15 @@ const optionLabel = (key) => YESNO_LABELS[key] || String(key);
 function voteRecorded(choice) {
   const label = optionLabel(choice);
   return "Vote recorded: " + label + (/[.!?]$/.test(label) ? "" : ".");
+}
+
+/**
+ * The alert when this vote's badge already voted on the proposal from another wallet
+ * (2026-10-06). The badge is transferable, so a vote is deduped on the badge as well as
+ * on the wallet and the Telegram account.
+ */
+function badgeAlreadyVoted() {
+  return "This badge has already voted on this one, from another wallet. Moving a badge does not give it a second vote.";
 }
 
 function pluralVotes(n) {
@@ -783,8 +800,8 @@ module.exports = {
   startDm, startGroup, welcomeMember, help, tasksNotice, registered, mint, noBadge, badgeCheckUnavailable, badgeCard, badgeFound,
   mintStep, faq, readme, support, feedbackUsage, feedbackSaved, feedbackGone, myStatus, FEEDBACK_SAVED, sourceStatus,
   verifyResult, verifyTeamList, verifyUsernameNotTeam, verifyNoPerson, verifySelfBot, verifyOtherBot,
-  linkInGroup, linkDisabled, linkRequired, linkRequiredShort, registerKeepsProven, registerAddressTaken, linkStart, linkFailed, linkDone,
-  voteRecorded, pollClosedHeadline, pollClosed, pollStatusWords, pollResults, pollHistory, cancelReply,
+  linkInGroup, linkDisabled, adminCommandDmOnly, linkRequired, linkRequiredShort, registerKeepsProven, registerAddressTaken, linkStart, linkFailed, linkDone,
+  voteRecorded, badgeAlreadyVoted, pollClosedHeadline, pollClosed, pollStatusWords, pollResults, pollHistory, cancelReply,
   disputesOnTheWeb, cv3Parked, diceGameClosed, noGuildDao, groupsOnTheWeb, projectsOnTheWeb, milestonesOffBoard,
   cv2Parked, workSubmittedDm,
   taskFundedPosterDm, taskClaimedDm, taskSettledWorkerDm, taskSettledPosterDm, taskCancelledDm,

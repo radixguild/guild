@@ -30,7 +30,7 @@ Each flag is off unless set to the string `true`:
 | Flag | What it switches on |
 |---|---|
 | `FEATURE_ESCROW` | The escrow surface: the watcher and the bot's bounty/escrow/dispute API routes |
-| `FEATURE_LEGACY_BOUNTY` | The old in-chat `/bounty` board. When off, `/bounty` links to the web task board |
+| `FEATURE_LEGACY_BOUNTY` | The old in-chat `/bounty` board, and the agent API's `POST /api/agent/tasks/:id/claim` and `/submit` (they write only that board's table). When off, `/bounty` links to the web task board and those two answer 503 |
 | `FEATURE_TASK_ALERTS` | Opt-in DMs for newly funded tasks |
 | `FEATURE_WG_WATCHER` | The working-group sunset/overdue checker (paused) |
 | `CV2_ENABLED` | The parked CV2 governance reader |

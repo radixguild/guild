@@ -91,6 +91,7 @@ function gatewayHealthy() {
   alerts.observe({ ...GATEWAY_ALERT, condition: false });
 }
 const { getBountyByOnchainTask, countUnstampedLinks } = require("./bounty-linkage");
+const { userForAddress } = require("../db"); // a pure function of the handle passed; opens nothing
 // #119 funded-task DM alerts (see the end of handleTaskCreated).
 const copy = require("./copy");
 const { workSubmittedDm } = copy;
@@ -263,11 +264,19 @@ function getBountyByOnchainId(onchainTaskId, component) {
   } catch (e) { return null; }
 }
 
-/** Find user by their Radix address (for TG notifications) */
+/**
+ * Find the user to DM about a Radix address. The account that PROVED the wallet with
+ * /link answers first; a /register claim only when nobody proved it (db.js
+ * userForAddress). Until 2026-10-06 this read `users` alone, so whoever had /register-ed
+ * a worker's wallet received that worker's settlement DM.
+ */
 function getUserByAddress(address) {
   try {
-    return db.prepare("SELECT * FROM users WHERE radix_address = ?").get(address);
-  } catch (e) { return null; }
+    return userForAddress(db, address);
+  } catch (e) {
+    console.error("[EscrowWatcher] user lookup for a DM failed:", e.message);
+    return null;
+  }
 }
 
 /**

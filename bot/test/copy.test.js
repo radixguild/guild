@@ -26,6 +26,8 @@ const ALL = {
   verifyNoPerson: copy.verifyNoPerson(), verifySelfBot: copy.verifySelfBot(),
   verifyOtherBot: copy.verifyOtherBot({ name: "@x", tgId: 4, ourBot: "radix_guild_bot" }),
   linkInGroup: copy.linkInGroup(), linkDisabled: copy.linkDisabled(),
+  // 2026-10-06: admin commands outside a private chat, and a badge that moved wallets.
+  adminCommandDmOnly: copy.adminCommandDmOnly(), badgeAlreadyVoted: copy.badgeAlreadyVoted(),
   linkStart: copy.linkStart({ url: "https://radixguild.com/link-telegram?t=abc", tgId: 42 }),
   linkFailed: copy.linkFailed({ reason: "expired" }), linkDone: copy.linkDone({ last8: "…12345678" }),
   linkRequired: copy.linkRequired(), linkRequiredShort: copy.linkRequiredShort(),
