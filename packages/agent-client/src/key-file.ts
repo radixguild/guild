@@ -41,6 +41,24 @@ export function readKeyFile(path: string): string {
 }
 
 /**
+ * The agent key from the same two sources, in the same order, as config.ts's
+ * loadAgentPrivateKeyHex: GUILD_AGENT_PRIVATE_KEY, else the key file. "No key
+ * anywhere" returns null (so a readiness check can say so) instead of
+ * throwing. A key file that exists but cannot be read or does not parse still
+ * THROWS, value-free (readKeyFile): that is a key the agent brought, not a
+ * missing one. Reads only.
+ */
+export function findAgentPrivateKeyHex(
+  env: Record<string, string | undefined> = process.env
+): { keyHex: string; source: 'env' | 'file'; path: string } | null {
+  const path = resolveKeyFilePath(env);
+  const fromEnv = env.GUILD_AGENT_PRIVATE_KEY;
+  if (fromEnv && fromEnv.length > 0) return { keyHex: fromEnv, source: 'env', path };
+  if (keyFileExists(path)) return { keyHex: readKeyFile(path), source: 'file', path };
+  return null;
+}
+
+/**
  * True when the file is readable by anyone but its owner. `status` warns on
  * this; nothing refuses, because the key's exposure is bounded by the float.
  */

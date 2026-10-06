@@ -20,6 +20,7 @@ import {
   type ClaimBondBasis,
 } from './gateway.js';
 import { AgentIdentity } from './identity.js';
+import { findAgentPrivateKeyHex, resolveKeyFilePath } from './key-file.js';
 import { localPairingFor, type AgentState } from './agent-state.js';
 import { MIN_SWEEP_XRD, loadOwnerLink } from './sweep.js';
 
@@ -196,14 +197,34 @@ export async function runDoctor(options: {
 
   // ── 1. key ────────────────────────────────────────────────────────────────
   let identity: AgentIdentity | null = null;
-  const keyHex = env.GUILD_AGENT_PRIVATE_KEY;
-  if (!keyHex) {
+  // The same sources the signing commands read (GUILD_AGENT_PRIVATE_KEY, else
+  // the key file), so doctor's verdict is about the key `run` and `mint-badge`
+  // would actually sign with.
+  let keyHex: string | undefined;
+  let keySource: 'env' | 'file' = 'env';
+  let keyFileProblem: string | null = null;
+  try {
+    const found = findAgentPrivateKeyHex(env);
+    keyHex = found?.keyHex;
+    if (found) keySource = found.source;
+  } catch (error) {
+    keyFileProblem = error instanceof Error ? error.message : String(error);
+  }
+  if (keyFileProblem !== null) {
     checks.push({
       id: 'key',
       label: 'agent key',
       status: 'fail',
-      detail: 'GUILD_AGENT_PRIVATE_KEY is not set.',
-      hint: 'This kit never creates a key — bring your own: export GUILD_AGENT_PRIVATE_KEY (or, for `guild-agent`, put it in GUILD_AGENT_KEY_FILE).',
+      detail: keyFileProblem,
+      hint: 'Expect the file to hold 64 hex chars (32-byte ed25519) and be readable by this user. Fix the file, or export GUILD_AGENT_PRIVATE_KEY instead.',
+    });
+  } else if (!keyHex) {
+    checks.push({
+      id: 'key',
+      label: 'agent key',
+      status: 'fail',
+      detail: `No agent key: GUILD_AGENT_PRIVATE_KEY is not set and there is no key file at ${resolveKeyFilePath(env)}.`,
+      hint: 'This kit never creates a key — bring your own: export GUILD_AGENT_PRIVATE_KEY, or put it in the file GUILD_AGENT_KEY_FILE names.',
     });
   } else {
     try {
@@ -212,7 +233,7 @@ export async function runDoctor(options: {
         id: 'key',
         label: 'agent key',
         status: 'pass',
-        detail: `parses OK — account ${identity.address}`,
+        detail: `parses OK${keySource === 'file' ? ' (from the key file)' : ''} — account ${identity.address}`,
       });
     } catch (error) {
       checks.push({
