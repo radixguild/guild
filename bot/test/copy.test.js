@@ -30,7 +30,8 @@ const ALL = {
   linkFailed: copy.linkFailed({ reason: "expired" }), linkDone: copy.linkDone({ last8: "…12345678" }),
   linkRequired: copy.linkRequired(), linkRequiredShort: copy.linkRequiredShort(),
   registeredMustLinkNoBadge: copy.registered({ ...o, hasBadge: false, mustLink: true }), registeredMustLinkBadge: copy.registered({ ...o, hasBadge: true, mustLink: true }),
-  registerKeepsProven: copy.registerKeepsProven({ last8: "…12345678" }),
+  registerKeepsProven: copy.registerKeepsProven({ last8: "…12345678" }), registerAddressTaken: copy.registerAddressTaken(),
+  startDmMustLink: copy.startDm({ ...o, linkedAddress: "account_rdx1" + "a".repeat(54), hasBadge: true, mustLink: true }),
   fundedTaskAlert: copy.fundedTaskAlert({ ...o, taskId: 42, amount: "250", tokenLabel: "XRD" }),
   taskAlertsOn: copy.taskAlertsReply({ mode: "on", live: true }), taskAlertsOnNotLive: copy.taskAlertsReply({ mode: "on", live: false }),
   taskAlertsOff: copy.taskAlertsReply({ mode: "off", live: true }), taskAlertsStatusOn: copy.taskAlertsReply({ mode: "statusOn", live: false }),
@@ -472,4 +473,14 @@ test("the watcher DMs keep their shipped wording for a plain title", () => {
     copy.taskCancelledDm({ id: 7, title: "Write the FAQ", refunded: "100" }),
     "🔔 <b>Task #7 cancelled</b>\n\"Write the FAQ\"\nCredited back to you: 100 XRD — collect it with your own signed\nwithdrawal on radixguild.com."
   );
+});
+
+test("2026-10-06: with /link on, /register and /start never call a claimed wallet linked or set", () => {
+  for (const k of ["registeredMustLinkNoBadge", "registeredMustLinkBadge", "startDmMustLink"]) {
+    assert.match(ALL[k], /\/link/, k);
+    assert.doesNotMatch(ALL[k], /You're set|Wallet linked/, k);
+  }
+  assert.doesNotMatch(ALL.registeredMustLinkBadge, /mint/i);
+  assert.match(ALL.registeredMustLinkNoBadge, /\/mint/);
+  assert.match(ALL.registerAddressTaken, /\/link/);
 });

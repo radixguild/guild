@@ -6,7 +6,7 @@ const copy = require("./services/copy");
 
 const wizardStates = new Map();
 
-function setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward, checkClaim = () => ({ ok: true, mustLink: false })) {
+function setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward, checkClaim) {
 
   // ═══════════════════════════════════════════════════════
   // ONBOARDING WIZARD (/start in private chat)
@@ -242,7 +242,7 @@ function setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward, checkC
       const claim = checkClaim(ctx.from.id, text);
       wizardStates.delete(ctx.from.id);
       if (!claim.ok) {
-        ctx.reply(copy.registerKeepsProven({ last8: claim.last8 }));
+        ctx.reply(claim.reason === "taken" ? copy.registerAddressTaken() : copy.registerKeepsProven({ last8: claim.last8 }));
         return true;
       }
       db.registerUser(ctx.from.id, text, ctx.from.username || ctx.from.first_name);

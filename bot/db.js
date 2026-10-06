@@ -750,6 +750,11 @@ function getWalletLink(tgId) {
   return db.prepare("SELECT * FROM wallet_links WHERE tg_id = ?").get(tgId);
 }
 
+// Another Telegram account that has PROVEN this wallet (/link), if any.
+function getOtherWalletLink(radixAddress, tgId) {
+  return db.prepare("SELECT * FROM wallet_links WHERE radix_address = ? AND tg_id != ?").get(radixAddress, tgId);
+}
+
 // Proposals
 function createProposal(title, creatorTgId, opts = {}) {
   const {
@@ -1491,8 +1496,9 @@ const ROLL_WEIGHTS = [30, 25, 20, 13, 8, 4]; // must sum to 100
 const ROLL_BONUSES = [0, 5, 10, 25, 50, 100]; // XP bonus per roll
 
 function rollDice() {
-  // crypto.randomInt, not the engine's non-crypto PRNG (2026-10-06): the result queues XP for an on-chain
-  // update_xp. Integers 0-99 against the cumulative weights give the same 30/25/20/13/8/4.
+  // crypto.randomInt, not the engine's non-crypto PRNG (2026-10-06). The result still queues
+  // roll_bonus rows (services/xp.js) shaped for an on-chain update_xp that has never been
+  // applied. Integers 0-99 against the cumulative weights give the same 30/25/20/13/8/4.
   const rand = crypto.randomInt(0, 100);
   let cumulative = 0;
   for (let i = 0; i < ROLL_WEIGHTS.length; i++) {
@@ -1772,7 +1778,7 @@ function getBoardStats(radixAddress) {
 module.exports = {
   init,
   getUser, getUserByAddress, getVotesByAddress, registerUser,
-  recordWalletLink, getWalletLink,
+  recordWalletLink, getWalletLink, getOtherWalletLink,
   createProposal, updateProposalMessage, getProposal,
   getActiveProposals, closeExpiredProposals, closeProposal, getAmendments,
   recordVote, getVoteCounts, hasVoted,

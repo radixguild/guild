@@ -226,7 +226,8 @@ bot.command("start", async (ctx) => {
     }
 
     ctx.reply(
-      copy.startDm({ portal: PORTAL, linkedAddress: user ? user.radix_address : null, hasBadge: !!badge }),
+      copy.startDm({ portal: PORTAL, linkedAddress: user ? user.radix_address : null, hasBadge: !!badge,
+        mustLink: !!(user && verify && verify.linkEnabled && !db.getWalletLink(ctx.from.id)) }),
       { reply_markup: kb }
     );
   } else {
@@ -246,7 +247,7 @@ bot.command("register", async (ctx) => {
     return ctx.reply("Invalid address format.\nUsage: /register account_rdx1...");
   }
   const claim = checkClaim(ctx.from.id, address);
-  if (!claim.ok) return ctx.reply(copy.registerKeepsProven({ last8: claim.last8 }));
+  if (!claim.ok) return ctx.reply(claim.reason === "taken" ? copy.registerAddressTaken() : copy.registerKeepsProven({ last8: claim.last8 }));
   db.registerUser(ctx.from.id, address, ctx.from.username || ctx.from.first_name);
   // Look before telling someone to mint: until 2026-09-20 this told a wallet that
   // already held a badge to go and mint one.
