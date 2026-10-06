@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { apiFetch } from "@/lib/api-fetch";
 import { useWallet } from "@/hooks/useWallet";
+import { signInDidNotComplete } from "@/lib/session-outcome";
 import { Bell, BellOff, BellRing, Check, Filter, X, Megaphone } from "lucide-react";
 
 // Working groups — Model A, interest channels (docs/design/working-groups-model-a.md).
@@ -85,7 +86,7 @@ function LevelIcon({ level }: { level: Level }) {
 // the catalog stays admin-curated (scripts/review-group-proposals.mjs), which
 // is what keeps the board from fragmenting into empty channels.
 function ProposeGroupDialog() {
-  const { ensureSession } = useWallet();
+  const { ensureSessionDetailed } = useWallet();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -97,8 +98,9 @@ function ProposeGroupDialog() {
     setSubmitting(true);
     setError(null);
     try {
-      if (!(await ensureSession())) {
-        setError("Approve the wallet signature to propose a group.");
+      const gate = await ensureSessionDetailed();
+      if (!gate.ok) {
+        setError(signInDidNotComplete("no group was proposed", gate));
         return;
       }
       const res = await apiFetch("/api/v1/groups/propose", {
@@ -187,7 +189,7 @@ function ProposeGroupDialog() {
 }
 
 function GroupsContent() {
-  const { account, ensureSession } = useWallet();
+  const { account, ensureSessionDetailed } = useWallet();
   const [groups, setGroups] = useState<Group[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [failed, setFailed] = useState(false);
@@ -265,8 +267,9 @@ function GroupsContent() {
     async (slug: string, next: Level | null) => {
       setBusy(slug);
       try {
-        if (!(await ensureSession())) {
-          toast.error("Connect your wallet to join a group.", {
+        const gate = await ensureSessionDetailed();
+        if (!gate.ok) {
+          toast.error(signInDidNotComplete("you did not join", gate), {
             description: "Joining records the group against your Guild account, so it needs a signed-in session.",
           });
           return;
@@ -299,7 +302,7 @@ function GroupsContent() {
         setBusy(null);
       }
     },
-    [ensureSession],
+    [ensureSessionDetailed],
   );
 
   // Fetched from the toggle/clear event handlers directly, NOT from a

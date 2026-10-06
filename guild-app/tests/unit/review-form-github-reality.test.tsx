@@ -16,7 +16,7 @@ import "@testing-library/jest-dom/vitest"
  */
 
 vi.mock("@/hooks/useWallet", () => ({
-  useWallet: () => ({ ensureSession: vi.fn().mockResolvedValue(true) }),
+  useWallet: () => ({ ensureSession: vi.fn().mockResolvedValue(true), ensureSessionDetailed: vi.fn().mockResolvedValue({ ok: true }) }),
 }))
 vi.mock("@/lib/api-fetch", () => ({ apiFetch: vi.fn() }))
 

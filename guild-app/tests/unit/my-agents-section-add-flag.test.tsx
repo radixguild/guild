@@ -10,7 +10,7 @@ import "@testing-library/jest-dom/vitest"
 
 const W = vi.hoisted(() => ({ fetch: vi.fn() }))
 vi.mock("@/hooks/useWallet", () => ({
-  useWallet: () => ({ connected: true, account: "account_rdx1owner", signIn: vi.fn(), ensureSession: vi.fn() }),
+  useWallet: () => ({ connected: true, account: "account_rdx1owner", signIn: vi.fn(), signInDetailed: vi.fn(async () => ({ ok: true })), ensureSession: vi.fn(), ensureSessionDetailed: vi.fn(async () => ({ ok: true })) }),
 }))
 vi.mock("@/lib/api-fetch", () => ({ apiFetch: (...a: unknown[]) => W.fetch(...a) }))
 vi.mock("@/lib/features", () => ({ isEnabled: (f: string) => f === "agentsAdd" }))

@@ -16,6 +16,7 @@ import { CopyButton } from "@/components/copy-button"
 import { XrdAmount } from "@/components/XrdAmount"
 import { useNetworkHalt } from "@/hooks/useNetworkHalt"
 import { useWallet } from "@/hooks/useWallet"
+import { signInDidNotComplete } from "@/lib/session-outcome"
 import { useXrdBalance } from "@/hooks/useXrdBalance"
 import { apiFetch } from "@/lib/api-fetch"
 import {
@@ -146,7 +147,7 @@ export function FundAgentDialog({
    */
   canPrepare?: boolean
 }) {
-  const { rdt, user, ensureSession, sessionMismatch } = useWallet()
+  const { rdt, user, ensureSessionDetailed, sessionMismatch } = useWallet()
   const halt = useNetworkHalt()
   const { balance } = useXrdBalance(user?.id)
   const [open, setOpen] = useState(false)
@@ -284,8 +285,9 @@ export function FundAgentDialog({
     try {
       const owner = user?.id
       setPhase({ k: "working", what: "Checking your sign-in…" })
-      if (!(await ensureSession())) {
-        setPhase({ k: "ready", error: "Approve the wallet signature to continue." })
+      const gate = await ensureSessionDetailed()
+      if (!gate.ok) {
+        setPhase({ k: "ready", error: signInDidNotComplete("nothing was funded", gate) })
         return
       }
       if (!owner) {

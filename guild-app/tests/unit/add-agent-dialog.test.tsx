@@ -10,8 +10,15 @@ import "@testing-library/jest-dom/vitest"
  * useWallet are mocked; the countdown and the polling run on fake timers.
  */
 
-const W = vi.hoisted(() => ({ ensureSession: vi.fn(async () => true), fetch: vi.fn() }))
-vi.mock("@/hooks/useWallet", () => ({ useWallet: () => ({ ensureSession: W.ensureSession }) }))
+const W = vi.hoisted(() => ({
+  ensureSession: vi.fn(async () => true),
+  ensureSessionDetailed: vi.fn(async () => ({ ok: true })),
+  fetch: vi.fn(),
+}))
+vi.mock("@/hooks/useWallet", () => ({
+  useWallet: () => ({ ensureSession: W.ensureSession, ensureSessionDetailed: W.ensureSessionDetailed }),
+}))
+import { sessionFailure } from "@/lib/session-outcome"
 vi.mock("@/lib/api-fetch", () => ({ apiFetch: (...a: unknown[]) => W.fetch(...a) }))
 
 import { AddAgentDialog } from "@/components/agents/add-agent-dialog"
@@ -48,6 +55,7 @@ const flush = (ms: number) =>
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true, now: T0 })
   W.ensureSession.mockReset().mockResolvedValue(true)
+  W.ensureSessionDetailed.mockReset().mockResolvedValue({ ok: true })
   W.fetch.mockReset()
 })
 afterEach(() => {
@@ -61,14 +69,16 @@ describe("the name step", () => {
     await openAndName("my-agent")
     expect(screen.getByRole("alert")).toHaveTextContent("Letters, numbers and underscores only, up to 51")
     expect(W.fetch).not.toHaveBeenCalled()
-    expect(W.ensureSession).not.toHaveBeenCalled()
+    expect(W.ensureSessionDetailed).not.toHaveBeenCalled()
   })
 
-  it("a declined sign-in writes nothing", async () => {
-    W.ensureSession.mockResolvedValue(false)
+  it("a declined sign-in writes nothing, and says so with the reason", async () => {
+    W.ensureSessionDetailed.mockResolvedValue(sessionFailure("wallet-declined"))
     render(<AddAgentDialog onChanged={() => {}} />)
     await openAndName("Scout")
-    expect(screen.getByRole("alert")).toHaveTextContent("Approve the wallet signature")
+    expect(screen.getByRole("alert")).toHaveTextContent("Sign-in didn't complete, so no agent code was created")
+    expect(screen.getByRole("alert")).toHaveTextContent(/declined the sign-in request/i)
+    expect(screen.getByRole("alert")).not.toHaveTextContent(/approve the wallet signature/i)
     expect(W.fetch).not.toHaveBeenCalled()
   })
 
@@ -233,14 +243,14 @@ describe("every way out resets", () => {
   })
 
   it("🔴 closing while the code is still being made never reopens into that code", async () => {
-    let signed: (v: boolean) => void = () => {}
-    W.ensureSession.mockReturnValueOnce(new Promise<boolean>((r) => (signed = r)))
+    let signed: (v: { ok: boolean }) => void = () => {}
+    W.ensureSessionDetailed.mockReturnValueOnce(new Promise<{ ok: boolean }>((r) => (signed = r)))
     W.fetch.mockResolvedValueOnce(res(201, { ok: true, data: ISSUED }))
     render(<AddAgentDialog onChanged={() => {}} />)
     await openAndName("Scout") // waiting on the wallet signature
     fireEvent.click(screen.getByRole("button", { name: "Close" }))
     await act(async () => {
-      signed(true)
+      signed({ ok: true })
       await vi.advanceTimersByTimeAsync(0)
     })
     fireEvent.click(await screen.findByRole("button", { name: /Add an agent/ }))
@@ -249,8 +259,8 @@ describe("every way out resets", () => {
   })
 
   it("🔴 closing mid-request never leaves the reopened form stuck on 'Creating…', and the abandoned request cannot re-enable a newer one", async () => {
-    let firstSigned: (v: boolean) => void = () => {}
-    W.ensureSession.mockReturnValueOnce(new Promise<boolean>((r) => (firstSigned = r)))
+    let firstSigned: (v: { ok: boolean }) => void = () => {}
+    W.ensureSessionDetailed.mockReturnValueOnce(new Promise<{ ok: boolean }>((r) => (firstSigned = r)))
     render(<AddAgentDialog onChanged={() => {}} />)
     await openAndName("Scout") // the first attempt hangs on the wallet
     fireEvent.click(screen.getByRole("button", { name: "Close" }))
@@ -258,14 +268,14 @@ describe("every way out resets", () => {
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Scout" } })
     expect(screen.getByRole("button", { name: "Create pairing code" })).toBeEnabled()
     // a second attempt starts and hangs too
-    W.ensureSession.mockReturnValueOnce(new Promise<boolean>(() => {}))
+    W.ensureSessionDetailed.mockReturnValueOnce(new Promise<{ ok: boolean }>(() => {}))
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Create pairing code" }))
     })
     expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled()
     // the FIRST, abandoned attempt settles — it must not re-enable the second's button
     await act(async () => {
-      firstSigned(false)
+      firstSigned({ ok: false })
       await vi.advanceTimersByTimeAsync(0)
     })
     expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled()

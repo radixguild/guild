@@ -14,6 +14,7 @@ import {
   explainSignInThrow,
   explainVerifyRefusal,
   sessionFailure,
+  signInDidNotComplete,
   walletErrorCode,
   type SessionFailureReason,
 } from "@/lib/session-outcome"
@@ -99,6 +100,12 @@ describe("the button-side composition", () => {
     expect(CANCEL_WALLET_WAIT_HINT).toBe(walletWaitHint(WAIT_CLOSING.cancel))
   })
 
+  it("signInDidNotComplete is the page-side shape: the page's own fact, then the gate's cause", () => {
+    const s = signInDidNotComplete("no task was posted", sessionFailure("unreachable"))
+    expect(s.startsWith("Sign-in didn't complete, so no task was posted.")).toBe(true)
+    expect(s).toMatch(/could not reach the site/i)
+  })
+
   it("every lead but resync's states that no transaction was sent", () => {
     for (const [key, lead] of Object.entries(SIGN_IN_LEAD)) {
       if (key === "resync") expect(lead).toMatch(/nothing was re-synced/i)
@@ -126,6 +133,7 @@ describe("every sentence clears the real honest-copy rule table", () => {
     ...Object.values(WAIT_CLOSING).map(walletWaitHint),
     ...Object.values(SIGN_IN_LEAD).map((lead) => signInIncomplete(lead)),
     ...Object.values(SIGN_IN_LEAD).map((lead) => signInIncomplete(lead, sessionFailure("account-mismatch"))),
+    ...["nothing was changed", "no pool was opened", "no group was proposed", "you did not join", "no project was created", "your work was not submitted", "no task was posted", "no agent code was created", "nothing was funded", "your review was not submitted"].map((c) => signInDidNotComplete(c, sessionFailure("wallet-declined"))),
   ]
   it.each(texts)("no BANNED or PULL_BANNED rule fires on: %s", (text) => {
     expect(text.length).toBeGreaterThan(30) // vacuous-pass guard

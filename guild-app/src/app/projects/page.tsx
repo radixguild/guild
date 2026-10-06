@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import { apiFetch } from "@/lib/api-fetch"
 import { useWallet } from "@/hooks/useWallet"
+import { signInDidNotComplete } from "@/lib/session-outcome"
 import { firstSentence } from "@/lib/project-summary"
 import { formatXrdUsdFromString } from "@/lib/format-xrd-usd"
 import { useXrdUsd } from "@/lib/use-xrd-usd"
@@ -41,7 +42,7 @@ interface ProjectSummary {
 }
 
 function NewProjectDialog({ onCreated }: { onCreated: (slug: string) => void }) {
-  const { ensureSession } = useWallet()
+  const { ensureSessionDetailed } = useWallet()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -52,8 +53,9 @@ function NewProjectDialog({ onCreated }: { onCreated: (slug: string) => void }) 
     setSubmitting(true)
     setError(null)
     try {
-      if (!(await ensureSession())) {
-        setError("Approve the wallet signature to create a project.")
+      const gate = await ensureSessionDetailed()
+      if (!gate.ok) {
+        setError(signInDidNotComplete("no project was created", gate))
         return
       }
       const res = await apiFetch("/api/v1/projects", {

@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { apiFetch } from "@/lib/api-fetch"
 import { useWallet } from "@/hooks/useWallet"
+import { signInDidNotComplete } from "@/lib/session-outcome"
 import type { Submission } from "@/lib/marketplace-types"
 import { DECLINE_REASONS, DECLINE_REASON_LABELS } from "@/lib/decline-reasons"
 import { extractPrUrl } from "@/lib/pr-verify"
@@ -21,7 +22,7 @@ interface ReviewFormProps {
 type ReviewStatus = "approved" | "rejected" | "revision_requested"
 
 export function ReviewForm({ submission, onReviewed }: ReviewFormProps) {
-  const { ensureSession } = useWallet()
+  const { ensureSessionDetailed } = useWallet()
   const [notes, setNotes] = useState("")
   const [declineReason, setDeclineReason] = useState<string>("")
   const [pending, setPending] = useState<ReviewStatus | null>(null)
@@ -40,8 +41,9 @@ export function ReviewForm({ submission, onReviewed }: ReviewFormProps) {
     setPending(status)
     setError(null)
     try {
-      if (!(await ensureSession())) {
-        setError("Approve the wallet signature to submit your review.")
+      const gate = await ensureSessionDetailed()
+      if (!gate.ok) {
+        setError(signInDidNotComplete("your review was not submitted", gate))
         return
       }
       const res = await apiFetch(`/api/v1/submissions/${submission.id}/review`, {
