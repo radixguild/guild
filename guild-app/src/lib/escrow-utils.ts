@@ -309,6 +309,21 @@ export function humanizeTxError(raw: string): HumanizedTxError {
       staleState: true,
     }
   }
+  // Approve / raise-dispute / finalize on a task the chain already moved past:
+  // release_after_review_timeout and auto_resolve_dispute are PUBLIC, so the
+  // task can settle while the DB still says submitted/disputed. Scoped to the
+  // three asserts whose buttons resync on staleState (lib.rs "task must be
+  // Submitted to release" / "...to dispute" / "must be Disputed to
+  // auto-resolve") — NOT the review-timeout release's own "to release on
+  // review timeout", whose button does not resync.
+  if (/must be Submitted to (?:release(?! on review timeout)|dispute)|must be Disputed to auto-resolve/i.test(raw)) {
+    return {
+      summary:
+        "This task already moved on-chain — it was released, disputed or settled before this transaction. Resyncing the status from chain…",
+      detail: raw,
+      staleState: true,
+    }
+  }
   // Structured / long payloads: one-line summary, payload behind the expando.
   if (raw.trimStart().startsWith("{") || raw.length > 160) {
     return { summary: "Transaction failed — open the error details below.", detail: raw }
@@ -907,9 +922,13 @@ export async function confirmEscrowTx(
   taskDbId: number | string,
   kind: "create" | "claim" | "submit" | "approve" | "dispute" | "resolve" | "cancel",
   intentHash: string,
-): Promise<{ ok: boolean; onChainTaskId?: number; error?: string }> {
+): Promise<{ ok: boolean; onChainTaskId?: number; error?: string; code?: string }> {
   // The Gateway can't see the tx's events until it commits (~5-10s after the
   // wallet submits), so a 422 (event-not-found) is retried before giving up.
+  // A 5xx is retried too (2026-10-06): the confirm is idempotent server-side,
+  // and a committed tx whose confirm gave up on one server hiccup was the
+  // start of the double-fund path. 409/403 still come back at once — they are
+  // deterministic, and `code` lets the caller tell them apart.
   const ATTEMPTS = 4
   for (let i = 0; i < ATTEMPTS; i++) {
     try {
@@ -922,11 +941,12 @@ export async function confirmEscrowTx(
       if (res.ok && json?.ok) {
         return { ok: true, onChainTaskId: json.data?.onChainTaskId ?? undefined }
       }
-      if (res.status === 422 && i < ATTEMPTS - 1) {
+      if ((res.status === 422 || res.status >= 500) && i < ATTEMPTS - 1) {
         await new Promise((r) => setTimeout(r, 4000))
         continue
       }
-      return { ok: false, error: json?.error?.message || "Confirmation failed" }
+      const code = typeof json?.error?.code === "string" ? json.error.code : undefined
+      return { ok: false, error: json?.error?.message || "Confirmation failed", ...(code ? { code } : {}) }
     } catch (e) {
       if (i < ATTEMPTS - 1) {
         await new Promise((r) => setTimeout(r, 4000))

@@ -155,6 +155,12 @@ type ButtonCase = {
   account: string
   /** What useOnChainTaskInfo returns for it. */
   info?: unknown
+  /**
+   * The live state readEscrowTaskState answers at the press (default "Open").
+   * Approve, Raise Dispute and Finalize read it before they send (GM-5) and
+   * stop on any other state, so their happy path needs the state they act on.
+   */
+  liveState?: string
   render: () => void
   /** The button's accessible name. */
   name: RegExp
@@ -214,6 +220,7 @@ const BUTTONS: ButtonCase[] = [
   {
     key: "approve",
     account: POSTER,
+    liveState: "Submitted",
     render: () => {
       render(
         <EscrowApproveButton
@@ -250,6 +257,7 @@ const BUTTONS: ButtonCase[] = [
   {
     key: "dispute",
     account: POSTER,
+    liveState: "Submitted",
     render: () => {
       render(<RaiseDisputeButton taskDbId={1} onChainTaskId={ON_CHAIN_TASK_ID} posterId={POSTER} workerId={WORKER} />)
     },
@@ -265,6 +273,7 @@ const BUTTONS: ButtonCase[] = [
   {
     key: "finalize",
     account: POSTER,
+    liveState: "Disputed",
     render: () => {
       render(
         <FinalizeDisputeButton
@@ -362,7 +371,7 @@ describe.each(BUTTONS)("$key button — never a silent no-op", (b) => {
     M.apiFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, data: [] }) })
     M.loadUserBadge.mockResolvedValue({ id: "#1#" })
     M.findClaimReceiptId.mockResolvedValue("#7#")
-    M.readEscrowTaskState.mockResolvedValue("Open")
+    M.readEscrowTaskState.mockResolvedValue(b.liveState ?? "Open")
     M.fetchOwnSubmissionContent.mockResolvedValue({ ok: true, content: "the work, described" })
     M.confirmEscrowTx.mockResolvedValue({ ok: true })
     M.resyncEscrowTask.mockResolvedValue({ ok: true, applied: 0, pending: [] })

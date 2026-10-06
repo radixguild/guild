@@ -44,7 +44,12 @@ export interface SessionFailure {
   detail?: string
 }
 
-export type SessionOutcome = { ok: true } | SessionFailure
+/**
+ * `userId` (an account address) is the session the gate left in place, when it
+ * knows it. The wallet lets a sign-in be proven with ANY shared account, so a
+ * button compares it with the account it was pressed under before it sends.
+ */
+export type SessionOutcome = { ok: true; userId?: string } | SessionFailure
 
 export const SESSION_OK: SessionOutcome = { ok: true }
 

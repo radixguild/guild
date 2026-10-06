@@ -151,6 +151,27 @@ describe("useWallet session guard — multi-account wallets", () => {
     expect(logoutCalls()).toBe(0)
   })
 
+  it("ensureSessionDetailed names the account the proof was signed with — the account a button pressed under A must not send as (GM-6)", async () => {
+    verifyUser = { id: B }
+    h.sendOneTimeRequest.mockResolvedValue(proofFor(B))
+    mount()
+    emit([A, B])
+    await settle()
+    const pressedAs = ctx.current.account // what a button's closure holds: A
+
+    let outcome: Awaited<ReturnType<typeof ctx.current.ensureSessionDetailed>> = { ok: false } as never
+    await act(async () => {
+      outcome = await ctx.current.ensureSessionDetailed()
+    })
+    expect(pressedAs).toBe(A)
+    expect(outcome).toEqual({ ok: true, userId: B })
+    // And the already-signed-in fast path names it too.
+    await act(async () => {
+      outcome = await ctx.current.ensureSessionDetailed()
+    })
+    expect(outcome).toEqual({ ok: true, userId: B })
+  })
+
   it("later walletData$ emits with the same share list keep the session (the #151 logout loop)", async () => {
     meUser = { id: B } // valid cookie for the second shared account
     mount()
