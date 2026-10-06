@@ -25,23 +25,21 @@ export function SignInPrompt({
   description = "Approve a one-time wallet signature to verify your account.",
   onSignedIn,
 }: SignInPromptProps) {
-  const { signIn, connected } = useWallet()
+  const { signInDetailed } = useWallet()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function handleSignIn() {
     setPending(true)
     setError(null)
-    const ok = await signIn()
+    const r = await signInDetailed()
     setPending(false)
-    if (ok) {
+    if (r.ok) {
       onSignedIn?.()
     } else {
-      setError(
-        connected
-          ? "Signature declined. Try again to continue."
-          : "Connect your wallet first, then sign in.",
-      )
+      // The gate reports why (declined, undelivered, no wallet, /verify refused,
+      // network) — until 2026-10-06 this guessed between two sentences.
+      setError(r.message)
     }
   }
 

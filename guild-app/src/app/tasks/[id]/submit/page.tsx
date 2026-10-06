@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { apiFetch } from "@/lib/api-fetch"
 import { useWallet } from "@/hooks/useWallet"
+import { signInDidNotComplete } from "@/lib/session-outcome"
 import type { Task } from "@/lib/marketplace-types"
 import { getStatusColor } from "@/lib/marketplace-utils"
 import { formatXrdUsdFromString } from "@/lib/format-xrd-usd"
@@ -33,7 +34,7 @@ export default function SubmitPage({ params }: SubmitPageProps) {
 function SubmitView({ id }: { id: string }) {
   const router = useRouter()
   const { rate: usdRate } = useXrdUsd()
-  const { ensureSession, badge, badgeLoading } = useWallet()
+  const { ensureSessionDetailed, badge, badgeLoading } = useWallet()
   const [task, setTask] = useState<Task | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -79,8 +80,9 @@ function SubmitView({ id }: { id: string }) {
     setSubmitting(true)
     setSubmitError(null)
     try {
-      if (!(await ensureSession())) {
-        setSubmitError("Approve the wallet signature to submit your work.")
+      const gate = await ensureSessionDetailed()
+      if (!gate.ok) {
+        setSubmitError(signInDidNotComplete("your work was not submitted", gate))
         setSubmitting(false)
         return
       }

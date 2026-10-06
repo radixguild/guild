@@ -18,6 +18,7 @@ import { apiFetch } from "@/lib/api-fetch"
 import { formatXrdAmount } from "@/lib/format-xrd-usd"
 import { isEnabled } from "@/lib/features"
 import { useWallet } from "@/hooks/useWallet"
+import { signInDidNotComplete } from "@/lib/session-outcome"
 import { useXrdUsd } from "@/lib/use-xrd-usd"
 import {
   FUNDING_GRACE_WINDOW_SECS,
@@ -60,7 +61,7 @@ export default function FundPoolPage({ params }: { params: Promise<{ id: string 
 }
 
 function PoolDetailContent({ id }: { id: string }) {
-  const { authed, ensureSession, sessionMismatch, user } = useWallet()
+  const { authed, ensureSessionDetailed, sessionMismatch, user } = useWallet()
   const usd = useXrdUsd()
   const [detail, setDetail] = useState<PoolDetail | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -118,8 +119,9 @@ function PoolDetailContent({ id }: { id: string }) {
   async function post(path: string, body?: unknown) {
     setActionError(null)
     setFlash(null)
-    if (!(await ensureSession())) {
-      setActionError("Approve the wallet signature to continue.")
+    const gate = await ensureSessionDetailed()
+    if (!gate.ok) {
+      setActionError(signInDidNotComplete("nothing was changed", gate))
       return
     }
     setSubmitting(true)

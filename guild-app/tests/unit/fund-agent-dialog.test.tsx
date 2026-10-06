@@ -1,3 +1,4 @@
+import { sessionFailure } from "@/lib/session-outcome"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, cleanup, fireEvent, act } from "@testing-library/react"
 import "@testing-library/jest-dom/vitest"
@@ -18,6 +19,7 @@ const H = vi.hoisted(() => ({
   fetch: vi.fn(),
   send: vi.fn(),
   ensureSession: vi.fn(async () => true),
+  ensureSessionDetailed: vi.fn(async () => ({ ok: true })),
   wallet: { sessionMismatch: false, userId: "" as string | null },
   halt: { halted: false as boolean | null, operatorHalt: false },
   balance: 1000 as number | null,
@@ -29,6 +31,7 @@ vi.mock("@/hooks/useWallet", () => ({
     rdt: { walletApi: { sendTransaction: H.send } },
     user: H.wallet.userId ? { id: H.wallet.userId } : null,
     ensureSession: H.ensureSession,
+    ensureSessionDetailed: H.ensureSessionDetailed,
     sessionMismatch: H.wallet.sessionMismatch,
   }),
 }))
@@ -113,6 +116,7 @@ beforeEach(() => {
   H.fetch.mockReset()
   H.send.mockReset()
   H.ensureSession.mockReset().mockResolvedValue(true)
+  H.ensureSessionDetailed.mockReset().mockResolvedValue({ ok: true })
   H.wallet.sessionMismatch = false
   H.wallet.userId = OWNER
   H.halt.halted = false
@@ -193,7 +197,7 @@ describe("funding", () => {
     H.send.mockResolvedValue(walletOk())
     const onChanged = await openDialog()
     await pressFund()
-    expect(H.ensureSession).toHaveBeenCalled()
+    expect(H.ensureSessionDetailed).toHaveBeenCalled()
     expect(H.send).toHaveBeenCalledWith({ transactionManifest: pairAgentManifest(MANAGER, OWNER, AGENT, "scout", "200"), version: 1 })
     expect(screen.getByRole("status")).toHaveTextContent("no need to sign again")
     await flush(0)
@@ -295,12 +299,13 @@ describe("funding", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("once the Guild releases this pairing, in about 22 hours, pair the agent again")
   })
 
-  it("a declined sign-in writes nothing", async () => {
-    H.ensureSession.mockResolvedValue(false)
+  it("a declined sign-in writes nothing, and says so with the reason", async () => {
+    H.ensureSessionDetailed.mockResolvedValue(sessionFailure("wallet-declined"))
     server({ funded: [refused(409, "FUNDING_NOT_FOUND")] })
     await openDialog()
     await pressFund()
-    expect(screen.getByRole("alert")).toHaveTextContent("Approve the wallet signature")
+    expect(screen.getByRole("alert")).toHaveTextContent("Sign-in didn't complete, so nothing was funded")
+    expect(screen.getByRole("alert")).toHaveTextContent(/declined the sign-in request/i)
     expect(manifestCalls()).toHaveLength(0)
   })
 

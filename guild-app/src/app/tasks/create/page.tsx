@@ -31,6 +31,7 @@ import { createStepBlockers, isFieldBlocked, type CreateBlockerField } from "@/l
 import { useXrdUsd } from "@/lib/use-xrd-usd"
 import { XrdAmount } from "@/components/XrdAmount"
 import { useWallet } from "@/hooks/useWallet"
+import { signInDidNotComplete } from "@/lib/session-outcome"
 import { useEscrowPostingFrozen } from "@/hooks/useEscrowPostingFrozen"
 import {
   PostingPausedNotice,
@@ -96,7 +97,7 @@ function DeepLinkParamsReader({ onResolve }: { onResolve: (params: URLSearchPara
 
 function CreateTaskContent() {
   const router = useRouter()
-  const { ensureSession } = useWallet()
+  const { ensureSessionDetailed } = useWallet()
   // Client-side XRD→USD rate (fails open to null → XRD-only preview).
   const { rate: usdRate, stale: usdStale, ageSeconds: usdAgeSeconds, source: usdSource } = useXrdUsd()
   // W3 freeze: warn BEFORE the poster drafts, not at the fund step.
@@ -265,8 +266,9 @@ function CreateTaskContent() {
     if (projectId !== null) body.project_id = projectId
     if (workingGroupId !== null) body.working_group_id = workingGroupId
     try {
-      if (!(await ensureSession())) {
-        setSubmitError("Approve the wallet signature to post a task.")
+      const gate = await ensureSessionDetailed()
+      if (!gate.ok) {
+        setSubmitError(signInDidNotComplete("no task was posted", gate))
         return
       }
       const res = await apiFetch("/api/v1/tasks", {

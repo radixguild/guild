@@ -12,11 +12,12 @@ const W = vi.hoisted(() => ({
   connected: true,
   account: "account_rdx1owner" as string | null,
   signIn: vi.fn(async () => true),
+  signInDetailed: vi.fn(async () => ({ ok: true })),
   fetch: vi.fn(),
 }))
 
 vi.mock("@/hooks/useWallet", () => ({
-  useWallet: () => ({ connected: W.connected, account: W.account, signIn: W.signIn }),
+  useWallet: () => ({ connected: W.connected, account: W.account, signIn: W.signIn, signInDetailed: W.signInDetailed }),
 }))
 vi.mock("@/lib/api-fetch", () => ({ apiFetch: (...a: unknown[]) => W.fetch(...a) }))
 // A retired card reads its agent's balance from the Gateway (A2.4c): never the network in a unit test.
@@ -137,7 +138,7 @@ describe("MyAgentsSection", () => {
     const button = await screen.findByRole("button", { name: "Sign in" })
     button.click()
     expect(await screen.findByTestId("agent-card")).toBeInTheDocument()
-    expect(W.signIn).toHaveBeenCalledOnce()
+    expect(W.signInDetailed).toHaveBeenCalledOnce()
   })
 
   it("403 ACCOUNT_SUSPENDED → the server's own message, not a generic failure", async () => {
