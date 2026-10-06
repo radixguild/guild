@@ -464,8 +464,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const ensureSessionDetailed = useCallback(async (): Promise<SessionOutcome> => {
     const shared = sharedAccountsRef.current;
     const u = userRef.current;
-    if (u && (shared.length === 0 || shared.includes(u.id))) return SESSION_OK;
-    if (await hydrateSession()) return SESSION_OK;
+    // Each ok names the session it left in place (userId) — the escrow buttons
+    // refuse to send when that is not the account they were pressed under.
+    if (u && (shared.length === 0 || shared.includes(u.id))) return { ok: true, userId: u.id };
+    const hydrated = await hydrateSession();
+    if (hydrated) return { ok: true, userId: hydrated.id };
     const signed = await signInDetailed();
     if (!signed.ok) return signed;
     // The wallet lets the user sign the proof with ANY of its accounts —
@@ -478,7 +481,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     // while the wallet prompt was open.
     const sharedNow = sharedAccountsRef.current;
     const fresh = userRef.current;
-    if (sharedNow.length === 0 || (!!fresh && sharedNow.includes(fresh.id))) return SESSION_OK;
+    if (sharedNow.length === 0 || (!!fresh && sharedNow.includes(fresh.id))) {
+      return fresh ? { ok: true, userId: fresh.id } : SESSION_OK;
+    }
     return sessionFailure(
       "account-mismatch",
       fresh ? `signed in as ${fresh.id}; the wallet shares ${sharedNow.join(", ")}` : "no session user after verify",

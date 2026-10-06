@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { fetchEntityDetails, fetchNftData, parseBadgeFields, loadUserBadge, loadUserBadgeResult, loadAllBadgesStrict, holdsFungibleBadgeResult, findClaimReceiptId, holdsClaimReceipt, verifyEscrowEvent, readEscrowTaskCreated, readDisputeRaised, readDisputeAutoResolved, readEscrowTaskState, readEscrowTaskInfo, readOnChainClaimInfo, outstandingForParty } from '@/lib/gateway'
+import { fetchEntityDetails, fetchNftData, parseBadgeFields, loadUserBadge, loadUserBadgeResult, loadAllBadgesStrict, holdsFungibleBadgeResult, findClaimReceiptId, holdsClaimReceipt, verifyEscrowEvent, readEscrowTaskCreated, readDisputeRaised, readDisputeEvidenceCommitment, readDisputeAutoResolved, readEscrowTaskState, readEscrowTaskInfo, readOnChainClaimInfo, outstandingForParty } from '@/lib/gateway'
 import { GATEWAY, SCHEMAS } from '@/lib/constants'
 
 describe('lib/gateway', () => {
@@ -566,6 +566,7 @@ describe('lib/gateway', () => {
 
   describe('readEscrowTaskCreated — emitter pin', () => {
     const ESCROW = 'component_rdx1escrow'
+    const POSTER = 'account_rdx12posterposterposterposterposterposter'
     const XRD = 'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
 
     it('reads task_id + reward + reward token + insurance from a TaskCreatedEvent emitted by the escrow component', async () => {
@@ -585,6 +586,10 @@ describe('lib/gateway', () => {
                   { field_name: 'reward_token', kind: 'Reference', type_name: 'ResourceAddress', value: XRD },
                   { field_name: 'reward_amount', kind: 'Decimal', value: '10.5' },
                   { field_name: 'insurance_amount', kind: 'Decimal', value: '0.525' },
+                  // poster: ComponentAddress (a Reference); work_brief_hash: Hash,
+                  // which programmatic JSON renders as Bytes with a `hex` string.
+                  { field_name: 'poster', kind: 'Reference', type_name: 'ComponentAddress', value: POSTER },
+                  { field_name: 'work_brief_hash', kind: 'Bytes', type_name: 'Hash', element_kind: 'U8', hex: 'AB'.repeat(32) },
                 ] } },
               }],
             },
@@ -597,7 +602,36 @@ describe('lib/gateway', () => {
         rewardAmount: '10.5',
         rewardToken: XRD,
         insuranceAmount: '0.525',
+        poster: POSTER,
+        workBriefHash: 'ab'.repeat(32),
       })
+    })
+
+    it('reads a malformed poster or work_brief_hash as null (unknown) — the create confirm then refuses', async () => {
+      fetchSpy.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          transaction: {
+            transaction_status: 'CommittedSuccess',
+            receipt: {
+              events: [{
+                name: 'TaskCreatedEvent',
+                emitter: { entity: { entity_address: ESCROW } },
+                data: { programmatic_json: { fields: [
+                  { field_name: 'task_id', value: '42' },
+                  { field_name: 'poster', value: 'not-an-address' },
+                  // Right length, wrong place: a Hash is under `hex`, never `value`.
+                  { field_name: 'work_brief_hash', kind: 'Bytes', value: 'ab'.repeat(32) },
+                ] } },
+              }],
+            },
+          },
+        }),
+      } as Response)
+
+      const read = await readEscrowTaskCreated('txid_rdx1abc', ESCROW)
+      expect(read?.poster).toBeNull()
+      expect(read?.workBriefHash).toBeNull()
     })
 
     it('reads a malformed reward_token as null (unknown), never as the raw value', async () => {
@@ -649,6 +683,8 @@ describe('lib/gateway', () => {
         rewardAmount: '10.5',
         rewardToken: null,
         insuranceAmount: null,
+        poster: null,
+        workBriefHash: null,
       })
     })
 
@@ -669,6 +705,49 @@ describe('lib/gateway', () => {
       } as Response)
 
       expect(await readEscrowTaskCreated('txid_rdx1abc', ESCROW)).toBeNull()
+    })
+  })
+
+  describe('readDisputeEvidenceCommitment — who raised it + the committed statement hash', () => {
+    const ESCROW = 'component_rdx1escrow'
+    const tx = (fields: unknown[], emitter = ESCROW) => ({
+      transaction: {
+        transaction_status: 'CommittedSuccess',
+        receipt: { events: [{ name: 'DisputeRaisedEvent', emitter: { entity: { entity_address: emitter } }, data: { programmatic_json: { fields } } }] },
+      },
+    })
+    const mockTx = (payload: unknown) =>
+      fetchSpy.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(payload) } as Response)
+    const base = [
+      { field_name: 'task_id', value: '42' },
+      { field_name: 'raised_by', variant_id: '1', variant_name: 'Worker', fields: [] },
+    ]
+
+    it('reads Some(Hash) as lowercase hex (Bytes under `hex`)', async () => {
+      mockTx(tx([...base, { field_name: 'dispute_evidence_hash', kind: 'Enum', type_name: 'Option', variant_id: '1', variant_name: 'Some', fields: [{ kind: 'Bytes', element_kind: 'U8', hex: 'CD'.repeat(32) }] }]))
+      expect(await readDisputeEvidenceCommitment('txid_rdx1dis', ESCROW, 42)).toEqual({ raisedBy: 'Worker', evidenceHash: 'cd'.repeat(32) })
+    })
+
+    it('reads None as a CONFIRMED absence (evidenceHash null), not as unreadable', async () => {
+      mockTx(tx([...base, { field_name: 'dispute_evidence_hash', kind: 'Enum', variant_id: '0', variant_name: 'None', fields: [] }]))
+      expect(await readDisputeEvidenceCommitment('txid_rdx1dis', ESCROW, 42)).toEqual({ raisedBy: 'Worker', evidenceHash: null })
+    })
+
+    it.each([
+      ['a missing Option field', base],
+      ['a Some with malformed bytes', [...base, { field_name: 'dispute_evidence_hash', variant_name: 'Some', fields: [{ kind: 'Bytes', hex: 'xyz' }] }]],
+      ['an unknown variant', [...base, { field_name: 'dispute_evidence_hash', variant_name: 'Maybe', fields: [] }]],
+    ])('returns null (unreadable) for %s — the route then stores nothing', async (_what, fields) => {
+      mockTx(tx(fields as unknown[]))
+      expect(await readDisputeEvidenceCommitment('txid_rdx1dis', ESCROW, 42)).toBeNull()
+    })
+
+    it('holds the emitter and task_id pins', async () => {
+      const some = { field_name: 'dispute_evidence_hash', variant_name: 'Some', fields: [{ kind: 'Bytes', hex: 'cd'.repeat(32) }] }
+      mockTx(tx([...base, some], 'component_rdx1lookalike'))
+      expect(await readDisputeEvidenceCommitment('txid_rdx1dis', ESCROW, 42)).toBeNull()
+      mockTx(tx([...base, some]))
+      expect(await readDisputeEvidenceCommitment('txid_rdx1dis', ESCROW, 43)).toBeNull()
     })
   })
 

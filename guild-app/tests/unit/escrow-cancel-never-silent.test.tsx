@@ -86,6 +86,7 @@ import {
   CANCEL_SIGN_IN_INCOMPLETE,
   CANCEL_WALLET_WAIT_HINT,
   CANCEL_NOT_CANCELLABLE,
+  CANCEL_VOIDS_LIVE_CLAIM,
   WALLET_WAIT_HINT_MS,
   SIGN_IN_LEAD,
   TX_BACKSTOP,
@@ -290,14 +291,32 @@ describe("EscrowCancelButton — the chain, not the DB row, decides which cancel
     mockSendCancelTx.mockResolvedValue({ ok: true, txId: "txid_rdx1cancel" })
   })
 
-  it("DB says open, chain says Claimed → sends cancel_task_by_poster_after_claim, not the method that would revert", async () => {
-    // The lag case: a claim whose confirm was lost leaves the row "open".
+  it("DB says open, chain says Claimed → the first press sends NOTHING: it says a worker's claim would be voided, resyncs, and shows the claimed-task copy (GM-7)", async () => {
+    // The lag case: a claim whose confirm was lost leaves the row "open". The
+    // method that applies voids that worker's claim, which the open-task copy
+    // never said — so the poster must see it before anything is sent.
     G.readEscrowTaskState.mockResolvedValue("Claimed")
     renderCancel("open")
     fireEvent.click(cancelButton())
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent(CANCEL_VOIDS_LIVE_CLAIM)
+    expect(alert).toHaveTextContent(/no cancel transaction was sent/i)
+    expect(mockSendCancelTx).not.toHaveBeenCalled()
+    expect(mockResyncEscrowTask).toHaveBeenCalledWith(70)
+    expect(G.readEscrowTaskState).toHaveBeenCalledWith(ON_CHAIN_TASK_ID, expect.any(String))
+    // The button and its description now carry the claimed-task copy.
+    expect(cancelButton("claimed")).not.toBeDisabled()
+    expect(screen.getByText(settlementCopy("cancelDescriptionClaimed")!)).toBeInTheDocument()
+  })
+
+  it("…and the second press, made under the claimed copy, sends cancel_task_by_poster_after_claim — not the method that would revert", async () => {
+    G.readEscrowTaskState.mockResolvedValue("Claimed")
+    renderCancel("open")
+    fireEvent.click(cancelButton())
+    await screen.findByRole("alert")
+    fireEvent.click(cancelButton("claimed"))
     await waitFor(() => expect(mockSendCancelTx).toHaveBeenCalledTimes(1))
     expect(mockSendCancelTx.mock.calls[0][0]).toMatchObject({ phase: "claimed", taskId: ON_CHAIN_TASK_ID })
-    expect(G.readEscrowTaskState).toHaveBeenCalledWith(ON_CHAIN_TASK_ID, expect.any(String))
   })
 
   it("DB says claimed, chain says Open → cancel_task", async () => {
@@ -372,6 +391,7 @@ describe("the cancel-path copy clears the real honest-copy rule table", () => {
     CANCEL_SIGN_IN_INCOMPLETE,
     CANCEL_WALLET_WAIT_HINT,
     CANCEL_NOT_CANCELLABLE,
+    CANCEL_VOIDS_LIVE_CLAIM,
     ...["missingExtension", "SupportedTransportNotFound", "FailedToSendDappRequest", "canceledByUser"].map(
       (c) => humanizeTxError(toolkitError(c)).summary,
     ),

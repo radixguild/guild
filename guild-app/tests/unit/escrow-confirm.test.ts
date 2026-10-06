@@ -17,7 +17,7 @@
  * Mocks sit at the same seams as the route tests: @/db (transaction),
  * @/db/queries/{tasks,escrow}, @/lib/gateway.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest"
 
 // The core wraps each multi-write confirm kind in db.transaction. Hand the
 // callback a recognizable sentinel so tests can assert the task update and the
@@ -80,6 +80,17 @@ import { applyEscrowConfirm, classifyEscrowEvent, ALLOWED_FROM, REFLECTED_IN, KI
 import { EVENT_TO_KIND } from "@/lib/escrow-resync"
 import { ESCROW_COMPONENT, ESCROW_CLAIM_RECEIPT_RESOURCE } from "@/lib/config"
 import { XRD_ADDRESS } from "@/lib/radix"
+import { workBriefHashHex } from "@/lib/work-brief"
+
+// The stored text the create tests' rows carry, and the work_brief_hash a
+// create_task over that text commits (v1 layout: no terms, no deadline).
+// Computed through the shared derivation in beforeAll; the binding tests below
+// pin it against an independent node:crypto hash too.
+const ROW_TEXT = { title: "Fix the flaky test", description: "Make CI green.", terms: null, deadline: null }
+let ROW_BRIEF_HASH = ""
+beforeAll(async () => {
+  ROW_BRIEF_HASH = await workBriefHashHex(ROW_TEXT.title, ROW_TEXT.description, "")
+})
 
 const RECONCILER: EscrowActor = { kind: "reconciler" }
 const asUser = (userId: string): EscrowActor => ({ kind: "user", userId })
@@ -664,18 +675,21 @@ describe("applyEscrowConfirm — create (component pinning)", () => {
       Promise.resolve({ id, onChainTaskId, escrowComponent }),
     )
     mockRecordConfirmedEscrowTx.mockResolvedValue({ row: { id: 99 }, inserted: true })
-    // Escrows exactly what task() advertises ("10" XRD) — the chain's spelling.
+    // Escrows exactly what task() advertises ("10" XRD) — the chain's spelling —
+    // from the row's creator, over the row's own brief.
     mockReadEscrowTaskCreated.mockResolvedValue({
       taskId: 7,
       rewardAmount: "10",
       rewardToken: XRD_ADDRESS,
       insuranceAmount: "1",
+      poster: "account_rdx1poster",
+      workBriefHash: ROW_BRIEF_HASH,
     })
   })
 
   it("captures onChainTaskId AND escrowComponent in one transaction (CAS on unset)", async () => {
     const result = await applyEscrowConfirm(
-      task({ onChainTaskId: null }),
+      task({ onChainTaskId: null, ...ROW_TEXT }),
       "create",
       "txid_rdx1fund",
       asUser("account_rdx1poster"),
@@ -698,7 +712,7 @@ describe("applyEscrowConfirm — create (component pinning)", () => {
     mockCaptureEscrowIdIfUnset.mockResolvedValue(null)
 
     const result = await applyEscrowConfirm(
-      task({ onChainTaskId: 42 }), // already funded (id 42); this event carries 7
+      task({ onChainTaskId: 42, ...ROW_TEXT }), // already funded (id 42); this event carries 7
       "create",
       "txid_rdx1fund2",
       asUser("account_rdx1poster"),
@@ -745,11 +759,13 @@ describe("applyEscrowConfirm — create (funding parity)", () => {
     rewardAmount: "6400",
     rewardToken: XRD_ADDRESS,
     insuranceAmount: "320",
+    poster: "account_rdx1poster",
+    workBriefHash: ROW_BRIEF_HASH,
     ...over,
   })
   const confirmCreate = (row: Record<string, unknown>) =>
     applyEscrowConfirm(
-      task({ onChainTaskId: null, ...row }),
+      task({ onChainTaskId: null, ...ROW_TEXT, ...row }),
       "create",
       "txid_rdx1fund",
       asUser("account_rdx1poster"),
@@ -814,6 +830,120 @@ describe("applyEscrowConfirm — create (funding parity)", () => {
     expect(result).toMatchObject({ ok: false, code: "FUNDED_REWARD_UNREADABLE", httpStatus: 422 })
     expect(mockCaptureEscrowIdIfUnset).not.toHaveBeenCalled()
     expect(mockRecordConfirmedEscrowTx).not.toHaveBeenCalled()
+  })
+})
+
+// ── create confirm — poster + work-brief binding (2026-10-06, GM-1) ────────────
+// A create tx's intent hash is public. Before these pins, the only authority
+// check was "the caller owns the row", so anyone could link their own row (same
+// reward, their own text) to another poster's unlinked create_task and the row
+// read Funded — with a brief no submit could ever match. The event's `poster`
+// must be the row's creator and its `work_brief_hash` the row's own brief.
+describe("applyEscrowConfirm — create (poster + work-brief binding)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockDbTransaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(TX))
+    mockCaptureEscrowIdIfUnset.mockImplementation((id: number, onChainTaskId: number, escrowComponent: string) =>
+      Promise.resolve({ id, onChainTaskId, escrowComponent }),
+    )
+    mockRecordConfirmedEscrowTx.mockResolvedValue({ row: { id: 99 }, inserted: true })
+  })
+
+  const created = (over: Record<string, unknown> = {}) => ({
+    taskId: 9,
+    rewardAmount: "10",
+    rewardToken: XRD_ADDRESS,
+    insuranceAmount: "1",
+    poster: "account_rdx1poster",
+    workBriefHash: ROW_BRIEF_HASH,
+    ...over,
+  })
+  const confirmCreate = (row: Record<string, unknown> = {}, caller = "account_rdx1poster") =>
+    applyEscrowConfirm(
+      task({ onChainTaskId: null, ...ROW_TEXT, ...row }),
+      "create",
+      "txid_rdx1someonescreate",
+      asUser(caller),
+    )
+  const expectNothingLinked = () => {
+    expect(mockDbTransaction).not.toHaveBeenCalled()
+    expect(mockCaptureEscrowIdIfUnset).not.toHaveBeenCalled()
+    expect(mockRecordConfirmedEscrowTx).not.toHaveBeenCalled()
+  }
+
+  it("the shared derivation matches an independent sha256 of the frozen v1 layout", async () => {
+    const { createHash } = await import("node:crypto")
+    const expected = createHash("sha256")
+      .update(`guild-task-brief-v1\n${ROW_TEXT.title}\n\n${ROW_TEXT.description}`, "utf8")
+      .digest("hex")
+    expect(ROW_BRIEF_HASH).toBe(expected)
+  })
+
+  it("links when the poster is the row's creator and the hash is the row's brief (happy path)", async () => {
+    mockReadEscrowTaskCreated.mockResolvedValue(created())
+    const result = await confirmCreate()
+    expect(result.ok).toBe(true)
+    expect(mockCaptureEscrowIdIfUnset).toHaveBeenCalledWith(1, 9, ESCROW_COMPONENT, TX)
+  })
+
+  it("409 CREATE_POSTER_MISMATCH: a row owner cannot link ANOTHER poster's create tx — nothing linked", async () => {
+    // The attack: A owns row 1 (same reward), B funded on-chain and lost the confirm.
+    mockReadEscrowTaskCreated.mockResolvedValue(created({ poster: "account_rdx1someoneelse" }))
+    const result = await confirmCreate()
+    expect(result).toMatchObject({ ok: false, code: "CREATE_POSTER_MISMATCH", httpStatus: 409 })
+    // Never tells the attacker the escrowed funds are theirs.
+    expect(result.ok ? "" : result.message).not.toMatch(/still yours/i)
+    expectNothingLinked()
+  })
+
+  it("409 WORK_BRIEF_MISMATCH: the poster's own create, committed to a different brief than this row — nothing linked", async () => {
+    mockReadEscrowTaskCreated.mockResolvedValue(created({ workBriefHash: "ab".repeat(32) }))
+    const result = await confirmCreate()
+    expect(result).toMatchObject({ ok: false, code: "WORK_BRIEF_MISMATCH", httpStatus: 409 })
+    expectNothingLinked()
+  })
+
+  it("compares against the STORED text: an edited description no longer matches the committed hash", async () => {
+    mockReadEscrowTaskCreated.mockResolvedValue(created())
+    const result = await confirmCreate({ description: "Make CI green. (edited)" })
+    expect(result).toMatchObject({ ok: false, code: "WORK_BRIEF_MISMATCH" })
+    expectNothingLinked()
+  })
+
+  it("v2 rows: terms + deadline fold into the hash exactly as the fund button commits them", async () => {
+    const terms = { deliverableType: "code" as const, acceptanceCriteria: ["tests pass"] }
+    const deadline = new Date("2026-11-01T12:00:00.000Z")
+    // What the task page hands sendDepositTx: canonicalTermsBlock over the
+    // stored terms + deadline, v2 because the block is non-empty.
+    const { canonicalTermsBlock } = await import("@/lib/task-terms")
+    const { canonicalWorkBriefV2, sha256Hex } = await import("@/lib/work-brief")
+    const block = canonicalTermsBlock(terms, { dueIso: deadline.toISOString() })
+    const v2 = await sha256Hex(canonicalWorkBriefV2(ROW_TEXT.title, ROW_TEXT.description, block))
+    mockReadEscrowTaskCreated.mockResolvedValue(created({ workBriefHash: v2 }))
+    expect((await confirmCreate({ terms, deadline })).ok).toBe(true)
+
+    // The same row hashed as v1 (terms ignored) must NOT match.
+    vi.clearAllMocks()
+    mockDbTransaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(TX))
+    mockReadEscrowTaskCreated.mockResolvedValue(created({ workBriefHash: ROW_BRIEF_HASH }))
+    expect(await confirmCreate({ terms, deadline })).toMatchObject({ ok: false, code: "WORK_BRIEF_MISMATCH" })
+    expectNothingLinked()
+  })
+
+  it.each([
+    ["poster", { poster: null }, "CREATE_POSTER_UNREADABLE"],
+    ["work_brief_hash", { workBriefHash: null }, "WORK_BRIEF_UNREADABLE"],
+  ])("422 when the event's %s is unreadable — fail closed, never linked", async (_what, over, code) => {
+    mockReadEscrowTaskCreated.mockResolvedValue(created(over))
+    const result = await confirmCreate()
+    expect(result).toMatchObject({ ok: false, code, httpStatus: 422 })
+    expectNothingLinked()
+  })
+
+  it("the poster check runs before reward parity: a mismatched poster never gets the 'funds are yours' line", async () => {
+    mockReadEscrowTaskCreated.mockResolvedValue(created({ poster: "account_rdx1someoneelse", rewardAmount: "1" }))
+    const result = await confirmCreate()
+    expect(result).toMatchObject({ code: "CREATE_POSTER_MISMATCH" })
   })
 })
 

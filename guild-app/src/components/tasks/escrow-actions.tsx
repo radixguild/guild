@@ -1,7 +1,7 @@
 "use client"
 
 import { settlementCopy } from "@/lib/settlement-copy";
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -240,6 +240,7 @@ export const TX_BACKSTOP =
 /** Each button's own certain fact when sign-in does not complete: what was NOT sent. */
 export const SIGN_IN_LEAD = {
   fund: "Sign-in didn't complete, so no funding transaction was sent to your wallet.",
+  link: "Sign-in didn't complete, so your funding is not linked to this task yet.",
   claim: "Sign-in didn't complete, so no claim transaction was sent to your wallet.",
   submit: "Sign-in didn't complete, so no submit transaction was sent to your wallet.",
   approve: "Sign-in didn't complete, so no approval transaction was sent to your wallet.",
@@ -255,6 +256,7 @@ export const SIGN_IN_LEAD = {
 /** The last sentence of each button's wait hint: what is not done until the wallet approves. */
 export const WAIT_CLOSING = {
   fund: "Nothing is funded until you approve it in the wallet.",
+  link: "Nothing is linked until you approve the sign-in in the wallet.",
   claim: "Nothing is claimed until you approve it in the wallet.",
   submit: "Nothing is submitted until you approve it in the wallet.",
   approve: "Nothing is released until you approve it in the wallet.",
@@ -282,6 +284,26 @@ export function signInIncomplete(lead: string, failure?: SessionFailure): string
 }
 
 /**
+ * The sign-in the gate just ran was proven with a DIFFERENT shared account than
+ * the one this button was rendered for (GM-6, 2026-10-06). The wallet lets the
+ * person sign the proof with any shared account, and the session — and the
+ * page's `account` — follow it, but the running handler still holds the
+ * account it was pressed under. Sending would withdraw from and name that
+ * account, then confirm under the other one's session: a create the server
+ * refuses (not the creator), a claim it cannot attribute. Stop before the
+ * wallet is asked for anything.
+ */
+export function accountSwitchedSentence(signedInAs: string, pressedAs: string): string {
+  return `You signed in as ${formatAddress(signedInAs)}, but this button was for ${formatAddress(pressedAs)}, so no transaction was sent to your wallet. The page now follows the account you signed in with: check it is the one you meant, then press again.`
+}
+
+function switchedAccount(gate: { userId?: string }, pressedAs: string | null): string | null {
+  return gate.userId && pressedAs && gate.userId !== pressedAs
+    ? accountSwitchedSentence(gate.userId, pressedAs)
+    : null
+}
+
+/**
  * Under a still-spinning button once the wallet has gone WALLET_WAIT_HINT_MS
  * without answering. Before it, a request the toolkit could not deliver left
  * "…ing" on screen indefinitely, with nothing to check and the button disabled.
@@ -295,6 +317,75 @@ export function walletWaitHint(closing: string): string {
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
+
+// ── A committed create whose confirm did not land (GM-2, 2026-10-06) ──────────
+//
+// create_task commits the reward + insurance BEFORE the confirm links the
+// on-chain task to this row. When that confirm failed (a Gateway lag past its
+// retries, a server error, a network drop), the row still read unfunded, so a
+// refresh offered Fund Escrow again — and a second press locked the reward a
+// second time, leaving the first escrow with no row the site could show. The
+// committed intent hash is now kept (this browser, keyed by task) the moment
+// the wallet returns it, and while it is kept the button offers to finish
+// linking THAT transaction instead of funding again.
+
+const pendingCreateKey = (taskId: string) => `guild:escrow:pending-create:${taskId}`
+
+/** The kept intent hash for this task, or null. Never throws (storage may be blocked). */
+export function readPendingCreate(taskId: string): string | null {
+  try {
+    const v = window.localStorage.getItem(pendingCreateKey(taskId))
+    return v && /^txid_[a-z0-9_]+$/.test(v) ? v : null
+  } catch {
+    return null
+  }
+}
+
+// A tiny external store over that key, so the button reads it with
+// useSyncExternalStore (hydration-safe: the server snapshot is null) and
+// re-renders on a write here or in another tab.
+const pendingCreateListeners = new Set<() => void>()
+function subscribePendingCreate(onChange: () => void): () => void {
+  pendingCreateListeners.add(onChange)
+  window.addEventListener("storage", onChange)
+  return () => {
+    pendingCreateListeners.delete(onChange)
+    window.removeEventListener("storage", onChange)
+  }
+}
+function notifyPendingCreate() {
+  for (const onChange of pendingCreateListeners) onChange()
+}
+
+function writePendingCreate(taskId: string, txId: string) {
+  try {
+    window.localStorage.setItem(pendingCreateKey(taskId), txId)
+  } catch {
+    // Blocked storage: the button's in-memory copy still covers this page view.
+  }
+  notifyPendingCreate()
+}
+
+function clearPendingCreate(taskId: string) {
+  try {
+    window.localStorage.removeItem(pendingCreateKey(taskId))
+  } catch {
+    // Nothing to clear.
+  }
+  notifyPendingCreate()
+}
+
+/** Shown when the funding committed but linking it to the task did not. */
+export const FUND_NOT_LINKED =
+  "Your funding transaction went through, but this page could not link it to the task yet, so the task does not show as funded. Don't fund it again: press Finish linking your funding to retry with the same transaction."
+
+/** The confirm refused for a reason a retry will not change (a deterministic 409). */
+const FUND_LINK_REFUSED_CODES = new Set([
+  "FUNDED_REWARD_MISMATCH",
+  "CREATE_POSTER_MISMATCH",
+  "WORK_BRIEF_MISMATCH",
+  "CONFLICT",
+])
 
 export function EscrowDepositButton({
   taskId,
@@ -339,6 +430,16 @@ export function EscrowDepositButton({
   // below, same as the other hooks here (rules of hooks) — it degrades to
   // `checked: false` on its own when `account` is null.
   const { balance: xrdBalance, checked: balanceChecked, recheck: recheckXrdBalance } = useXrdBalance(account)
+  // The committed-but-unlinked create for this task: the copy this browser
+  // kept (storage is client-only, so the server snapshot is null), or the
+  // in-memory one from this page view when storage is blocked.
+  const storedPendingTx = useSyncExternalStore(
+    subscribePendingCreate,
+    () => readPendingCreate(taskId),
+    () => null,
+  )
+  const [memPendingTx, setPendingTx] = useState<string | null>(null)
+  const pendingTx = memPendingTx ?? storedPendingTx
 
   if (!isEscrowDeployed()) return null
   // W3 freeze: while XRD is frozen on the escrow, create_task reverts for
@@ -367,7 +468,9 @@ export function EscrowDepositButton({
           : "Connect your wallet to fund the escrow."}
       </div>
     )
-  if (posterId && account !== posterId) return null
+  // A press that stopped on an account switch keeps its sentence on screen
+  // even though the switch now hides this poster-only button.
+  if (posterId && account !== posterId) return summary ? <TxError error="" summary={summary} /> : null
   if (sessionMismatch) return <SessionMismatchAlert />
 
   // Sized against the EXACT amount sendDepositTx will lock: reward plus
@@ -430,25 +533,125 @@ export function EscrowDepositButton({
       setLoading(false)
       return
     }
+    const switched = switchedAccount(gate, account)
+    if (switched) {
+      setSummary(switched)
+      setLoading(false)
+      return
+    }
     const result = await walletWait.during(sendDepositTx({ rewardXrd, title, description, termsBlock, account: account!, rdt: rdt! }))
     if (!result.ok) {
       setError(result.error ?? "Deposit failed")
       setLoading(false)
       return
     }
+    // Committed: keep the intent hash BEFORE the confirm, so a failed confirm
+    // (or a closed tab) can never bring Fund Escrow back for a second lock.
+    writePendingCreate(taskId, result.txId!)
+    setPendingTx(result.txId!)
     // Capture the blueprint-assigned on-chain task_id (retries past commit lag).
-    const confirm = await confirmEscrowTx(taskId, "create", result.txId!)
+    await linkFunding(result.txId!)
+  }
+
+  // Link a committed create to this row — the deposit's own follow-up, and the
+  // "Finish linking your funding" button's whole job (no transaction is sent).
+  async function linkFunding(intentHash: string) {
+    const confirm = await confirmEscrowTx(taskId, "create", intentHash)
     if (!confirm.ok) {
-      setError(`Funded, but capturing the on-chain task id failed: ${confirm.error}. Refresh shortly.`)
+      setSummary(
+        confirm.code && FUND_LINK_REFUSED_CODES.has(confirm.code)
+          ? `This page cannot link that funding transaction to this task: ${confirm.error}`
+          : FUND_NOT_LINKED,
+      )
+      setError(confirm.error ?? "")
       setLoading(false)
       return
     }
-    setTxId(result.txId!)
-    onSuccess?.(result.txId!)
+    clearPendingCreate(taskId)
+    setPendingTx(null)
+    setTxId(intentHash)
+    onSuccess?.(intentHash)
     setLoading(false)
   }
 
+  async function handleFinishLinking() {
+    if (!pendingTx) return
+    setLoading(true)
+    setError("")
+    // The confirm route is withAuth; this sends no transaction.
+    const gate = await walletWait.during(ensureSessionDetailed())
+    if (!gate.ok) {
+      setSummary(signInIncomplete(SIGN_IN_LEAD.link, gate))
+      setError(gate.detail ?? "")
+      setLoading(false)
+      return
+    }
+    // Only the creator can link (the confirm refuses anyone else), so a
+    // sign-in that switched accounts says so instead of asking the server.
+    if (gate.userId && account && gate.userId !== account) {
+      setSummary(
+        `You signed in as ${formatAddress(gate.userId)}, but this page was showing ${formatAddress(account)} when you pressed, so nothing was linked. Only the task's poster can link its funding: sign in with that account and press Finish linking your funding again.`,
+      )
+      setLoading(false)
+      return
+    }
+    await linkFunding(pendingTx)
+  }
+
   if (txId) return <TxSuccess label="Escrow funded." txId={txId} />
+
+  if (pendingTx)
+    return (
+      <div className="space-y-3">
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="space-y-1 text-xs">
+            <p className="font-medium text-foreground">You already sent a funding transaction for this task.</p>
+            <p>
+              It is not linked to the task yet, so the task does not show as funded. Finish linking it
+              here — funding again would lock the reward a second time.{" "}
+              <a
+                href={`https://dashboard.radixdlt.com/transaction/${pendingTx}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
+                View the funding transaction
+              </a>
+            </p>
+          </AlertDescription>
+        </Alert>
+        <Button onClick={() => runGuarded(handleFinishLinking)} disabled={loading} className="w-full">
+          <RefreshCw className="mr-2 h-4 w-4" />
+          {loading ? "Linking..." : "Finish linking your funding"}
+        </Button>
+        {loading && walletWait.slow && (
+          <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+            {walletWaitHint(WAIT_CLOSING.link)}
+          </p>
+        )}
+        <TxError error={error} summary={summary} />
+        <div className="space-y-1 border-t pt-2 text-xs text-muted-foreground">
+          <p>
+            If that transaction failed, or you have already cancelled that on-chain task and
+            withdrawn its funds, you can forget it here and fund again.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={loading}
+            onClick={() => {
+              clearPendingCreate(taskId)
+              setPendingTx(null)
+              setSummary(undefined)
+              setError("")
+            }}
+          >
+            Forget this funding transaction
+          </Button>
+        </div>
+      </div>
+    )
 
   return (
     <div className="space-y-3">
@@ -701,6 +904,12 @@ export function EscrowClaimButton({
       setLoading(false)
       return
     }
+    const switched = switchedAccount(gate, account)
+    if (switched) {
+      setSummary(switched)
+      setLoading(false)
+      return
+    }
     // Server-side self-claim guard (P3-3b) — asks the app BEFORE any chain
     // interaction, so a self-claim costs an HTTP round-trip instead of a
     // burned ~0.5 XRD lock fee. The render-time gate above (posterId ===
@@ -933,7 +1142,8 @@ export function EscrowSubmitButton({
   if (!account || !rdt) return null
   if (onChainTaskId == null) return null
   // Worker-only: submitting presents (and burns) the worker's claim receipt.
-  if (account !== workerId) return null
+  // (A press stopped by an account switch keeps its sentence on screen.)
+  if (account !== workerId) return summary ? <TxError error="" summary={summary} /> : null
   if (sessionMismatch) return <SessionMismatchAlert />
 
   // No work described yet → there is nothing to commit on-chain. BE the link
@@ -967,6 +1177,12 @@ export function EscrowSubmitButton({
     if (!gate.ok) {
       setSummary(signInIncomplete(SIGN_IN_LEAD.submit, gate))
       setError(gate.detail ?? "")
+      setLoading(false)
+      return
+    }
+    const switched = switchedAccount(gate, account)
+    if (switched) {
+      setSummary(switched)
       setLoading(false)
       return
     }
@@ -1099,7 +1315,8 @@ export function EscrowApproveButton({
   // Poster-only: the release manifest presents the Task Receipt NFT (poster-held),
   // so a non-poster press aborts on-chain. Gate it here so the worker never sees a
   // button that can only burn a fee (mainnet acceptance run, 2026-07-18).
-  if (account !== posterId) return null
+  // (A press stopped by an account switch keeps its sentence on screen.)
+  if (account !== posterId) return summary ? <TxError error="" summary={summary} /> : null
   if (sessionMismatch) return <SessionMismatchAlert />
 
   async function handleApprove() {
@@ -1126,6 +1343,25 @@ export function EscrowApproveButton({
       setLoading(false)
       return
     }
+    const switched = switchedAccount(gate, account)
+    if (switched) {
+      setSummary(switched)
+      setLoading(false)
+      return
+    }
+    // Live-state pre-flight (APPROVE_NOT_SUBMITTED says why).
+    const live = await readEscrowTaskState(onChainTaskId!, ESCROW_COMPONENT)
+    if (live != null && live !== "Submitted") {
+      const resync = await resyncEscrowTask(taskDbId)
+      if (resync.ok && resync.applied > 0) {
+        onSuccess?.("")
+        setLoading(false)
+        return
+      }
+      setSummary(APPROVE_NOT_SUBMITTED)
+      setLoading(false)
+      return
+    }
     // The pre-flight fund-row fetch that used to sit here was M1, and it went
     // with the push branch: the push manifest carried the payout AMOUNT, so it
     // re-read the funded reward on-chain rather than trust a possibly-drifted DB
@@ -1138,7 +1374,18 @@ export function EscrowApproveButton({
       rdt: rdt!,
     }))
     if (!result.ok) {
-      setError(result.error ?? "Approval failed")
+      const failure = result.error ?? "Approval failed"
+      // The chain settled this task first (see APPROVE_NOT_SUBMITTED): pull
+      // the DB forward instead of leaving Approve on screen for another fee.
+      if (humanizeTxError(failure).staleState) {
+        const resync = await resyncEscrowTask(taskDbId)
+        if (resync.ok && resync.applied > 0) {
+          onSuccess?.("")
+          setLoading(false)
+          return
+        }
+      }
+      setError(failure)
       setLoading(false)
       return
     }
@@ -1355,6 +1602,32 @@ export const CANCEL_NOT_CANCELLABLE =
   "This task can no longer be cancelled: on-chain it has already moved past the point where a cancel applies (the work was submitted, or the task settled or was refunded), so no cancel transaction was sent. Refresh to see its current status."
 
 /**
+ * Approve, Raise Dispute and Finalize read the live on-chain state before they
+ * send (GM-5, 2026-10-06), as Claim and Cancel already did. The row can lag the
+ * chain: release_after_review_timeout and auto_resolve_dispute are PUBLIC, so a
+ * worker, a keeper or a stranger can settle the task and the confirm can be
+ * lost. Sending then only reverts on the blueprint's state assert and charges
+ * the fee, and the buttons stayed on screen for another try. When the state is
+ * not the one the method needs, the DB is pulled forward and nothing is sent.
+ * An unreadable state proceeds (the on-chain assert stays the backstop).
+ */
+export const APPROVE_NOT_SUBMITTED =
+  "This task is no longer waiting for review on-chain, so no approval transaction was sent. Refresh the page to see its current status."
+export const DISPUTE_NOT_SUBMITTED =
+  "This task is no longer waiting for review on-chain, so no dispute transaction was sent. Refresh the page to see its current status."
+export const FINALIZE_NOT_DISPUTED =
+  "This task is no longer in dispute on-chain, so no settlement transaction was sent. Refresh the page to see its current status."
+
+/**
+ * Cancel on a task the DB shows unclaimed but the chain shows Claimed (GM-7).
+ * The method that applies then voids a worker's live claim, which the "cancel
+ * open task" copy never said. The first press stops here; the button switches
+ * to the claimed-task copy, and a second press sends.
+ */
+export const CANCEL_VOIDS_LIVE_CLAIM =
+  "A worker has claimed this task on-chain, which this page did not show yet, so no cancel transaction was sent. Cancelling now voids their claim: the contract credits their claim bond back to them in full, and pays them nothing for the work so far. Press the button again if you still want to cancel."
+
+/**
  * Times the stretch of a handler that waits on the wallet. `start()` arms a
  * WALLET_WAIT_HINT_MS timer and returns the function that disarms it;
  * `during(p)` arms it for exactly as long as `p` is pending. Disarm as soon as
@@ -1411,6 +1684,12 @@ export function EscrowCancelButton({
   const [error, setError] = useState("")
   const [txId, setTxId] = useState("")
   const [summary, setSummary] = useState<string | undefined>(undefined)
+  // The phase the poster has SEEN the copy for. Starts as the row's phase; set
+  // to "claimed" when a press finds a live claim the row did not show
+  // (CANCEL_VOIDS_LIVE_CLAIM), so only a second press, made under the
+  // claimed-task copy, voids it.
+  const [seenPhase, setSeenPhase] = useState<"open" | "claimed" | null>(null)
+  const shownPhase = seenPhase ?? phase
   const walletWait = useWalletWaitHint()
   const runGuarded = useTxGuard({
     reset: () => setSummary(undefined),
@@ -1425,7 +1704,8 @@ export function EscrowCancelButton({
   if (!account || !rdt) return null
   if (onChainTaskId == null) return null // not funded on-chain yet
   // Poster-only: cancelling presents (and burns) the poster's Task Receipt.
-  if (account !== posterId) return null
+  // (A press stopped by an account switch keeps its sentence on screen.)
+  if (account !== posterId) return summary ? <TxError error="" summary={summary} /> : null
   if (sessionMismatch) return <SessionMismatchAlert />
 
   async function handleCancel() {
@@ -1443,6 +1723,12 @@ export function EscrowCancelButton({
       setLoading(false)
       return
     }
+    const switched = switchedAccount(gate, account)
+    if (switched) {
+      setSummary(switched)
+      setLoading(false)
+      return
+    }
     // Which cancel applies is the chain's call, not the DB row's. The row can
     // lag the chain — a claim whose confirm was lost leaves the task "open" in
     // the DB while the escrow says Claimed, and cancel_task then reverts on the
@@ -1454,7 +1740,7 @@ export function EscrowCancelButton({
     // backstop.
     const live = await readEscrowTaskState(onChainTaskId!, ESCROW_COMPONENT)
     const livePhase: "open" | "claimed" | null =
-      live == null ? phase : live === "Open" ? "open" : live === "Claimed" ? "claimed" : null
+      live == null ? shownPhase : live === "Open" ? "open" : live === "Claimed" ? "claimed" : null
     if (livePhase === null) {
       const resync = await resyncEscrowTask(taskDbId)
       if (resync.ok && resync.applied > 0) {
@@ -1463,6 +1749,18 @@ export function EscrowCancelButton({
         return
       }
       setSummary(CANCEL_NOT_CANCELLABLE)
+      setLoading(false)
+      return
+    }
+    // The chain shows a live claim the poster was not shown (GM-7): stop, say
+    // so, switch to the claimed-task copy, and pull the DB forward. The method
+    // that applies would void that worker's claim, which the open-task copy
+    // never mentioned.
+    if (livePhase === "claimed" && shownPhase === "open") {
+      setSeenPhase("claimed")
+      const resync = await resyncEscrowTask(taskDbId)
+      if (resync.ok && resync.applied > 0) onSuccess?.("")
+      setSummary(CANCEL_VOIDS_LIVE_CLAIM)
       setLoading(false)
       return
     }
@@ -1517,7 +1815,7 @@ export function EscrowCancelButton({
         <Ban className="mr-2 h-4 w-4" />
         {loading
           ? "Cancelling..."
-          : phase === "open"
+          : shownPhase === "open"
             ? settlementCopy("cancelButtonOpen")
             : settlementCopy("cancelButtonClaimed")}
       </Button>
@@ -1527,7 +1825,7 @@ export function EscrowCancelButton({
         </p>
       )}
       <p className="text-xs text-muted-foreground">
-        {phase === "open"
+        {shownPhase === "open"
           ? settlementCopy("cancelDescriptionOpen")
           : settlementCopy("cancelDescriptionClaimed")}
       </p>
@@ -1590,7 +1888,8 @@ export function RaiseDisputeButton({
   // front and hide the action from everyone else.
   const party: "poster" | "worker" | null =
     account === posterId ? "poster" : account === workerId ? "worker" : null
-  if (party === null) return null
+  // (A press stopped by an account switch keeps its sentence on screen.)
+  if (party === null) return summary ? <TxError error="" summary={summary} /> : null
   if (sessionMismatch) return <SessionMismatchAlert />
 
   async function handleDispute() {
@@ -1604,6 +1903,25 @@ export function RaiseDisputeButton({
     if (!gate.ok) {
       setSummary(signInIncomplete(SIGN_IN_LEAD.dispute, gate))
       setError(gate.detail ?? "")
+      setLoading(false)
+      return
+    }
+    const switched = switchedAccount(gate, account)
+    if (switched) {
+      setSummary(switched)
+      setLoading(false)
+      return
+    }
+    // Live-state pre-flight (APPROVE_NOT_SUBMITTED's doc says why).
+    const live = await readEscrowTaskState(onChainTaskId!, ESCROW_COMPONENT)
+    if (live != null && live !== "Submitted") {
+      const resync = await resyncEscrowTask(taskDbId)
+      if (resync.ok && resync.applied > 0) {
+        onSuccess?.("")
+        setLoading(false)
+        return
+      }
+      setSummary(DISPUTE_NOT_SUBMITTED)
       setLoading(false)
       return
     }
@@ -1642,7 +1960,16 @@ export function RaiseDisputeButton({
       rdt: rdt!,
     }))
     if (!result.ok) {
-      setError(result.error ?? "Dispute failed")
+      const failure = result.error ?? "Dispute failed"
+      if (humanizeTxError(failure).staleState) {
+        const resync = await resyncEscrowTask(taskDbId)
+        if (resync.ok && resync.applied > 0) {
+          onSuccess?.("")
+          setLoading(false)
+          return
+        }
+      }
+      setError(failure)
       setLoading(false)
       return
     }
@@ -1878,6 +2205,20 @@ export function FinalizeDisputeButton({
       setLoading(false)
       return
     }
+    // Live-state pre-flight (APPROVE_NOT_SUBMITTED's doc says why): an
+    // arbiter's ruling or another party's finalize may have settled it.
+    const live = await readEscrowTaskState(onChainTaskId!, ESCROW_COMPONENT)
+    if (live != null && live !== "Disputed") {
+      const resync = await resyncEscrowTask(taskDbId)
+      if (resync.ok && resync.applied > 0) {
+        onSuccess?.("")
+        setLoading(false)
+        return
+      }
+      setSummary(FINALIZE_NOT_DISPUTED)
+      setLoading(false)
+      return
+    }
     // PULL: no ledger pre-reads. The push-era flow re-read the exact amounts
     // and the raiser from chain because the caller routed the settlement;
     // under pull the component credits both entitlements itself, so the only
@@ -1887,7 +2228,16 @@ export function FinalizeDisputeButton({
       rdt: rdt!,
     }))
     if (!result.ok) {
-      setError(result.error ?? "Auto-resolve failed")
+      const failure = result.error ?? "Auto-resolve failed"
+      if (humanizeTxError(failure).staleState) {
+        const resync = await resyncEscrowTask(taskDbId)
+        if (resync.ok && resync.applied > 0) {
+          onSuccess?.("")
+          setLoading(false)
+          return
+        }
+      }
+      setError(failure)
       setLoading(false)
       return
     }

@@ -106,9 +106,12 @@ describe("the button-side composition", () => {
     expect(s).toMatch(/could not reach the site/i)
   })
 
-  it("every lead but resync's states that no transaction was sent", () => {
+  it("every lead but resync's and link's states that no transaction was sent", () => {
     for (const [key, lead] of Object.entries(SIGN_IN_LEAD)) {
+      // Neither sends a transaction at all: resync re-reads the chain, and
+      // link (GM-2) re-confirms a funding transaction already committed.
       if (key === "resync") expect(lead).toMatch(/nothing was re-synced/i)
+      else if (key === "link") expect(lead).toMatch(/not linked to this task yet/i)
       else expect(lead).toMatch(/no [a-z-]+ transaction was sent to your wallet/i)
     }
   })
