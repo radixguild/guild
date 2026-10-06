@@ -363,12 +363,12 @@ describe('fill-swap', () => {
   test('live: signs the dry run manifest; a failed commit comes back refused with the reason', async () => {
     const { d, signed } = deps();
     const id = await identity();
-    const r = await runFillSwap({ listingId: 3, live: true, identity: id, config: CONFIG, deps: d });
+    const r = await runFillSwap({ listingId: 3, live: true, maxPrice: { amount: '5000', resource: MAINNET_XRD }, identity: id, config: CONFIG, deps: d });
     expect(r).toMatchObject({ dryRun: false, intentHash: 'txid_rdx1test', status: 'CommittedSuccess' });
     expect(signed).toEqual([fillSwapManifest(SWAP, id.address, 3, 0, listing().asks[0])]);
 
     const failing = deps({ signAndSubmitManifest: async () => ({ intentHash: 'txid_rdx1bad', status: 'CommittedFailure' }) });
-    const f = await runFillSwap({ listingId: 3, live: true, identity: id, config: CONFIG, deps: failing.d });
+    const f = await runFillSwap({ listingId: 3, live: true, maxPrice: { amount: '5000', resource: MAINNET_XRD }, identity: id, config: CONFIG, deps: failing.d });
     expect(f.refused).toBe(true);
     expect(f.message).toBe('fill not committed: CommittedFailure (txid_rdx1bad)');
   });
@@ -407,7 +407,7 @@ describe('fill-swap', () => {
     expect(feeRefusal({ unit: 'XRD', amount: '0' }, 'fill')).toBeNull();
     const state = { ...STATE, fees: { ...STATE.fees, fill: { unit: 'XRD' as const, amount: '3.5' } } };
     const { d, signed } = deps({ read: { kind: 'ok', state, listing: listing() } });
-    const r = await runFillSwap({ listingId: 3, live: true, identity: await identity(), config: CONFIG, deps: d });
+    const r = await runFillSwap({ listingId: 3, live: true, maxPrice: { amount: '5000', resource: MAINNET_XRD }, identity: await identity(), config: CONFIG, deps: d });
     expect(r.refused).toBeUndefined();
     expect(signed).toHaveLength(1);
   });
@@ -415,7 +415,7 @@ describe('fill-swap', () => {
   test('an unresolved commit is reported as outcome unknown, never as not committed', async () => {
     for (const status of ['Unknown', 'Pending'] as const) {
       const { d } = deps({ signAndSubmitManifest: async () => ({ intentHash: 'txid_rdx1late', status }) });
-      const r = await runFillSwap({ listingId: 3, live: true, identity: await identity(), config: CONFIG, deps: d });
+      const r = await runFillSwap({ listingId: 3, live: true, maxPrice: { amount: '5000', resource: MAINNET_XRD }, identity: await identity(), config: CONFIG, deps: d });
       expect(r).toMatchObject({ refused: true, status: 'Unknown', intentHash: 'txid_rdx1late' });
       expect(r.message).toContain('outcome unknown — the transaction was submitted; look up txid_rdx1late before retrying');
       expect(r.message).not.toContain('not committed');

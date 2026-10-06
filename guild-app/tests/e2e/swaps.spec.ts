@@ -275,12 +275,10 @@ test.describe("NFT swap — the listing page", () => {
     await expect.poll(() => reads).toBeGreaterThan(before);
   });
 
-  // KNOWN DEFECT, reported to the app-ui lane, not fixed here (tests lane):
-  // swap-detail.tsx sets awaiting.current = null when SETTLE_TRIES runs out
-  // (the settle effect, "awaiting.current = null"), so "Try again" re-reads
-  // with no predicate and ANY good read clears `stale` — the same pre-fill
-  // view re-arms every button and a second transaction can be sent.
-  test.fixme("Try again answered with the same old view keeps every transaction button disabled", async ({ page }) => {
+  // The exhausted settle loop keeps its predicate: "Try again" re-reads against
+  // it, and a read that still shows the pre-transaction view leaves every
+  // button disabled (a second Extend would charge the royalty twice).
+  test("Try again answered with the same old view keeps every transaction button disabled", async ({ page }) => {
     test.setTimeout(45_000);
     await injectWalletMock(page);
     await stubDetail(page, MOCK_ACCOUNT);
