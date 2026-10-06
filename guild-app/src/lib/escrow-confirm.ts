@@ -8,6 +8,7 @@ import { pointsForTaskCompletion } from "@/lib/reputation"
 import { ESCROW_COMPONENT, ESCROW_CLAIM_RECEIPT_RESOURCE } from "@/lib/config"
 import { emitNotification } from "@/lib/notifications"
 import { checkFundedReward, describeFundedRewardMismatch } from "@/lib/funded-reward"
+import { storedTermsBlock, workBriefHashHex } from "@/lib/work-brief"
 import {
   readEscrowTaskCreated,
   readDisputeRaised,
@@ -324,6 +325,60 @@ async function applyEscrowConfirmInner(
         "EVENT_NOT_FOUND",
         422,
         "TaskCreatedEvent not found (tx not committed, or wrong escrow component)",
+      )
+    }
+    // Binding: WHO funded, and WHAT they funded. A create tx's intent hash is
+    // public on the Gateway, so without these two pins any signed-in user could
+    // POST someone else's unlinked create (a lost confirm, or a race) against a
+    // row of their own with the same reward, and that row would read Funded —
+    // with a brief no submit_task can ever match (lib.rs asserts brief_hash ==
+    // work_brief_hash at submit), so a worker who claims it can only lose the
+    // bond. Checked BEFORE the reward parity below, whose refusal tells the
+    // caller the escrowed funds are theirs — only true once the poster matches.
+    //
+    //   poster        — the event's `poster` must be the row's creator (user ids
+    //                   ARE account addresses). 409: deterministic, never retried.
+    //   work brief    — the event's `work_brief_hash` must be the hash of THIS
+    //                   row's stored title/description/terms/deadline, through
+    //                   the same derivation the fund and submit buttons hash with
+    //                   (src/lib/work-brief.ts). Stored, unscrubbed text — never
+    //                   publicTaskView's output.
+    //
+    // Either field unreadable → 422 with its own code, the same fail-closed
+    // posture as FUNDED_REWARD_UNREADABLE: linking there would assert a binding
+    // nobody checked.
+    if (created.poster === null) {
+      return fail(
+        "CREATE_POSTER_UNREADABLE",
+        422,
+        "TaskCreatedEvent carries no readable poster account — cannot verify who funded it; the task was not linked",
+      )
+    }
+    if (created.poster !== task.creatorId) {
+      return fail(
+        "CREATE_POSTER_MISMATCH",
+        409,
+        `Task ${task.id}: that funding transaction names a different poster account than this task's creator — refusing to link it`,
+      )
+    }
+    if (created.workBriefHash === null) {
+      return fail(
+        "WORK_BRIEF_UNREADABLE",
+        422,
+        "TaskCreatedEvent carries no readable work_brief_hash — cannot verify which brief was funded; the task was not linked",
+      )
+    }
+    const rowBriefHash = await workBriefHashHex(
+      task.title,
+      task.description,
+      storedTermsBlock(task.terms, task.deadline),
+    )
+    if (created.workBriefHash !== rowBriefHash) {
+      return fail(
+        "WORK_BRIEF_MISMATCH",
+        409,
+        `Task ${task.id}: that funding transaction committed to a different work brief than this task's stored text and terms — refusing to list it as funded. ` +
+          `The escrowed funds are still yours: cancel that on-chain task with its Task Receipt, then withdraw.`,
       )
     }
     // Funding parity. This link is what makes the row FUNDED — listed under

@@ -44,6 +44,7 @@ import {
   readTokenDivisibility,
 } from "@/lib/gateway"
 import { INSURANCE_RATE } from "@/lib/marketplace"
+import { sha256Hex, workBriefHashHex } from "@/lib/work-brief"
 import { apiFetch } from "@/lib/api-fetch"
 import type { RadixDappToolkit } from "@radixdlt/radix-dapp-toolkit"
 
@@ -112,41 +113,15 @@ export interface EscrowTxResult {
 // frames fields with newlines (not length prefixes): the brief hash commits to
 // the combined text, so the exact title/description split is not independently
 // provable from the hash alone.
-
-/** Canonical v1 work-brief string committed on-chain by create_task (FROZEN). */
-export function canonicalWorkBrief(title: string, description: string): string {
-  return `guild-task-brief-v1\n${title}\n\n${description}`
-}
-
-/**
- * Canonical v2 work-brief (FROZEN): v1's layout plus the structured-terms
- * block (task-terms.ts canonicalTermsBlock — itself fixed-order). Only used
- * when at least one term is set, so v1 tasks stay byte-identical forever.
- * A verifier picks the layout by the prefix; the DB picks it by terms
- * presence (tasks.terms IS NULL → v1).
- */
-export function canonicalWorkBriefV2(
-  title: string,
-  description: string,
-  termsBlock: string,
-): string {
-  return `guild-task-brief-v2\n${title}\n\n${description}\n\n-- terms --\n${termsBlock}`
-}
+//
+// The work-brief layouts and the hasher live in src/lib/work-brief.ts (server-
+// safe, no toolkit import) so the create confirm can recompute the same hash;
+// re-exported here so existing imports keep working. Still ONE definition.
+export { canonicalWorkBrief, canonicalWorkBriefV2, sha256Hex } from "@/lib/work-brief"
 
 /** Canonical v1 submission-evidence string committed on-chain by submit_task (FROZEN). */
 export function canonicalSubmissionEvidence(content: string): string {
   return `guild-submission-v1\n${content}`
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/** 32-byte SHA-256 (lowercase hex) of the UTF-8 input — the on-chain commitment hash. */
-export async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input)
-  const digest = await crypto.subtle.digest("SHA-256", data)
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
 }
 
 // Shared submit + Result-mapping for all wrappers.
@@ -379,11 +354,8 @@ export async function sendDepositTx(
   if (!isEscrowDeployed()) return { ok: false, error: "Escrow not deployed" }
   try {
     const insuranceXrd = Math.ceil(params.rewardXrd * INSURANCE_RATE)
-    const workBriefHash = await sha256Hex(
-      params.termsBlock
-        ? canonicalWorkBriefV2(params.title, params.description, params.termsBlock)
-        : canonicalWorkBrief(params.title, params.description),
-    )
+    // The same derivation the create confirm re-checks against this row.
+    const workBriefHash = await workBriefHashHex(params.title, params.description, params.termsBlock)
     const manifest = createTaskManifest(
       ESCROW_COMPONENT,
       params.account,
@@ -541,11 +513,7 @@ export async function sendSubmitTx(
     // create_task — the two MUST agree byte for byte or the on-chain assert
     // rejects an honest submission. Terms presence picks the layout, exactly as
     // it does there.
-    const briefHash = await sha256Hex(
-      params.termsBlock
-        ? canonicalWorkBriefV2(params.title, params.description, params.termsBlock)
-        : canonicalWorkBrief(params.title, params.description),
-    )
+    const briefHash = await workBriefHashHex(params.title, params.description, params.termsBlock)
     const manifest = submitTaskManifest(
       params.escrowComponent || ESCROW_COMPONENT,
       params.account,

@@ -14,7 +14,7 @@
  * db.transaction — the TX sentinel below flows through both calls or the
  * assertions fail.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest"
 
 // withAuth normally reads + verifies the JWT cookie; inject a fixed caller.
 vi.mock("@/lib/auth", () => ({
@@ -84,6 +84,7 @@ vi.mock("@/db/queries/escrow", () => ({
 import { POST } from "@/app/api/v1/tasks/[id]/escrow/route"
 import { ESCROW_COMPONENT, ESCROW_CLAIM_RECEIPT_RESOURCE } from "@/lib/config"
 import { XRD_ADDRESS } from "@/lib/radix"
+import { workBriefHashHex } from "@/lib/work-brief"
 
 const makeReq = (body: unknown) => ({ json: async () => body }) as never
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) }) as never
@@ -91,6 +92,15 @@ const ctx = (id: string) => ({ params: Promise.resolve({ id }) }) as never
 // Consensus timestamp the mocked DisputeRaisedEvent read carries — dispute
 // confirms persist it as tasks.disputedAt (the on-chain dispute time).
 const DISPUTED_AT = new Date("2026-06-10T22:46:48Z")
+
+// The create confirm binds the event to the row (GM-1): the event's poster must
+// be the creator and its work_brief_hash the row's own brief. The create rows
+// below carry this text, and their events this poster + hash.
+const ROW_TEXT = { title: "t", description: "d" }
+let BOUND: { poster: string; workBriefHash: string }
+beforeAll(async () => {
+  BOUND = { poster: "account_rdx1caller", workBriefHash: await workBriefHashHex("t", "d", "") }
+})
 
 describe("POST /api/v1/tasks/[id]/escrow — confirm + ledger", () => {
   beforeEach(() => {
@@ -248,10 +258,11 @@ describe("POST /api/v1/tasks/[id]/escrow — confirm + ledger", () => {
       id: 1,
       onChainTaskId: null,
       creatorId: "account_rdx1caller", // create requires creator === caller
+      ...ROW_TEXT,
       status: "open",
       rewardXrd: "10.500000000000000000", // numeric(38,18) spelling of the chain's "10.5"
     })
-    mockReadEscrowTaskCreated.mockResolvedValue({ taskId: 42, rewardAmount: "10.5", rewardToken: XRD_ADDRESS })
+    mockReadEscrowTaskCreated.mockResolvedValue({ taskId: 42, rewardAmount: "10.5", rewardToken: XRD_ADDRESS, ...BOUND })
 
     const res = await POST(makeReq({ intentHash: "txid_rdx1fund", kind: "create" }), ctx("1"))
 
@@ -278,10 +289,11 @@ describe("POST /api/v1/tasks/[id]/escrow — confirm + ledger", () => {
       id: 1,
       onChainTaskId: 42, // already funded
       creatorId: "account_rdx1caller",
+      ...ROW_TEXT,
       status: "open",
       rewardXrd: "10.5",
     })
-    mockReadEscrowTaskCreated.mockResolvedValue({ taskId: 43, rewardAmount: "10.5", rewardToken: XRD_ADDRESS }) // a DIFFERENT id
+    mockReadEscrowTaskCreated.mockResolvedValue({ taskId: 43, rewardAmount: "10.5", rewardToken: XRD_ADDRESS, ...BOUND }) // a DIFFERENT id
     mockCaptureEscrowIdIfUnset.mockResolvedValue(null) // CAS WHERE misses → conflict
 
     const res = await POST(makeReq({ intentHash: "txid_rdx1fund2", kind: "create" }), ctx("1"))
@@ -302,10 +314,11 @@ describe("POST /api/v1/tasks/[id]/escrow — confirm + ledger", () => {
       id: 1,
       onChainTaskId: null,
       creatorId: "account_rdx1caller",
+      ...ROW_TEXT,
       status: "open",
       rewardXrd: "7.25",
     })
-    mockReadEscrowTaskCreated.mockResolvedValue({ taskId: 42, rewardAmount: null, rewardToken: XRD_ADDRESS })
+    mockReadEscrowTaskCreated.mockResolvedValue({ taskId: 42, rewardAmount: null, rewardToken: XRD_ADDRESS, ...BOUND })
 
     const res = await POST(makeReq({ intentHash: "txid_rdx1fund", kind: "create" }), ctx("1"))
     const json = await res.json()
@@ -322,10 +335,11 @@ describe("POST /api/v1/tasks/[id]/escrow — confirm + ledger", () => {
       id: 1,
       onChainTaskId: null,
       creatorId: "account_rdx1caller",
+      ...ROW_TEXT,
       status: "open",
       rewardXrd: "6400.000000000000000000",
     })
-    mockReadEscrowTaskCreated.mockResolvedValue({ taskId: 6, rewardAmount: "1", rewardToken: XRD_ADDRESS })
+    mockReadEscrowTaskCreated.mockResolvedValue({ taskId: 6, rewardAmount: "1", rewardToken: XRD_ADDRESS, ...BOUND })
 
     const res = await POST(makeReq({ intentHash: "txid_rdx1fund", kind: "create" }), ctx("1"))
     const json = await res.json()

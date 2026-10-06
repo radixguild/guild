@@ -566,6 +566,7 @@ describe('lib/gateway', () => {
 
   describe('readEscrowTaskCreated — emitter pin', () => {
     const ESCROW = 'component_rdx1escrow'
+    const POSTER = 'account_rdx12posterposterposterposterposterposter'
     const XRD = 'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
 
     it('reads task_id + reward + reward token + insurance from a TaskCreatedEvent emitted by the escrow component', async () => {
@@ -585,6 +586,10 @@ describe('lib/gateway', () => {
                   { field_name: 'reward_token', kind: 'Reference', type_name: 'ResourceAddress', value: XRD },
                   { field_name: 'reward_amount', kind: 'Decimal', value: '10.5' },
                   { field_name: 'insurance_amount', kind: 'Decimal', value: '0.525' },
+                  // poster: ComponentAddress (a Reference); work_brief_hash: Hash,
+                  // which programmatic JSON renders as Bytes with a `hex` string.
+                  { field_name: 'poster', kind: 'Reference', type_name: 'ComponentAddress', value: POSTER },
+                  { field_name: 'work_brief_hash', kind: 'Bytes', type_name: 'Hash', element_kind: 'U8', hex: 'AB'.repeat(32) },
                 ] } },
               }],
             },
@@ -597,7 +602,36 @@ describe('lib/gateway', () => {
         rewardAmount: '10.5',
         rewardToken: XRD,
         insuranceAmount: '0.525',
+        poster: POSTER,
+        workBriefHash: 'ab'.repeat(32),
       })
+    })
+
+    it('reads a malformed poster or work_brief_hash as null (unknown) — the create confirm then refuses', async () => {
+      fetchSpy.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          transaction: {
+            transaction_status: 'CommittedSuccess',
+            receipt: {
+              events: [{
+                name: 'TaskCreatedEvent',
+                emitter: { entity: { entity_address: ESCROW } },
+                data: { programmatic_json: { fields: [
+                  { field_name: 'task_id', value: '42' },
+                  { field_name: 'poster', value: 'not-an-address' },
+                  // Right length, wrong place: a Hash is under `hex`, never `value`.
+                  { field_name: 'work_brief_hash', kind: 'Bytes', value: 'ab'.repeat(32) },
+                ] } },
+              }],
+            },
+          },
+        }),
+      } as Response)
+
+      const read = await readEscrowTaskCreated('txid_rdx1abc', ESCROW)
+      expect(read?.poster).toBeNull()
+      expect(read?.workBriefHash).toBeNull()
     })
 
     it('reads a malformed reward_token as null (unknown), never as the raw value', async () => {
@@ -649,6 +683,8 @@ describe('lib/gateway', () => {
         rewardAmount: '10.5',
         rewardToken: null,
         insuranceAmount: null,
+        poster: null,
+        workBriefHash: null,
       })
     })
 
