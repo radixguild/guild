@@ -61,8 +61,22 @@ export const POST = withAuth(async (_req, { params, user }) => {
     }
 
     // The repo pin: a PR outside the repo the brief committed to proves
-    // nothing about this task's work.
-    if (task.terms?.repoUrl && !prMatchesRepo(ref, task.terms.repoUrl)) {
+    // nothing about this task's work. A task that committed NO repo has
+    // nothing to pin to, so any merged PR anywhere would "verify" it — refuse
+    // rather than store a verdict that proves nothing.
+    if (!task.terms?.repoUrl) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "NO_REPO_PIN",
+            message: "This task's brief commits to no repository, so a pull request cannot be verified against it",
+          },
+        },
+        { status: 422 },
+      )
+    }
+    if (!prMatchesRepo(ref, task.terms.repoUrl)) {
       return NextResponse.json(
         {
           ok: false,

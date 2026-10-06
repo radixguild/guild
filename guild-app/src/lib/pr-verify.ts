@@ -65,6 +65,21 @@ export function prMatchesRepo(ref: PrRef, repoUrl: string): boolean {
   )
 }
 
+/**
+ * Does a STORED verdict count for this task? Only when the task committed a
+ * repoUrl and the verdict's PR lives under it. A verdict stored before
+ * verify-pr required the pin (or against a repoUrl that later changed) proves
+ * nothing about this task, so the UI must not show it as this task's evidence.
+ */
+export function verdictMatchesRepo(
+  verification: Pick<PrVerification, "prUrl"> | null | undefined,
+  repoUrl: string | null | undefined,
+): boolean {
+  if (!verification || !repoUrl) return false
+  const ref = extractPrUrl(verification.prUrl)
+  return ref !== null && prMatchesRepo(ref, repoUrl)
+}
+
 interface RawSignals {
   merged: boolean
   mergedAt: string | null
@@ -109,22 +124,42 @@ async function gh(path: string): Promise<unknown> {
     accept: "application/vnd.github+json",
     "user-agent": "guild-app-pr-verify",
   }
-  // Optional: raises the rate limit and reaches private repos.
+  // Optional: raises the rate limit. It may also reach private repos; see the
+  // private-repo gate in fetchPrVerification.
   if (process.env.GITHUB_TOKEN) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`
   const res = await fetch(`https://api.github.com${path}`, { headers })
   if (!res.ok) throw new Error(`GitHub ${res.status} for ${path}`)
   return res.json()
 }
 
+function privateRepoAllowed(ref: PrRef): boolean {
+  const want = `${ref.owner}/${ref.repo}`.toLowerCase()
+  return (process.env.PR_VERIFY_PRIVATE_REPOS ?? "")
+    .split(",")
+    .some((entry) => entry.trim().toLowerCase() === want)
+}
+
 export async function fetchPrVerification(
   ref: PrRef,
   definitionOfDone: DoneCheck[] | undefined,
 ): Promise<PrVerification> {
-  const pr = (await gh(`/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`)) as {
+  const prPath = `/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`
+  const pr = (await gh(prPath)) as {
     merged: boolean
     merged_at: string | null
     state: "open" | "closed"
     head: { sha: string }
+    base?: { repo?: { private?: boolean } }
+  }
+
+  // GITHUB_TOKEN may reach private repositories, and anyone who can post a
+  // task can pin one. Answer a private PR exactly as GitHub answers one the
+  // token cannot see (the same 404 error), so this route never confirms that a
+  // private PR exists or shows its state. A private repo verifies only when the
+  // operator lists it in PR_VERIFY_PRIVATE_REPOS ("owner/repo", comma-separated).
+  // A missing visibility flag counts as private.
+  if (pr.base?.repo?.private !== false && !privateRepoAllowed(ref)) {
+    throw new Error(`GitHub 404 for ${prPath}`)
   }
 
   const needs = new Set((definitionOfDone ?? []).map((c) => CHECK_SIGNAL[c]).filter(Boolean))
