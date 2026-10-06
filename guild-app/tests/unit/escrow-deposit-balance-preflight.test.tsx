@@ -50,7 +50,7 @@ vi.mock("@/hooks/useXrdBalance", () => ({
 }))
 
 import { EscrowDepositButton } from "@/components/tasks/escrow-actions"
-import { ALCHEMY_PAY_XRD_URL, KUCOIN_XRD_URL } from "@/components/get-xrd-links"
+import { KUCOIN_XRD_URL } from "@/components/get-xrd-links"
 
 // reward 100 + ceil(100 * 0.05) insurance = 105 required, matching
 // sendDepositTx's own rounding (lib/escrow-utils.ts) exactly.
@@ -80,15 +80,16 @@ describe("EscrowDepositButton — XRD balance pre-flight", () => {
     expect(screen.getByRole("button", { name: /fund escrow/i })).toBeDisabled()
   })
 
-  it("the warning says where to get XRD: Alchemy Pay and KuCoin, each in a new tab", () => {
+  it("the warning says where to get XRD: KuCoin, in a new tab", () => {
     H.balance = 0
     H.checked = true
     renderDeposit()
-    const alchemy = screen.getByRole("link", { name: /alchemy pay/i })
-    expect(alchemy).toHaveAttribute("href", ALCHEMY_PAY_XRD_URL)
-    expect(alchemy).toHaveAttribute("target", "_blank")
-    expect(alchemy).toHaveAttribute("rel", "noopener noreferrer")
-    expect(screen.getByRole("link", { name: /kucoin/i })).toHaveAttribute("href", KUCOIN_XRD_URL)
+    const kucoin = screen.getByRole("link", { name: /kucoin/i })
+    expect(kucoin).toHaveAttribute("href", KUCOIN_XRD_URL)
+    expect(kucoin).toHaveAttribute("target", "_blank")
+    expect(kucoin).toHaveAttribute("rel", "noopener noreferrer")
+    // 2026-10-06: Alchemy Pay's ramp would not sell XRD, so it is not offered.
+    expect(screen.queryByRole("link", { name: /alchemy pay/i })).toBeNull()
   })
 
   it("confirmed balance below the required 105 (reward + insurance): same warning + disabled", () => {
