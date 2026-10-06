@@ -8,7 +8,8 @@ import { pointsForTaskCompletion } from "@/lib/reputation"
 import { ESCROW_COMPONENT, ESCROW_CLAIM_RECEIPT_RESOURCE } from "@/lib/config"
 import { emitNotification } from "@/lib/notifications"
 import { checkFundedReward, describeFundedRewardMismatch } from "@/lib/funded-reward"
-import { storedTermsBlock, workBriefHashHex } from "@/lib/work-brief"
+import { workBriefHashHex } from "@/lib/work-brief"
+import { storedTermsBlock } from "@/lib/work-brief-stored"
 import {
   readEscrowTaskCreated,
   readDisputeRaised,

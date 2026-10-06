@@ -1,5 +1,3 @@
-import { canonicalTermsBlock, hasTerms, type TaskTerms } from "./task-terms"
-
 // ── Commitment canonicalization (v1 — FROZEN) ─────────────────────────────────
 //
 // The escrow blueprint stores 32-byte commitments, not content: create_task
@@ -20,7 +18,9 @@ import { canonicalTermsBlock, hasTerms, type TaskTerms } from "./task-terms"
 // and the create confirm (escrow-confirm.ts) must compare a TaskCreatedEvent's
 // work_brief_hash against the row it is about to mark funded. escrow-utils
 // re-exports these, so every existing import keeps working and there is still
-// exactly one definition.
+// exactly one definition. This file imports NOTHING: the agent kit's parity test
+// loads escrow-utils from the sibling checkout without guild-app's node_modules
+// (storedTermsBlock, which needs task-terms/zod, lives in work-brief-stored.ts).
 
 /** Canonical v1 work-brief string committed on-chain by create_task (FROZEN). */
 export function canonicalWorkBrief(title: string, description: string): string {
@@ -49,21 +49,6 @@ export async function sha256Hex(input: string): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
-}
-
-/**
- * The terms block for a STORED task row, exactly as the task page hands it to
- * the fund and submit buttons (tasks/[id]/page.tsx): the canonical block when a
- * term or a deadline is set, otherwise "". `deadline` is the row's own column —
- * a Date from the DB, or the ISO string the API serves.
- */
-export function storedTermsBlock(
-  terms: TaskTerms | null | undefined,
-  deadline: Date | string | null | undefined,
-): string {
-  if (!hasTerms(terms) && !deadline) return ""
-  const dueIso = deadline ? (deadline instanceof Date ? deadline.toISOString() : deadline) : null
-  return canonicalTermsBlock(terms, { dueIso })
 }
 
 /**
