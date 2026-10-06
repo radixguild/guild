@@ -12,6 +12,9 @@
 //   - temp-check, once it worked, let any proposals:create key post to the groups: it
 //     answers 503 unless FEATURE_AGENT_PROPOSALS=true (off in production)
 //   - a JSON body of `null` answered 500
+// and of 2026-10-07:
+//   - an `admin` key could mint keys (more `admin` keys among them) with POST /keys and
+//     revoke any key with DELETE /keys/:id, over the internet               → 403, both
 //
 // Like api-badge-gate-outage.test.js: the real server runs in a child process on a
 // throwaway database, listening on port 0 (api.js installs module-scope intervals). The
@@ -54,6 +57,7 @@ const SERVER_SCRIPT = [
   'const admin = key("admin-agent", ["admin"]);',
   'const creatorAgent = key("creator-agent", ["tasks:read"]);',
   'const breaker = key("breaker", ["projects:read", "projects:breakdown"]);',
+  'const victim = key("victim", ["tasks:read"]);',
   'const fund = (id) => raw.prepare("UPDATE bounties SET funded = 1 WHERE id = ?").run(id);',
   // An open, funded task with a human application on it.
   'const open = db.createBounty("Write the FAQ", 50, 111, { creatorAddress: POSTER }); fund(open);',
@@ -77,8 +81,8 @@ const SERVER_SCRIPT = [
   'const pid = db.createProposal("Weekly call?", 111, { type: "yesno" });',
   'db.updateProposalMessage(pid, 77, -100123);',
   'process.stdout.write("SEED " + JSON.stringify({',
-  '  keys: { reader: reader.rawKey, worker: worker.rawKey, proposer: proposer.rawKey, limited: limited.rawKey, admin: admin.rawKey, creatorAgent: creatorAgent.rawKey, breaker: breaker.rawKey },',
-  '  ids: { open, big, humanTask, agentsTask, groupId },',
+  '  keys: { reader: reader.rawKey, worker: worker.rawKey, proposer: proposer.rawKey, limited: limited.rawKey, admin: admin.rawKey, creatorAgent: creatorAgent.rawKey, breaker: breaker.rawKey, victim: victim.rawKey },',
+  '  ids: { open, big, humanTask, agentsTask, groupId, victimKey: victim.keyId, adminKey: admin.keyId },',
   '}) + "\\n");',
   'const { startApi } = require(' + req('services/api.js') + ');',
   'const server = startApi();',
@@ -244,6 +248,62 @@ describe('agent API with both flags on (FEATURE_LEGACY_BOUNTY, FEATURE_AGENT_PRO
     assert.ok(r.json.data.length >= 6);
     assert.deepEqual(tgIdKeys(r.json), []);
     assert.ok(!r.text.includes('api_key_hash'));
+  });
+
+  // ── Keys are managed only in Telegram (/agent create, /agent revoke) ──
+  const listKeys = async () => (await call(s.port, 'GET', '/api/agent/keys', { key: s.keys.admin })).json.data;
+
+  it('REGRESSION: an admin key cannot mint an admin key over HTTP (403 telegram_only, no key written)', async () => {
+    const before = await listKeys();
+    const r = await call(s.port, 'POST', '/api/agent/keys', {
+      key: s.keys.admin,
+      body: { name: 'minted-admin', scopes: ['admin'], owner_tg_id: 111, rate_limit_per_hour: 10000, daily_budget_xrd: 1e9 },
+    });
+    assert.equal(r.status, 403, r.text);
+    assert.equal(r.json.ok, false);
+    assert.equal(r.json.error, 'telegram_only');
+    assert.ok(!r.text.includes('agk_'), 'a raw key came back');
+    const after = await listKeys();
+    assert.equal(after.length, before.length);
+    assert.ok(!after.some((k) => k.name === 'minted-admin'), 'the minted key was written');
+  });
+
+  it('REGRESSION: POST /keys is refused for any scope asked for, and for a key without admin', async () => {
+    const before = (await listKeys()).length;
+    const narrow = await call(s.port, 'POST', '/api/agent/keys', { key: s.keys.admin, body: { name: 'minted-reader', scopes: ['tasks:read'] } });
+    assert.equal(narrow.status, 403, narrow.text);
+    assert.equal(narrow.json.error, 'telegram_only');
+    const nonAdmin = await call(s.port, 'POST', '/api/agent/keys', { key: s.keys.reader, body: { name: 'minted-by-reader', scopes: ['admin'] } });
+    assert.equal(nonAdmin.status, 403, nonAdmin.text);
+    assert.equal(nonAdmin.json.error, 'telegram_only');
+    assert.equal((await listKeys()).length, before);
+  });
+
+  it('REGRESSION: an admin key cannot revoke another key over HTTP (403, the key still works)', async () => {
+    const r = await call(s.port, 'DELETE', '/api/agent/keys/' + s.ids.victimKey, { key: s.keys.admin });
+    assert.equal(r.status, 403, r.text);
+    assert.equal(r.json.error, 'telegram_only');
+    const victim = (await listKeys()).find((k) => k.id === s.ids.victimKey);
+    assert.equal(victim.enabled, 1, 'the key was revoked');
+    const who = await call(s.port, 'GET', '/api/agent/whoami', { key: s.keys.victim });
+    assert.equal(who.status, 200, who.text);
+  });
+
+  it('REGRESSION: an admin key cannot revoke itself or use another verb under /keys', async () => {
+    for (const [method, p] of [['DELETE', '/api/agent/keys/' + s.ids.adminKey], ['PUT', '/api/agent/keys/' + s.ids.victimKey], ['PATCH', '/api/agent/keys'], ['DELETE', '/api/agent/keys']]) {
+      const r = await call(s.port, method, p, { key: s.keys.admin, body: { enabled: 0 } });
+      assert.equal(r.status, 403, method + ' ' + p + ' → ' + r.text);
+      assert.equal(r.json.error, 'telegram_only');
+    }
+    assert.ok((await listKeys()).every((k) => k.enabled === 1), 'a key was disabled');
+  });
+
+  it('a refused key write lands in the caller\'s activity log', async () => {
+    const r = await call(s.port, 'GET', '/api/agent/activity?limit=100', { key: s.keys.admin });
+    assert.equal(r.status, 200);
+    const refused = r.json.data.filter((a) => a.action === 'key_write_refused');
+    assert.ok(refused.length >= 1, 'no key_write_refused entry');
+    assert.ok(refused.some((a) => JSON.parse(a.params).method === 'POST' && JSON.parse(a.params).path === '/keys'));
   });
 
   // ── BOT-02: a claim that wrote nothing is not "assigned" ──

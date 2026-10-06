@@ -1552,15 +1552,23 @@ function startApi() {
 
       // ── Admin agent routes ──
 
-      // POST /api/agent/keys — create key (requires admin scope)
-      if (req.method === "POST" && agentPath === "/keys") {
-        if (!agentBridge.hasScope(agent, "admin")) {
-          res.writeHead(403);
-          return res.end(JSON.stringify({ ok: false, error: "insufficient_scope", detail: "Requires admin scope" }));
-        }
-        const body = await readBody(req);
-        const result = agentBridge.createAgentKey(body.name, body.scopes, body.owner_tg_id, body.rate_limit_per_hour, body.daily_budget_xrd);
-        return res.end(JSON.stringify(result));
+      // Agent keys are created and revoked only by a Guild admin, in a private chat with
+      // the bot (/agent create, /agent revoke in index.js). Until 2026-10-07 an
+      // `admin`-scope key could also POST /keys and DELETE /keys/:id here, over the
+      // internet: mint more keys (more `admin` keys among them, with any owner, rate
+      // limit and budget) and revoke every other key. No shipped client called either
+      // route (the agent kits and the MCP server talk to radixguild.com /api/v1), so any
+      // write under /keys now answers 403 for every key, before the body is read, and the
+      // attempt goes to the caller's activity log. Listing stays: GET /keys is a read, and
+      // agentView.key leaves out owner ids and key hashes.
+      if ((agentPath === "/keys" || agentPath.startsWith("/keys/")) && req.method !== "GET") {
+        agentBridge.logActivity(agent.id, "key_write_refused", { method: req.method, path: agentPath }, { error: "telegram_only" });
+        res.writeHead(403);
+        return res.end(JSON.stringify({
+          ok: false,
+          error: "telegram_only",
+          detail: "Agent keys are created and revoked by a Guild admin in a private chat with the bot (/agent create, /agent revoke). This API does not manage keys.",
+        }));
       }
 
       // GET /api/agent/keys
@@ -1570,17 +1578,6 @@ function startApi() {
           return res.end(JSON.stringify({ ok: false, error: "insufficient_scope" }));
         }
         return res.end(JSON.stringify({ ok: true, data: agentBridge.listKeys().map(agentView.key) }));
-      }
-
-      // DELETE /api/agent/keys/:id
-      if (req.method === "DELETE" && agentPath.match(/^\/keys\/\d+$/)) {
-        if (!agentBridge.hasScope(agent, "admin")) {
-          res.writeHead(403);
-          return res.end(JSON.stringify({ ok: false, error: "insufficient_scope" }));
-        }
-        const keyId = parseInt(agentPath.split("/")[2]);
-        const result = agentBridge.revokeKey(keyId);
-        return res.end(JSON.stringify(result));
       }
 
       res.writeHead(404);
