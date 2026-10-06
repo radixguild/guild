@@ -432,7 +432,7 @@ function linkDisabled() {
 function linkRequired() {
   return (
     "First prove the wallet that holds your badge: open a private chat with me and send /link. " +
-    "You sign in on radixguild.com once, and from then on I only act for the wallet you proved."
+    "You sign in on radixguild.com once, and from then on the badge checks use the wallet you proved."
   );
 }
 

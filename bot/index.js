@@ -716,8 +716,8 @@ bot.command("bounty", async (ctx) => {
     if (title.length > 500) return ctx.reply("Title too long (max 500)");
     const bountyFilter = checkContent(title);
     if (bountyFilter.blocked) return ctx.reply("Content not allowed. Please rephrase your task title.");
-    const creatorUser = db.getUser(ctx.from.id);
-    const id = db.createBounty(title, xrd, ctx.from.id, { skills, criteria, creatorAddress: creatorUser?.radix_address || null });
+    // The wallet requireBadge checked: creatorAddress is what escrow funding matches deposits against.
+    const id = db.createBounty(title, xrd, ctx.from.id, { skills, criteria, creatorAddress: user.radix_address || null });
 
     // Handle dependencies
     if (dependsMatch) {
