@@ -104,6 +104,11 @@ const BADGE_CACHE_MAX = parseInt(process.env.BADGE_CACHE_MAX) || 2000;
 // burned long before still passed the gates. Default 10 × TTL; 0 turns stale serving off.
 const _staleMaxEnv = parseInt(process.env.BADGE_CACHE_STALE_MAX_MS);
 const BADGE_CACHE_STALE_MAX_MS = Number.isFinite(_staleMaxEnv) && _staleMaxEnv >= 0 ? _staleMaxEnv : BADGE_CACHE_TTL_MS * 10;
+if (process.env.BADGE_CACHE_STALE_MAX_MS !== undefined && !(Number.isFinite(_staleMaxEnv) && _staleMaxEnv >= 0)) {
+  console.warn("[Gateway] BADGE_CACHE_STALE_MAX_MS is not a non-negative integer; using " + BADGE_CACHE_STALE_MAX_MS + " ms");
+}
+// Note the asymmetry: BADGE_CACHE_TTL_MS=0 falls back to 30000 (the `|| 30000` above),
+// while BADGE_CACHE_STALE_MAX_MS=0 means "never serve stale".
 const _badgeCache = new Map(); // radixAddress -> { at, data } — successful reads only
 
 // Swallows a Gateway error as "no badge" — gates must not use it; use getBadgeResult.

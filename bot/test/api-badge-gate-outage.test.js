@@ -26,8 +26,15 @@ const BOT_DIR = path.join(__dirname, '..');
 const SERVER_SCRIPT = [
   'global.fetch = async (url) => {',
   '  if (process.env.FAKE_GATEWAY === "down") throw new Error("connect ECONNREFUSED");',
+  '  const BADGE = "resource_rdx1n22rq94kh6ugwnrvc65m2pwhle3s6ez6j7702vkn2ctkaxemz4ppwl";',
   '  if (String(url).endsWith("/state/entity/details")) {',
-  '    const body = { items: [{ non_fungible_resources: { items: [] } }] };',
+  '    const items = process.env.FAKE_GATEWAY === "badge" ? [{ resource_address: BADGE, vaults: { items: [{ items: ["<member_1>"] }] } }] : [];',
+  '    const body = { items: [{ non_fungible_resources: { items } }] };',
+  '    return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };',
+  '  }',
+  '  if (String(url).endsWith("/state/non-fungible/data")) {',
+  '    const fields = ["member_1", "guild_member", "", "member", "active", "", "0", "1"].map((value) => ({ value }));',
+  '    const body = { non_fungible_ids: [{ data: { programmatic_json: { fields } } }] };',
   '    return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };',
   '  }',
   '  throw new Error("unexpected Gateway call: " + url);',
@@ -103,15 +110,30 @@ describe('Gateway down', () => {
 
   it('GET /api/badge/:address answers gateway_error, not 404 no_badge', async () => {
     const r = await call(port, 'GET', '/api/badge/' + ADDR);
-    assert.equal(r.status, 500);
+    assert.equal(r.status, 503);
     assert.deepEqual(r.json, { ok: false, error: 'gateway_error' });
   });
 
   it('GET /api/badge/:address/verify answers gateway_error, not hasBadge: false', async () => {
     const r = await call(port, 'GET', '/api/badge/' + ADDR + '/verify');
-    assert.equal(r.status, 500);
+    assert.equal(r.status, 503);
     assert.deepEqual(r.json, { ok: false, error: 'gateway_error' });
   });
+});
+
+describe('Gateway up, the address holds an active badge (control)', () => {
+  let server;
+  let port;
+  before(async () => { server = startServer('badge'); port = await server.port; });
+  after(() => server && server.stop());
+
+  for (const [name, method, pathname, body] of GATED) {
+    it(name + ' passes the badge gate', async () => {
+      const r = await call(port, method, pathname, body);
+      assert.notEqual(r.status, 503, JSON.stringify(r.json));
+      assert.ok(!['badge_required', 'badge_check_unavailable'].includes(r.json && r.json.error), JSON.stringify(r.json));
+    });
+  }
 });
 
 describe('Gateway up, the address holds no badge (control)', () => {

@@ -50,13 +50,21 @@ function setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward, checkC
     // A Gateway outage is not "no badge" (2026-10-06): no mint button, just a retry.
     const badgeRead = await getBadgeResult(user.radix_address).catch(() => ({ error: true }));
     const badge = badgeRead.error ? null : badgeRead.data;
+    // A second "Check again" with the same answer edits to identical text, which Telegram
+    // refuses ("message is not modified"); unhandled, that skipped answerCallbackQuery and
+    // surfaced as "Something went wrong" with the button still spinning.
+    const edit = (text, other) => ctx.editMessageText(text, other).catch((e) => {
+      if (!/message is not modified/i.test(String((e && (e.description || e.message)) || ""))) throw e;
+    });
 
     if (badgeRead.error) {
       const kb = new InlineKeyboard().text("Check again", "onboard_check_badge");
-      await ctx.editMessageText(copy.badgeCheckUnavailable(), { reply_markup: kb });
+      await edit(copy.badgeCheckUnavailable(), { reply_markup: kb });
+      await ctx.answerCallbackQuery({ text: "Still can't reach the Radix Gateway. Try again in a minute." });
+      return;
     } else if (badge) {
       const kb = new InlineKeyboard().url("Browse open tasks", PORTAL + "/tasks");
-      await ctx.editMessageText(
+      await edit(
         copy.badgeFound({ badge, trust: db.getTrustScore(ctx.from.id) }),
         { reply_markup: kb }
       );
@@ -66,7 +74,7 @@ function setupGuidedWizards(bot, db, PORTAL, requireBadge, queueXpReward, checkC
         .url("Open Mint Page", PORTAL + "/mint")
         .row()
         .text("Check again", "onboard_check_badge");
-      await ctx.editMessageText(
+      await edit(
         "No badge found yet.\n\n" +
         "If you just minted, wait ~30 seconds and check again.",
         { reply_markup: kb }

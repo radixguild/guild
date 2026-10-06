@@ -175,3 +175,35 @@ test('/badge and /wallet answer an outage with badgeCheckUnavailable, never noBa
   const wallet = handler('bot.command("wallet"');
   assert.match(wallet, /badgeRead\.error\s*\?\s*copy\.badgeCheckUnavailable\(\)/);
 });
+
+test('REGRESSION: a second "Check again" during an outage does not throw on "message is not modified"', async () => {
+  gw.mode = 'down';
+  const users = new Map([[9, { tg_id: 9, radix_address: addr('chkrepeat') }]]);
+  const { callbacks } = wire(users);
+  let last = null;
+  const answers = [];
+  const ctx = {
+    from: { id: 9 },
+    // Telegram refuses an edit to identical text and keyboard.
+    editMessageText: async (text) => {
+      if (text === last) { const e = new Error('Bad Request: message is not modified'); e.description = e.message; throw e; }
+      last = text;
+    },
+    answerCallbackQuery: async (arg) => { answers.push(arg); },
+  };
+  await callbacks.get('onboard_check_badge')(ctx);
+  await callbacks.get('onboard_check_badge')(ctx); // must not throw
+  assert.equal(answers.length, 2);
+  assert.match(answers[1].text, /Still can't reach the Radix Gateway/);
+});
+
+test('any other edit error still propagates', async () => {
+  gw.mode = 'down';
+  const users = new Map([[10, { tg_id: 10, radix_address: addr('chkother') }]]);
+  const { callbacks } = wire(users);
+  await assert.rejects(callbacks.get('onboard_check_badge')({
+    from: { id: 10 },
+    editMessageText: async () => { throw new Error('Bad Request: message to edit not found'); },
+    answerCallbackQuery: async () => {},
+  }), /not found/);
+});

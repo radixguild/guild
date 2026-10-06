@@ -43,9 +43,9 @@ if (ADMIN_TG_IDS.length === 0) {
 // version of this guard (PR #283) allows the request when no key is configured
 // and req.socket.remoteAddress is loopback. That is UNSAFE in this deployment:
 // this server binds 127.0.0.1 and Caddy reverse-proxies to it from the public
-// internet (since 2026-09-24 only /api/agent/*; generic /api/* answers 404 at the
-// edge — but routing can be widened again), so remoteAddress is ALWAYS 127.0.0.1
-// for a proxied request and cannot tell an operator from an attacker. (The rate limiter below documents the same fact —
+// internet (since 2026-09-24 only /api/agent/*; other /api/* paths answer 404 at
+// the edge, but that routing can be widened again), so remoteAddress is ALWAYS
+// 127.0.0.1 for a proxied request and cannot tell an operator from an attacker. (The rate limiter below documents the same fact —
 // it reads X-Forwarded-For precisely because remoteAddress is Caddy's.) A
 // loopback fallback would therefore be open by default. Fail closed instead:
 // no key configured ⇒ the route is denied outright.
@@ -687,7 +687,7 @@ function startApi() {
         res.writeHead(404);
         return res.end(JSON.stringify({ ok: false, error: "no_badge", address: addr }));
       } catch (e) {
-        res.writeHead(500);
+        res.writeHead(503);
         return res.end(JSON.stringify({ ok: false, error: "gateway_error" }));
       }
     }
@@ -704,7 +704,7 @@ function startApi() {
         res.writeHead(200);
         return res.end(JSON.stringify({ ok: true, hasBadge: has, address: addr }));
       } catch (e) {
-        res.writeHead(500);
+        res.writeHead(503);
         return res.end(JSON.stringify({ ok: false, error: "gateway_error" }));
       }
     }

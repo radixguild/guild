@@ -21,6 +21,11 @@ function initXp() {
     CREATE INDEX IF NOT EXISTS idx_xp_status ON xp_rewards(status);
     CREATE INDEX IF NOT EXISTS idx_xp_address ON xp_rewards(radix_address, action, created_at);
   `);
+  // roll_bonus rows stopped 2026-10-06 (the dice game is closed and says its bonus counts
+  // nowhere). Void the pending backlog so a batch signer run can never write it on-chain:
+  // getXpQueue sums every pending row and markXpApplied flips them all. Idempotent; the
+  // rows are kept (status 'void'), not deleted.
+  db.prepare("UPDATE xp_rewards SET status = 'void' WHERE action = 'roll_bonus' AND status = 'pending'").run();
 }
 
 const XP_REWARDS = {
@@ -74,7 +79,7 @@ function getXpStats() {
   if (!db) initXp();
   const pending = db.prepare("SELECT COUNT(*) as c FROM xp_rewards WHERE status = 'pending'").get();
   const applied = db.prepare("SELECT COUNT(*) as c FROM xp_rewards WHERE status = 'applied'").get();
-  const total = db.prepare("SELECT SUM(xp_amount) as t FROM xp_rewards").get();
+  const total = db.prepare("SELECT SUM(xp_amount) as t FROM xp_rewards WHERE status != 'void'").get();
   return {
     pending: pending?.c || 0,
     applied: applied?.c || 0,
