@@ -1,27 +1,17 @@
 import type { Metadata } from "next"
-import Link from "next/link"
 import { AppShell } from "@/components/app-shell"
-import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { SwapBoard } from "@/components/swaps/swap-board"
 import { NFT_SWAP_COMPONENT } from "@/lib/config"
-import {
-  SWAPS_HEADER,
-  HOW_IT_WORKS,
-  WHAT_THIS_IS_NOT,
-  PROVING_RUN,
-  STATUS,
-} from "@/content/swaps"
-import { withPageOg } from "@/lib/page-metadata";
+import { SWAPS_HEADER, HOW_IT_WORKS, WHAT_THIS_IS_NOT, PROVING_RUN, VERIFY } from "@/content/swaps"
+import { withPageOg } from "@/lib/page-metadata"
 
-// /swaps — the NFT swap landing page. A PLACEHOLDER by design: the component
-// is live on mainnet, the listing UI is not built, and this page says so
-// rather than 404-ing a visitor who followed the P7 project card. Catalogue
-// P7-03 (the DB-backed grid that replaces this file) and P7-05 (the headless
-// legs) describe the rest; the board tasks posted for them, 92 and 93, were
-// cancelled and refunded on 2026-10-03, so the page links to neither.
-// Registered as a COLD_ROUTE in scripts/honest-copy.mjs in this same commit —
-// a server component with no client-fetched claims, so everything the gate
-// scans is in the SSR'd HTML.
+// /swaps — the NFT swap board (P7-03). The page itself is static and carries
+// only the Guild's own copy, so launch-check CHECK 4 scans every sentence of
+// it in the prerendered HTML (it is a COLD_ROUTE in scripts/honest-copy.mjs).
+// The listings render client-side in <SwapBoard/> from GET /api/v1/swaps,
+// which reads the guild-nft-swap component on chain — see swap-board.tsx for
+// why stranger-written NFT text stays out of the prerendered page.
 
 export const metadata: Metadata = withPageOg("/swaps", {
   title: "Swaps — Radix Guild",
@@ -31,30 +21,52 @@ export const metadata: Metadata = withPageOg("/swaps", {
 export default function SwapsPage() {
   return (
     <AppShell>
-      <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
         <header className="space-y-2">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-semibold">{SWAPS_HEADER.title}</h1>
-            <Badge variant="outline">Listing UI not built yet</Badge>
-          </div>
+          <h1 className="text-2xl font-semibold">{SWAPS_HEADER.title}</h1>
           <p className="text-muted-foreground">{SWAPS_HEADER.tagline}</p>
         </header>
 
+        <SwapBoard />
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">How a swap works</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="space-y-4 text-sm">
+                {HOW_IT_WORKS.map((row) => (
+                  <div key={row.term} className="space-y-1">
+                    <dt className="font-medium">{row.term}</dt>
+                    <dd className="text-muted-foreground">{row.detail}</dd>
+                  </div>
+                ))}
+              </dl>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">What this is not</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-3 text-sm text-muted-foreground list-disc pl-5">
+                {WHAT_THIS_IS_NOT.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">{STATUS.heading}</CardTitle>
+            <CardTitle className="text-base">{VERIFY.heading}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <p>{STATUS.live}</p>
-            <p>{STATUS.notBuilt}</p>
-            <p>
-              {STATUS.tracked} The work belongs to{" "}
-              <Link href="/projects" className="underline underline-offset-4">
-                project P7
-              </Link>
-              .
-            </p>
-            <dl className="pt-1 text-xs text-muted-foreground space-y-1">
+            <p className="text-muted-foreground">{VERIFY.body}</p>
+            <dl className="text-xs text-muted-foreground space-y-1">
               <div className="flex gap-2">
                 <dt className="shrink-0">Component</dt>
                 <dd className="font-mono break-all">{NFT_SWAP_COMPONENT}</dd>
@@ -66,35 +78,6 @@ export default function SwapsPage() {
                 </div>
               ))}
             </dl>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">How a swap works</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="space-y-4 text-sm">
-              {HOW_IT_WORKS.map((row) => (
-                <div key={row.term} className="space-y-1">
-                  <dt className="font-medium">{row.term}</dt>
-                  <dd className="text-muted-foreground">{row.detail}</dd>
-                </div>
-              ))}
-            </dl>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">What this is not</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-3 text-sm text-muted-foreground list-disc pl-5">
-              {WHAT_THIS_IS_NOT.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
           </CardContent>
         </Card>
       </div>

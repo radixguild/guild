@@ -279,6 +279,31 @@ const ROUTE_META = {
   "POST /game/roll": { summary: "Roll (once per day per user)", auth: "session", tag: "game", description: SWITCH_NOTE("game") },
   "GET /game/state": { summary: "Your game state", auth: "session", tag: "game", description: SWITCH_NOTE("game") },
   "GET /network/status": { summary: "Radix network liveness as seen by the app", auth: "none", tag: "meta" },
+  // P7-03: the NFT swap board, read from the guild-nft-swap component — there is no
+  // database copy, so these never disagree with the chain (src/lib/nft-swap.ts).
+  "GET /swaps": {
+    summary: "NFT swap listings, newest first, read from the guild-nft-swap component on chain",
+    auth: "none", tag: "swaps",
+    query: [
+      { name: "status", enum: ["open", "expired", "filled", "cancelled", "all"], description: "At the ledger clock in `ledgerTime`. `open` = fillable now; `expired` = still Listed but past its expiry (only the seller can act: cancel or extend). Default `all`." },
+      { name: "seller", description: "Only listings whose pinned seller is this account address." },
+      { name: "before", description: "Cursor: the previous page's `nextCursor` (a listing id)." },
+      { name: "limit", description: "1-100, default 48." },
+    ],
+    description:
+      "Each listing is the component's own record (seller, asset, asks as exact decimal strings, unix-second times, state) " +
+      "plus `status` and best-effort NFT display data, with `resources` carrying name / symbol / divisibility for every " +
+      "resource named. `fees` are the live `fill` and `extend_listing` royalties. 503 CHAIN_UNREADABLE when the Gateway " +
+      "cannot be read — never an empty list in its place.",
+  },
+  "GET /swaps/{id}": {
+    summary: "One NFT swap listing, read fresh from the chain, with its receipt holder and the live fees",
+    auth: "none", tag: "swaps",
+    description:
+      "`receipt.holder` is the account holding the listing receipt — the only credential that can cancel, extend or " +
+      "withdraw proceeds (proceeds always go to the listing's pinned `seller`). 404 NOT_FOUND / LISTING_HIDDEN, " +
+      "502 LISTING_UNREADABLE (the record exists but did not parse), 503 CHAIN_UNREADABLE.",
+  },
   // The A2A card's `url` (P1-b). No A2A method is implemented: every request is answered
   // with the protocol's UnsupportedOperationError (-32004) whose `data` names the
   // interfaces that exist (this spec, /llms.txt, the MCP tarball, /agents).

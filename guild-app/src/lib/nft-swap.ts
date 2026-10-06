@@ -313,7 +313,6 @@ export function safeImageUrl(u: unknown): string | null {
 /** Display text from NFT or resource metadata: trimmed, one line, bounded. */
 export function displayText(s: unknown, max = 80): string | null {
   if (typeof s !== "string") return null
-  // eslint-disable-next-line no-control-regex
   const t = s.replace(/[\u0000-\u001f\u007f​-‏‪-‮⁦-⁩]/g, " ").replace(/\s+/g, " ").trim()
   if (!t) return null
   return t.length > max ? `${t.slice(0, max - 1)}…` : t

@@ -86,6 +86,15 @@ export const COLD_ROUTES = [
   // overclaiming once the real grid lands. Server-rendered, no client-fetched
   // claims, so the SSR'd HTML this gate scans holds every sentence.
   "/swaps",
+  // /swaps/list — "List an NFT" (P7-04), added in the same commit that brings
+  // the page in. A static shell around a client form; the form's headings and
+  // its no-wallet state are in the SSR'd HTML, and every other string it can
+  // show lives in src/content/swaps.ts, scanned below as a DETAIL_COMPONENT.
+  // Since P7-03 the /swaps board itself renders its listings client-side —
+  // NFT names and pictures are whatever a stranger minted, and must never be
+  // able to fail this gate — so /swaps is deliberately NOT in CLIENT_RENDERED:
+  // a hydrated sweep would read mainnet listings, i.e. other people's text.
+  "/swaps/list",
   // /link-telegram — added in the same commit that brings the page in. The web
   // half of the Telegram bot's /link; it tells a stranger what linking proves and
   // warns them off handing the code to anyone, so its copy is worth the gate.
@@ -209,6 +218,9 @@ export const DETAIL_ROUTES = [
   // spec. Its own module renders the disclosure, and pool-card.tsx below
   // carries the list-side wording.
   { route: "/fund/[id]", file: "src/app/fund/[id]/page.tsx" },
+  // One NFT swap listing (P7-03/P7-04) — the page a buyer fills from. Its copy
+  // lives in the components and the content module listed below.
+  { route: "/swaps/[id]", file: "src/app/swaps/[id]/page.tsx" },
 ];
 
 // Components the detail routes render that carry settlement copy of their own.
@@ -237,6 +249,16 @@ export const DETAIL_COMPONENTS = [
   "src/components/agents/retire-dialog.tsx",
   "src/components/agents/agent-balance.tsx",
   "src/components/agents/rename-dialog.tsx",
+  // The NFT swap pages (P7-03/P7-04). Their settlement copy — what a fill
+  // moves, where proceeds go, what cancel returns — is client-rendered after a
+  // chain read, so the source scan is its only gate. The content module holds
+  // every sentence the pages show; the components hold the button labels and
+  // the inline settlement lines.
+  "src/content/swaps.ts",
+  "src/components/swaps/swap-bits.tsx",
+  "src/components/swaps/swap-board.tsx",
+  "src/components/swaps/swap-detail.tsx",
+  "src/components/swaps/list-nft-form.tsx",
 ];
 
 /** The build-output directory the artifact paths below are relative to.
