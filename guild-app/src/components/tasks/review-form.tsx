@@ -11,17 +11,19 @@ import { useWallet } from "@/hooks/useWallet"
 import { signInDidNotComplete } from "@/lib/session-outcome"
 import type { Submission } from "@/lib/marketplace-types"
 import { DECLINE_REASONS, DECLINE_REASON_LABELS } from "@/lib/decline-reasons"
-import { extractPrUrl } from "@/lib/pr-verify"
+import { extractPrUrl, verdictMatchesRepo } from "@/lib/pr-verify"
 import { CheckCircle, XCircle, RotateCcw } from "lucide-react"
 
 interface ReviewFormProps {
   submission: Submission
+  /** The task's committed repoUrl. A verdict outside it never reads as verified. */
+  repoUrl: string | null | undefined
   onReviewed: (updated: Submission) => void
 }
 
 type ReviewStatus = "approved" | "rejected" | "revision_requested"
 
-export function ReviewForm({ submission, onReviewed }: ReviewFormProps) {
+export function ReviewForm({ submission, repoUrl, onReviewed }: ReviewFormProps) {
   const { ensureSessionDetailed } = useWallet()
   const [notes, setNotes] = useState("")
   const [declineReason, setDeclineReason] = useState<string>("")
@@ -35,7 +37,9 @@ export function ReviewForm({ submission, onReviewed }: ReviewFormProps) {
   // manual review). Never disables a button and never touches the on-chain
   // approve_and_release call — Approve stays a poster act either way.
   const hasPrReference = extractPrUrl(submission.content) !== null
-  const githubVerified = submission.prVerification?.overall === "verified"
+  const githubVerified =
+    submission.prVerification?.overall === "verified" &&
+    verdictMatchesRepo(submission.prVerification, repoUrl)
 
   async function submit(status: ReviewStatus) {
     setPending(status)
