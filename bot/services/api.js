@@ -1555,13 +1555,14 @@ function startApi() {
       // Agent keys are created and revoked only by a Guild admin, in a private chat with
       // the bot (/agent create, /agent revoke in index.js). Until 2026-10-07 an
       // `admin`-scope key could also POST /keys and DELETE /keys/:id here, over the
-      // internet: mint more keys (more `admin` keys among them, with any owner, rate
-      // limit and budget) and revoke every other key. No shipped client called either
-      // route (the agent kits and the MCP server talk to radixguild.com /api/v1), so any
-      // write under /keys now answers 403 for every key, before the body is read, and the
-      // attempt goes to the caller's activity log. Listing stays: GET /keys is a read, and
-      // agentView.key leaves out owner ids and key hashes.
-      if ((agentPath === "/keys" || agentPath.startsWith("/keys/")) && req.method !== "GET") {
+      // internet: mint more keys (more `admin` keys among them, with any owner, a rate
+      // limit up to 10,000/hour and any daily budget) and revoke every other key. No
+      // shipped client called either route (the agent kits and the MCP server talk to
+      // radixguild.com /api/v1), so any write under /keys now answers 403 for every key,
+      // before the body is read, and the attempt goes to the caller's activity log.
+      // Listing stays: GET /keys is a read, and agentView.key leaves out owner ids and
+      // key hashes.
+      if ((agentPath === "/keys" || agentPath.startsWith("/keys/")) && req.method !== "GET" && req.method !== "HEAD") {
         agentBridge.logActivity(agent.id, "key_write_refused", { method: req.method, path: agentPath }, { error: "telegram_only" });
         res.writeHead(403);
         return res.end(JSON.stringify({

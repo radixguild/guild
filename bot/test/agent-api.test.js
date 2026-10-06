@@ -298,12 +298,31 @@ describe('agent API with both flags on (FEATURE_LEGACY_BOUNTY, FEATURE_AGENT_PRO
     assert.ok((await listKeys()).every((k) => k.enabled === 1), 'a key was disabled');
   });
 
-  it('a refused key write lands in the caller\'s activity log', async () => {
-    const r = await call(s.port, 'GET', '/api/agent/activity?limit=100', { key: s.keys.admin });
-    assert.equal(r.status, 200);
-    const refused = r.json.data.filter((a) => a.action === 'key_write_refused');
-    assert.ok(refused.length >= 1, 'no key_write_refused entry');
-    assert.ok(refused.some((a) => JSON.parse(a.params).method === 'POST' && JSON.parse(a.params).path === '/keys'));
+  it('REGRESSION: a trailing slash does not get a write past the refusal', async () => {
+    const r = await call(s.port, 'POST', '/api/agent/keys/', { key: s.keys.admin, body: { name: 'minted-slash', scopes: ['admin'] } });
+    assert.equal(r.status, 403, r.text);
+    assert.equal(r.json.error, 'telegram_only');
+    assert.ok(!(await listKeys()).some((k) => k.name === 'minted-slash'));
+  });
+
+  it('a key write without a key is a 401, not the refusal', async () => {
+    const r = await call(s.port, 'POST', '/api/agent/keys', { body: { name: 'minted-anon', scopes: ['admin'] } });
+    assert.equal(r.status, 401, r.text);
+    assert.equal(r.json.error, 'missing_auth');
+  });
+
+  it('a refused key write lands in the caller\'s own activity log', async () => {
+    const refusedRows = async (key) => {
+      const r = await call(s.port, 'GET', '/api/agent/activity?limit=100', { key });
+      assert.equal(r.status, 200, r.text);
+      return r.json.data.filter((a) => a.action === 'key_write_refused').map((a) => JSON.parse(a.params));
+    };
+    const before = await refusedRows(s.keys.proposer);
+    const r = await call(s.port, 'POST', '/api/agent/keys', { key: s.keys.proposer, body: { name: 'minted-by-proposer', scopes: ['admin'] } });
+    assert.equal(r.status, 403, r.text);
+    const after = await refusedRows(s.keys.proposer);
+    assert.equal(after.length, before.length + 1);
+    assert.deepEqual(after[0], { method: 'POST', path: '/keys' });
   });
 
   // ── BOT-02: a claim that wrote nothing is not "assigned" ──
