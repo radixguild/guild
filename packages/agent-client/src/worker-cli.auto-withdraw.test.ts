@@ -3,10 +3,9 @@
 // `--auto-withdraw` signs a REAL transaction (the existing `withdraw` leg) for
 // every entitlement the post-submit survey reports, every cycle — so, like
 // every other signing path in this CLI, it must refuse to run at all without
-// `--live`. Unlike `--on-chain` (which only WARNS when used without --live,
-// because it is simply inert then), this is a HARD ERROR: a silent no-op
-// would look identical to "running and doing nothing wrong" while quietly
-// collecting nothing.
+// `--live`. Like `--on-chain` (worker-cli.on-chain.test.ts), this is a HARD
+// ERROR: a silent no-op would look identical to "running and doing nothing
+// wrong" while quietly collecting nothing.
 //
 // worker.ts's own guard (autoWithdraw + dryRun) is covered in
 // worker.auto-withdraw.test.ts; these tests pin the CLI-level gate — the one

@@ -6,9 +6,11 @@
 // lifecycle but is framework-agnostic and ships NO agent); `--loop` keeps
 // polling. `--on-chain` ADDITIONALLY signs the real-money escrow legs (claim
 // bond + submit) and confirms them — decoupled from `--live` on purpose so a
-// `--live` off-chain run can never accidentally sign a tx. Full money path =
-// `--live --on-chain` (real XRD; the claim and submit legs are LIVE-PROVEN —
-// see the tx.ts header + the agent-lane pilot execution plan, private operations repository).
+// `--live` off-chain run can never accidentally sign a tx. `--on-chain`
+// without `--live` is a HARD ERROR (see below): a dry run never signs. Full
+// money path = `--live --on-chain` (real XRD; the claim and submit legs are
+// LIVE-PROVEN — see the tx.ts header + the agent-lane pilot execution plan,
+// private operations repository).
 //
 // `--auto-withdraw` is a THIRD, separate opt-in: every cycle's post-submit
 // survey reports settled-but-uncollected entitlements (`uncollectedTaskIds`)
@@ -224,8 +226,7 @@ export async function workerCliMain(
     sweepTo = value;
   }
 
-  // Hard error, not a warning — unlike --on-chain above (which merely has no
-  // effect without --live), --auto-withdraw SIGNS a real transaction (the
+  // Hard error, not a warning — --auto-withdraw SIGNS a real transaction (the
   // existing `withdraw` leg, withdraw.ts) for every entitlement the
   // post-submit survey reports, every cycle. A warning here would let the
   // flag look accepted while quietly collecting nothing, which is worse than
@@ -248,16 +249,25 @@ export async function workerCliMain(
     );
   }
 
+  // Same stance for --on-chain. It used to print a "has no effect without
+  // --live" warning, which was false: the cycle's claim section signs a real
+  // claim bond on onChain alone, and the submit section then never runs on a
+  // dry run, so every cycle could bond a claim and leave it to expire.
+  // Refused here before identity/api are touched; runWorkerCycle refuses the
+  // same combination a second time.
+  if (onChain && !live) {
+    throw new Error(
+      '--on-chain needs --live (nothing signs without an explicit --live). Drop --on-chain for a ' +
+        'report-only cycle (the default), or run `--live --on-chain` for the full money path ' +
+        '(claim bond + submit, real XRD).'
+    );
+  }
+
   const identity = overrides.identity ?? (await AgentIdentity.fromPrivateKeyHex(loadAgentPrivateKeyHex()));
   const api = overrides.api ?? new GuildApiClient();
   console.log(`guild-worker: agent address ${identity.address}`);
-  const mode = onChain ? 'LIVE + ON-CHAIN' : live ? 'LIVE (off-chain)' : 'dry-run';
+  const mode = live ? (onChain ? 'LIVE + ON-CHAIN' : 'LIVE (off-chain)') : 'dry-run';
   console.log(`guild-worker: api ${api.config.apiBaseUrl} (${mode})`);
-  if (onChain && !live) {
-    console.warn(
-      'guild-worker: --on-chain has no effect without --live (no submissions to settle)'
-    );
-  }
 
   let doWork: DoWork | undefined;
   if (live) {

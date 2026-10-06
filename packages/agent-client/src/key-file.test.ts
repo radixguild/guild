@@ -72,6 +72,7 @@ describe('the module has no way to make or write a key', () => {
         'DEFAULT_KEY_DIR_NAME',
         'DEFAULT_KEY_FILE_NAME',
         'KEY_FILE_ENV',
+        'findAgentPrivateKeyHex', // a reader: env, else readKeyFile; null when neither exists
         'keyFileExists',
         'keyFileIsGroupOrWorldReadable',
         'readKeyFile',

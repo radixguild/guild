@@ -7,11 +7,11 @@
 // genuinely autonomous agent that already controls XRD elsewhere, via
 // `transferXrdManifest` (manifests.ts) + `signAndSubmitManifest` — see the
 // README's "Self-funding" section. Key custody stays with the operator: the
-// key is BROUGHT (GUILD_AGENT_PRIVATE_KEY) — this command never creates,
+// key is BROUGHT (GUILD_AGENT_PRIVATE_KEY, else the GUILD_AGENT_KEY_FILE file) — this command never creates,
 // prints or stores one (ruling 2026-10-03; key-never-made.test.ts).
 //
 // Stages:
-//   1. key       — the key in GUILD_AGENT_PRIVATE_KEY must parse; none → stop
+//   1. key       — the key (GUILD_AGENT_PRIVATE_KEY, else the key file) must parse; none → stop
 //                  and say how to bring one.
 //   2. funding   — needs claim bond + fee headroom on the account.
 //   3. badge     — Member-badge self-mint (dry-run preview; --live signs).
@@ -26,6 +26,7 @@ import {
   resolveBadgeLocalId as realResolveBadgeLocalId,
 } from './gateway.js';
 import { AgentIdentity } from './identity.js';
+import { findAgentPrivateKeyHex } from './key-file.js';
 import { ownerLinkEnvLines } from './sweep.js';
 import { FEE_HEADROOM_XRD } from './doctor.js';
 import { mintMemberBadge, signInWithRetry, type MintDeps } from './mint.js';
@@ -90,9 +91,19 @@ export async function runOnboard(options: {
   const log = options.log ?? console.log;
 
   // ── stage 1: key ──────────────────────────────────────────────────────────
-  const keyHex = env.GUILD_AGENT_PRIVATE_KEY;
+  // The same sources the signing commands read: GUILD_AGENT_PRIVATE_KEY, else
+  // the key file. A key file that exists but cannot be used is named as such
+  // (value-free), not reported as "no key".
+  let keyHex: string | undefined;
+  try {
+    keyHex = findAgentPrivateKeyHex(env)?.keyHex;
+  } catch (error) {
+    log(`✗ key — ${error instanceof Error ? error.message : String(error)}`);
+    log('  Expect the file to hold 64 hex chars (32-byte ed25519) and be readable by this user.');
+    return { reached: 'none', address: null, ok: false, stoppedBecause: 'key file unusable' };
+  }
   if (!keyHex) {
-    log('No agent key (GUILD_AGENT_PRIVATE_KEY unset). This kit never creates a key — bring your own:');
+    log('No agent key (GUILD_AGENT_PRIVATE_KEY unset, and no key file). This kit never creates a key — bring your own:');
     log('  export GUILD_AGENT_PRIVATE_KEY=<your 32-byte hex ed25519 key>   (an existing capped-balance key; never a treasury)');
     log('Then re-run `guild-worker onboard`. Agents here are badge-first: the badge you mint for that key is what acts.');
     return { reached: 'none', address: null, ok: false, stoppedBecause: 'no key in env' };

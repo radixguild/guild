@@ -121,6 +121,7 @@ args: `{ "id": 5 }`
   "taskId": 5,
   "onChainTaskId": 42,
   "escrowComponent": "component_rdx1_EXAMPLE_ESCROW",
+  "taskEscrowComponent": "component_rdx1_EXAMPLE_ESCROW",
   "dbStatus": "open",
   "chainState": "Open",
   "claimable": true,
@@ -131,6 +132,11 @@ args: `{ "id": 5 }`
 `chainState: null` (Gateway hiccup, or the task isn't on the configured component)
 and a funded-but-not-`Open` state both leave `claimable: false` — see the tool
 description in the table above for the exact wording each case returns.
+`taskEscrowComponent` is the component the task was funded on. When it differs
+from `escrowComponent`, the chain is not read at all (on-chain ids restart on
+every component, so the same id names a different task there). When the API
+does not report it (`null`), `claimable` stays `false` because the task cannot
+be pinned.
 </details>
 
 <details>
@@ -209,7 +215,9 @@ args: `{ "address": "account_rdx1holder" }`
 }
 ```
 
-A non-holder gets `"localId": null, "holds": false` instead of an error.
+A non-holder gets `"localId": null, "holds": false` instead of an error. A
+Gateway answer that cannot be read (an error status such as 429 or 503) is an
+error result, never `"holds": false`.
 </details>
 
 ## Run it — no repo, no bun
@@ -258,7 +266,7 @@ Add to `claude_desktop_config.json` (macOS:
   "mcpServers": {
     "guild": {
       "command": "npx",
-      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.4.tgz", "guild-mcp"]
+      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.5.tgz", "guild-mcp"]
     }
   }
 }
@@ -273,7 +281,7 @@ that**. So for a long-lived config use the **versioned URL**, which the deploy s
 the stable one and names in `https://radixguild.com/kit/mcp.json` (`"versioned"`):
 
 ```json
-{ "command": "npx", "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.4.tgz", "guild-mcp"] }
+{ "command": "npx", "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.5.tgz", "guild-mcp"] }
 ```
 
 An update is then a URL you change on purpose, never a stale build you did not notice. **A
@@ -296,7 +304,7 @@ restart the client.
 
 Claude Code reads project-scoped servers from a `.mcp.json` at the repo root (checked
 in, so the whole team/every agent gets it — no per-machine setup), or add it for your
-user with `claude mcp add guild -- npx -y -p https://radixguild.com/kit/mcp-0.3.4.tgz guild-mcp`.
+user with `claude mcp add guild -- npx -y -p https://radixguild.com/kit/mcp-0.3.5.tgz guild-mcp`.
 A checked-in config is the longest-lived one there is, so it pins the **versioned** URL (see
 the caching note under Claude Desktop):
 
@@ -305,7 +313,7 @@ the caching note under Claude Desktop):
   "mcpServers": {
     "guild": {
       "command": "npx",
-      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.4.tgz", "guild-mcp"]
+      "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.5.tgz", "guild-mcp"]
     }
   }
 }
@@ -323,7 +331,7 @@ required beyond the optional `GUILD_*` overrides below:
 ```json
 {
   "command": "npx",
-  "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.4.tgz", "guild-mcp"],
+  "args": ["-y", "-p", "https://radixguild.com/kit/mcp-0.3.5.tgz", "guild-mcp"],
   "env": {}
 }
 ```

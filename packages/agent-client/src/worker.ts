@@ -80,6 +80,16 @@ export interface WorkerOptions {
    */
   onChain?: boolean;
   /**
+   * Explicit opt-in for the "claim, and STOP" cycle shape: `onChain: true`
+   * with `dryRun` left true signs and bonds real claims (section 1) but never
+   * submits (section 2). Setup drivers that need a task left sitting Claimed
+   * rely on that shape. Without this flag, `onChain: true` together with a
+   * dry run THROWS before the cycle does anything — a caller that asked for
+   * a dry run must never have a bond posted on its behalf by accident.
+   * Default false.
+   */
+  claimOnly?: boolean;
+  /**
    * Max tasks this cycle may BOND a claim on (per-cycle claim budget). Caps how
    * much XRD a standing --loop can lock per cycle, so a burst of open tasks
    * can't drain the bond wallet in one sweep; the rest defer to later cycles.
@@ -464,6 +474,17 @@ export async function runWorkerCycle(options: WorkerOptions): Promise<WorkerCycl
       'autoWithdraw requires dryRun: false (i.e. --live) — auto-withdraw signs a real on-chain ' +
         'transaction for every entitlement the survey reports, and must never run dry. Pass ' +
         'dryRun: false explicitly alongside autoWithdraw: true.'
+    );
+  }
+  // Same stance for onChain: section 1 signs a real claim bond on `onChain`
+  // alone, so a dry run with onChain set would bond claims it then never
+  // submits. Only an explicit `claimOnly: true` (the setup-driver shape) may
+  // ask for that. worker-cli.ts refuses `--on-chain` without `--live` first.
+  if (onChain && dryRun && options.claimOnly !== true) {
+    throw new Error(
+      'onChain requires dryRun: false (i.e. --live) — a dry run must never sign a claim bond. ' +
+        'Pass dryRun: false for the full money path, or claimOnly: true to deliberately claim ' +
+        'on-chain without submitting (setup drivers only).'
     );
   }
   const sweepTo = options.sweepTo;

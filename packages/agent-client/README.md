@@ -421,11 +421,11 @@ bun run guild-worker run --live --on-chain --loop --auto-withdraw
 
 What it does and does not change:
 
-- **Stays behind `--live`, harder than `--on-chain` does.** `--on-chain`
-  without `--live` merely warns (it has nothing to settle). `--auto-withdraw`
+- **Stays behind `--live`, the same way `--on-chain` does.** `--auto-withdraw`
   without `--live` is a **hard error** — the process refuses to start at all,
   because a silent no-op here would look identical to "running correctly"
-  while quietly collecting nothing. (`runWorkerCycle` enforces the same rule a
+  while quietly collecting nothing. (`--on-chain` without `--live` is refused
+  the same way: a dry run never signs a claim bond.) (`runWorkerCycle` enforces the same rule a
   second time for anyone who imports it directly instead of going through the
   CLI: `autoWithdraw: true` with `dryRun` left at its safe default throws
   before the cycle does anything.)
@@ -587,6 +587,12 @@ exactly (a pure on-chain collection with no DB step at all). This asymmetry is
 inherited, not invented — `approve-task.mjs` already took a DB id while
 `guild-worker withdraw` already read the escrow directly by on-chain id; see
 `guild-poster help` and each command's doc comment in `src/guild-poster.ts`.
+On-chain ids restart at 1 on every escrow component, so these four DB-id
+commands also check that the task was funded on the component you are
+configured for. A task on a different component is refused in either mode, and
+nothing is signed. A task whose component the API does not report is refused
+too, unless you pass `--allow-unverified-component` after checking it on chain
+yourself.
 
 **DB-FIRST, always.** `post`'s live path creates the DB row (`POST
 /api/v1/tasks`) BEFORE funding on-chain, and hashes the row's OWN
