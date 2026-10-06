@@ -5,11 +5,16 @@ import { findOrCreateUser } from "@/db/queries/users"
 import { verifyAuthSchema } from "@/lib/validation"
 import { fromError } from "@/lib/api-response"
 import { createRateLimiter, getClientIp, rateLimitResponse } from "@/lib/rate-limit"
+import { crossOriginRefusal } from "@/lib/same-origin"
 
 const limiter = createRateLimiter({ windowMs: 60_000, max: 10 })
 
 export async function POST(req: NextRequest) {
   try {
+    // Login CSRF: a sibling-subdomain page could otherwise post ITS OWN valid
+    // proof and sign the visitor in as someone else.
+    const refused = crossOriginRefusal(req)
+    if (refused) return refused
     const limit = limiter(getClientIp(req))
     if (!limit.ok) return rateLimitResponse(limit.retryAfter!)
 
@@ -35,6 +40,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { ok: false, error: { code: "AUTH_FAILED", message: result.error } },
         { status: 401 },
+      )
+    }
+
+    // Sessions are for ACCOUNTS only. ROLA also verifies persona proofs
+    // (identity_rdx1…), but a persona can hold no badge, fund no escrow and
+    // receive no reward, and every userId downstream is read as an account.
+    // Neither the site nor the agent kit ever signs in with a persona.
+    if (!result.address.startsWith("account_rdx1")) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: { code: "ACCOUNT_REQUIRED", message: "Sign in with a Radix account, not a persona." },
+        },
+        { status: 400 },
       )
     }
 

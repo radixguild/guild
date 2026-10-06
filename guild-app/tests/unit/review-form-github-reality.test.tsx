@@ -24,6 +24,7 @@ import { ReviewForm } from "@/components/tasks/review-form"
 import { BANNED, PULL_BANNED, violation } from "../../scripts/honest-copy.mjs"
 import type { Submission } from "@/lib/marketplace-types"
 
+const REPO_URL = "https://github.com/bigdevxrd/guild-saas"
 const PR_URL = "https://github.com/bigdevxrd/guild-saas/pull/42"
 
 function makeSubmission(overrides: Partial<Submission> = {}): Submission {
@@ -60,8 +61,33 @@ describe("ReviewForm — GitHub-reality soft-gate wording", () => {
         checkedAt: "2026-09-02T00:00:00Z",
       },
     })
-    const { getByText } = render(<ReviewForm submission={submission} onReviewed={vi.fn()} />)
+    const { getByText } = render(<ReviewForm submission={submission} repoUrl={REPO_URL} onReviewed={vi.fn()} />)
     expect(getByText("verified — safe to release")).toBeInTheDocument()
+  })
+
+  // The repo pin (2026-10-06): a stored "verified" for a PR outside the task's
+  // committed repo, or on a task that committed none, proves nothing about
+  // this task and must not read "safe to release".
+  it.each([
+    ["the task committed no repoUrl", undefined],
+    ["the PR is outside the committed repo", "https://github.com/someone-else/other-repo"],
+  ])("a stored 'verified' does not read as verified when %s", (_label, repoUrl) => {
+    const submission = makeSubmission({
+      content: `Shipped: ${PR_URL}`,
+      prVerification: {
+        prUrl: PR_URL,
+        merged: true,
+        mergedAt: "2026-09-01T00:00:00Z",
+        doneChecks: {},
+        overall: "verified",
+        checkedAt: "2026-09-02T00:00:00Z",
+      },
+    })
+    const { getByText, queryByText } = render(
+      <ReviewForm submission={submission} repoUrl={repoUrl} onReviewed={vi.fn()} />,
+    )
+    expect(queryByText("verified — safe to release")).not.toBeInTheDocument()
+    expect(getByText("not verified on GitHub yet")).toBeInTheDocument()
   })
 
   it.each(["pending", "failed"] as const)(
@@ -78,7 +104,7 @@ describe("ReviewForm — GitHub-reality soft-gate wording", () => {
           checkedAt: "2026-09-02T00:00:00Z",
         },
       })
-      const { getByText, queryByText } = render(<ReviewForm submission={submission} onReviewed={vi.fn()} />)
+      const { getByText, queryByText } = render(<ReviewForm submission={submission} repoUrl={REPO_URL} onReviewed={vi.fn()} />)
       expect(getByText("not verified on GitHub yet")).toBeInTheDocument()
       expect(queryByText("verified — safe to release")).not.toBeInTheDocument()
     },
@@ -86,13 +112,13 @@ describe("ReviewForm — GitHub-reality soft-gate wording", () => {
 
   it("shows the neutral note when a PR is linked but has never been checked (no prVerification yet)", () => {
     const submission = makeSubmission({ content: `Shipped: ${PR_URL}`, prVerification: null })
-    const { getByText } = render(<ReviewForm submission={submission} onReviewed={vi.fn()} />)
+    const { getByText } = render(<ReviewForm submission={submission} repoUrl={REPO_URL} onReviewed={vi.fn()} />)
     expect(getByText("not verified on GitHub yet")).toBeInTheDocument()
   })
 
   it("shows NEITHER note for a submission with no PR reference at all (non-code work)", () => {
     const submission = makeSubmission({ content: "Design files attached, see the Figma link in chat." })
-    const { queryByText } = render(<ReviewForm submission={submission} onReviewed={vi.fn()} />)
+    const { queryByText } = render(<ReviewForm submission={submission} repoUrl={REPO_URL} onReviewed={vi.fn()} />)
     expect(queryByText("verified — safe to release")).not.toBeInTheDocument()
     expect(queryByText("not verified on GitHub yet")).not.toBeInTheDocument()
   })
@@ -109,7 +135,7 @@ describe("ReviewForm — GitHub-reality soft-gate wording", () => {
         checkedAt: "2026-09-02T00:00:00Z",
       },
     })
-    const { getByRole } = render(<ReviewForm submission={submission} onReviewed={vi.fn()} />)
+    const { getByRole } = render(<ReviewForm submission={submission} repoUrl={REPO_URL} onReviewed={vi.fn()} />)
     // Reject stays gated on picking a decline reason (existing behaviour,
     // unrelated to this feature) — Approve and Request changes are not.
     expect(getByRole("button", { name: /Approve submission/ })).toBeEnabled()
@@ -144,7 +170,7 @@ describe("ReviewForm's soft-gate copy clears the real honest-copy rule table", (
               checkedAt: "2026-09-02T00:00:00Z",
             },
     })
-    const { container } = render(<ReviewForm submission={submission} onReviewed={vi.fn()} />)
+    const { container } = render(<ReviewForm submission={submission} repoUrl={REPO_URL} onReviewed={vi.fn()} />)
     const text = container.textContent ?? ""
     expect(text.length).toBeGreaterThan(0) // vacuous-pass guard
 
