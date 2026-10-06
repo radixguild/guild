@@ -329,7 +329,8 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       description:
         'Check whether a Radix account holds a Guild badge NFT (keyless Gateway read). ' +
         'Defaults to the Guild Member badge resource. Returns { address, resource, ' +
-        'localId, holds } — localId is null (holds:false) when the account holds none.',
+        'localId, holds } — localId is null (holds:false) when the account holds none. ' +
+        'An unreadable Gateway answer is an error, never holds:false.',
       inputSchema: {
         address: z
           .string()
@@ -362,11 +363,14 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         'Released/Refunded) on the configured escrow component, next to the marketplace ' +
         '(DB) view — so an agent can tell chain truth from the board BEFORE it bonds a ' +
         'claim. Keyless Gateway read. Returns { taskId, onChainTaskId, escrowComponent, ' +
-        'dbStatus, chainState, claimable, note }. chainState is null when unknown (gateway ' +
-        "hiccup, or the task isn't on this component — never means 'gone'); onChainTaskId is " +
-        "null for an unfunded task. claimable is true ONLY when chainState is Open (a claim " +
-        "then won't revert the must-be-Open assert) — it does NOT check this agent's badge " +
-        'or balance; use readiness for that.',
+        'taskEscrowComponent, dbStatus, chainState, claimable, note }. escrowComponent is the ' +
+        'configured one; taskEscrowComponent is the one the task was funded on (null when the ' +
+        'API does not report it). chainState is null when unknown (gateway hiccup, or the task ' +
+        "was funded on a different component, which is then not read at all — never means " +
+        "'gone'); onChainTaskId is null for an unfunded task. claimable is true ONLY when " +
+        'chainState is Open AND the task is pinned to the configured component (a claim then ' +
+        "won't revert the must-be-Open assert) — it does NOT check this agent's badge or " +
+        'balance; use readiness for that.',
       inputSchema: {
         id: z
           .number()
@@ -385,22 +389,36 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           const task = await deps.client.getTask(taskId);
           const escrowComponent = deps.config.escrowComponent;
           const onChainTaskId = task.onChainTaskId;
+          // The task's own component: a different one means its on-chain id names
+          // another task on the configured component, so it is not read at all;
+          // null means it cannot be pinned (api.ts), so it is never claimable.
+          const taskEscrowComponent = task.escrowComponent ?? null;
+          const otherComponent = taskEscrowComponent !== null && taskEscrowComponent !== escrowComponent;
           const chainState =
-            onChainTaskId === null
+            onChainTaskId === null || otherComponent
               ? null
               : await deps.readTaskState(
                   onChainTaskId,
                   escrowComponent,
                   deps.config.gatewayBaseUrl
                 );
+          const pinned = taskEscrowComponent === escrowComponent;
           return ok({
             taskId,
             onChainTaskId,
             escrowComponent,
+            taskEscrowComponent,
             dbStatus: task.status,
             chainState,
-            claimable: chainState === 'Open',
-            note: stateNote(task.status, onChainTaskId, chainState),
+            claimable: pinned && chainState === 'Open',
+            note:
+              onChainTaskId !== null && otherComponent
+                ? `Funded on escrow component ${taskEscrowComponent}, not the configured ${escrowComponent} — ` +
+                  'its on-chain id would name a different task here, so the chain was not read. Not claimable.'
+                : onChainTaskId !== null && taskEscrowComponent === null
+                  ? `${stateNote(task.status, onChainTaskId, chainState)} The API does not report which escrow ` +
+                    'component this task was funded on, so it cannot be pinned — not claimable.'
+                  : stateNote(task.status, onChainTaskId, chainState),
           });
         }),
     },

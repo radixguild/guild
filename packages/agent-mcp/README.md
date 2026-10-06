@@ -121,6 +121,7 @@ args: `{ "id": 5 }`
   "taskId": 5,
   "onChainTaskId": 42,
   "escrowComponent": "component_rdx1_EXAMPLE_ESCROW",
+  "taskEscrowComponent": "component_rdx1_EXAMPLE_ESCROW",
   "dbStatus": "open",
   "chainState": "Open",
   "claimable": true,
@@ -131,6 +132,11 @@ args: `{ "id": 5 }`
 `chainState: null` (Gateway hiccup, or the task isn't on the configured component)
 and a funded-but-not-`Open` state both leave `claimable: false` — see the tool
 description in the table above for the exact wording each case returns.
+`taskEscrowComponent` is the component the task was funded on. When it differs
+from `escrowComponent`, the chain is not read at all (on-chain ids restart on
+every component, so the same id names a different task there). When the API
+does not report it (`null`), `claimable` stays `false` because the task cannot
+be pinned.
 </details>
 
 <details>
@@ -209,7 +215,9 @@ args: `{ "address": "account_rdx1holder" }`
 }
 ```
 
-A non-holder gets `"localId": null, "holds": false` instead of an error.
+A non-holder gets `"localId": null, "holds": false` instead of an error. A
+Gateway answer that cannot be read (an error status such as 429 or 503) is an
+error result, never `"holds": false`.
 </details>
 
 ## Run it — no repo, no bun
