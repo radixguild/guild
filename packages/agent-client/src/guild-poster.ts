@@ -110,6 +110,7 @@ import { MAINNET_XRD } from './config.js';
 import {
   parseAmount,
   parseNftRef,
+  parseWholeNumber,
   runCancelSwap,
   runListSwap,
   runWithdrawSwap,
@@ -978,9 +979,8 @@ function readTermsFile(path: string): TaskTerms {
 }
 
 function positiveIntArg(raw: string | undefined): number | null {
-  const n = Number(raw);
-  if (!raw || !Number.isInteger(n) || n <= 0) return null;
-  return n;
+  const n = parseWholeNumber(raw);
+  return n !== null && n > 0 ? n : null;
 }
 
 export interface PosterCliOverrides {
@@ -1015,7 +1015,13 @@ export async function main(
   argv: string[] = process.argv.slice(2),
   overrides: PosterCliOverrides = {}
 ): Promise<number> {
-  const args: ParsedArgs = parseArgv(argv, VALUE_OPTIONS);
+  let args: ParsedArgs;
+  try {
+    args = parseArgv(argv, VALUE_OPTIONS);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 2;
+  }
   const config = loadConfig();
   const identity = overrides.identity !== undefined ? overrides.identity : await loadPosterIdentityIfPresent();
   const live = args.flags.has('live');
@@ -1149,7 +1155,11 @@ export async function main(
         console.error('list-swap needs --price <amount> and/or --ask-nft <resource>:<local id>');
         return 2;
       }
-      const days = args.options.has('days') ? Number(args.options.get('days')) : 7;
+      const days = args.options.has('days') ? parseWholeNumber(args.options.get('days')) : 7;
+      if (days === null) {
+        console.error('--days must be a whole number of days, 1-30, in plain digits');
+        return 2;
+      }
       const result = await runListSwap({ nft, asks, days, live, identity, config, deps: overrides.swapDeps, log });
       return finishSwapLeg(
         'list-swap',

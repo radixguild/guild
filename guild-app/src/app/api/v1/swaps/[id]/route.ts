@@ -5,9 +5,12 @@ import { createRateLimiter, getClientIp, rateLimitResponse } from "@/lib/rate-li
 
 export const dynamic = "force-dynamic"
 
-// Every hit is a fresh chain read (3-5 Gateway calls). The page re-reads a few
-// times after the viewer's own transaction; 60 a minute per address covers
-// that with room to spare.
+// Every hit is a fresh chain read: 3 Gateway calls (component, listing,
+// receipt holder), plus, while the display cache is cold, one NFT read per
+// distinct collection among the listed NFT and the first 8 asks (≤ 9, 4 in
+// flight) and one resource read — 13 at most. The page re-reads a few times
+// after the viewer's own transaction; 60 a minute per address covers that
+// with room to spare.
 const limiter = createRateLimiter({ windowMs: 60_000, max: 60 })
 
 /**

@@ -53,8 +53,8 @@ export const LIVE_NFT_SWAP_COMPONENT =
   'component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4';
 
 /** The package the live swap component was instantiated from (parity MATCH at
- *  publish, 2026-09-15). swap.ts refuses the live component address if the
- *  Gateway ever reports another package for it. */
+ *  publish, 2026-09-15) — the default `nftSwapPackage`, pinned to guild-app's
+ *  NFT_SWAP_PACKAGE by escrow-address-drift.test.ts. */
 export const LIVE_NFT_SWAP_PACKAGE =
   'package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv';
 
@@ -179,10 +179,19 @@ export interface GuildClientConfig {
   /**
    * The guild-nft-swap component the swap verbs (`guild-poster list-swap` /
    * `cancel-swap` / `withdraw-swap`, `guild-worker fill-swap`) act on. Env
-   * override: GUILD_NFT_SWAP_COMPONENT. swap.ts refuses any address whose
-   * blueprint is not `NftSwap`.
+   * override: GUILD_NFT_SWAP_COMPONENT. swap.ts refuses it unless the Gateway
+   * reports blueprint `NftSwap` AND package `nftSwapPackage` for it.
    */
   nftSwapComponent: string;
+  /**
+   * The package `nftSwapComponent` must have been instantiated from. Env
+   * override: GUILD_NFT_SWAP_PACKAGE. Any package can name a blueprint
+   * `NftSwap`, so the name alone proves nothing; the package is what pins the
+   * code every `--live` read and payment trusts. PARTIAL-OVERRIDE TRAP, on
+   * purpose: repointing only GUILD_NFT_SWAP_COMPONENT at a component from
+   * another package refuses every swap verb until this moves with it.
+   */
+  nftSwapPackage: string;
 }
 
 const DEFAULTS: GuildClientConfig = {
@@ -231,6 +240,7 @@ const DEFAULTS: GuildClientConfig = {
   // together with escrowComponent, same as claimReceiptResource above.
   taskReceiptResource: 'resource_rdx1n2gxh84q62taekne4d5mys5yk23du7yyvma6zjuh0vvhn4w2vrtkju',
   nftSwapComponent: LIVE_NFT_SWAP_COMPONENT,
+  nftSwapPackage: LIVE_NFT_SWAP_PACKAGE,
 };
 
 import { keyFileExists, readKeyFile, resolveKeyFilePath } from './key-file.js';
@@ -304,6 +314,7 @@ export function loadConfig(overrides: Partial<GuildClientConfig> = {}): GuildCli
     workerBadgeResource: env('GUILD_WORKER_BADGE_RESOURCE'),
     taskReceiptResource: env('GUILD_ESCROW_TASK_RECEIPT_RESOURCE'),
     nftSwapComponent: env('GUILD_NFT_SWAP_COMPONENT'),
+    nftSwapPackage: env('GUILD_NFT_SWAP_PACKAGE'),
   };
   const merged: GuildClientConfig = { ...DEFAULTS };
   for (const [key, value] of Object.entries({ ...fromEnv, ...overrides })) {

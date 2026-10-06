@@ -30,6 +30,11 @@ describe('parseArgv', () => {
     expect(() => parseArgv(['mint-badge', '--username', '--live'])).toThrow(/needs a value/);
   });
 
+  test('an empty or blank separate value throws, as `--key=` does (an unset "$VAR")', () => {
+    expect(() => parseArgv(['fill-swap', '3', '--alternative', ''])).toThrow(/--alternative needs a value/);
+    expect(() => parseArgv(['fill-swap', '3', '--alternative', '  '])).toThrow(/--alternative needs a value/);
+  });
+
   test('mixed flags + option', () => {
     const args = parseArgv(['onboard', '--live', '--username', 'w1', '--generate']);
     expect(args.flags.has('live')).toBe(true);

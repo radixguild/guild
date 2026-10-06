@@ -9,16 +9,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { GATEWAY } from "@/lib/constants"
+import type { SwapAsk } from "@/lib/nft-swap"
 import {
   readAccountNonFungibles,
   readListedListingId,
+  readListingReceiptHolder,
   readNftDisplay,
   readResourceDisplay,
   readSwapBoard,
   readSwapComponentState,
   readSwapListingsById,
 } from "@/lib/nft-swap-gateway"
-import { __resetSwapCachesForTests, getSwapBoard, getSwapDetail } from "@/lib/nft-swap-service"
+import { __resetSwapCachesForTests, DETAIL_ASK_DISPLAY_CAP, getSwapBoard, getSwapDetail } from "@/lib/nft-swap-service"
 import { GET as getBoardRoute } from "@/app/api/v1/swaps/route"
 import { GET as getDetailRoute } from "@/app/api/v1/swaps/[id]/route"
 
@@ -84,6 +86,21 @@ function listedEntry(id: number, exp: number, seller = SELLER) {
   return e
 }
 
+/** Replace an entry's asks with these, in the Gateway's programmatic JSON. */
+function withAsks(e: any, asks: SwapAsk[]) {
+  const ref = (resource: string) => ({ kind: "Reference", type_name: "ResourceAddress", field_name: "resource", value: resource })
+  e.value.programmatic_json.fields.find((f: any) => f.field_name === "asks").elements = asks.map((a) =>
+    a.kind === "fungible"
+      ? { kind: "Enum", type_name: "Ask", variant_id: "0", variant_name: "Fungible", fields: [ref(a.resource), { kind: "Decimal", field_name: "amount", value: a.amount }] }
+      : { kind: "Enum", type_name: "Ask", variant_id: "1", variant_name: "NonFungible", fields: [ref(a.resource), { kind: "NonFungibleLocalId", field_name: "id", value: a.id }] },
+  )
+  return e
+}
+
+/** `n` distinct, well-formed resource addresses. */
+const resources = (n: number, c = "n") =>
+  Array.from({ length: n }, (_, i) => `resource_rdx1${c.repeat(40)}${String(i).padStart(4, "0")}`)
+
 let fetchSpy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   fetchSpy = vi.spyOn(global, "fetch")
@@ -132,6 +149,19 @@ describe("readSwapComponentState", () => {
     expect(await readSwapComponentState(SWAP, live)).not.toBeNull()
   })
 
+  // The List form calls it with no package: the pin must not depend on the caller.
+  it("pins the live component to the live package by default, and no caller can unpin it", async () => {
+    const other = "package_rdx1pkgnotthelivepackagexxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    fetchSpy.mockResolvedValueOnce(ok(componentDetails(3, { package_address: other })))
+    expect(await readSwapComponentState(SWAP)).toBeNull()
+    fetchSpy.mockResolvedValueOnce(ok(componentDetails(3, { package_address: other })))
+    expect(await readSwapComponentState(SWAP, other)).toBeNull()
+    // Another component is checked by blueprint only unless a package is given.
+    const elsewhere = "component_rdx1cqnotthelivecomponentxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    fetchSpy.mockResolvedValueOnce(ok(componentDetails(3, { package_address: other })))
+    expect(await readSwapComponentState(elsewhere)).not.toBeNull()
+  })
+
   it("null on non-2xx, a throw, or a missing ledger clock", async () => {
     fetchSpy.mockResolvedValueOnce(notOk())
     expect(await readSwapComponentState(SWAP)).toBeNull()
@@ -158,6 +188,17 @@ describe("readSwapListingsById", () => {
     expect(await readSwapListingsById(KV, ids)).toBeNull()
     expect(bodyOf(fetchSpy.mock.calls[0]).keys).toHaveLength(100)
     expect(bodyOf(fetchSpy.mock.calls[1]).keys).toHaveLength(50)
+  })
+
+  it("sends every batch at once — a cold board waits one round trip, not ten", async () => {
+    const ids = Array.from({ length: 250 }, (_, i) => i + 1)
+    const pending: ((r: Response) => void)[] = []
+    fetchSpy.mockImplementation(() => new Promise<Response>((r) => pending.push(r)))
+    const read = readSwapListingsById(KV, ids)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(fetchSpy).toHaveBeenCalledTimes(3)
+    for (const r of pending) r(ok({ ledger_state: LEDGER, entries: [] }))
+    expect((await read)!.missing).toHaveLength(250)
   })
 
   it("an entry that does not parse is reported, not dropped", async () => {
@@ -196,6 +237,22 @@ describe("readSwapBoard", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(11)
     // Ids that exist but returned no entry are reported, never silently gone.
     expect(b!.unreadable).toHaveLength(1000)
+  })
+})
+
+describe("readListingReceiptHolder", () => {
+  const location = (items: unknown[]) => ok({ non_fungible_ids: items })
+  it("the holder, or burned", async () => {
+    fetchSpy.mockResolvedValueOnce(location([{ non_fungible_id: "#2#", is_burned: false, owning_vault_global_ancestor_address: SELLER }]))
+    expect(await readListingReceiptHolder(RECEIPT, 2)).toEqual({ holder: SELLER, burned: false })
+    fetchSpy.mockResolvedValueOnce(location([{ non_fungible_id: "#2#", is_burned: true }]))
+    expect(await readListingReceiptHolder(RECEIPT, 2)).toEqual({ holder: null, burned: true })
+  })
+  // list() mints the receipt in the same transaction, so for a listing that
+  // exists "not minted" is only a replica behind: unknown, not "no holder".
+  it("a receipt the Gateway does not know yet is unknown (null)", async () => {
+    fetchSpy.mockResolvedValueOnce(location([]))
+    expect(await readListingReceiptHolder(RECEIPT, 2)).toBeNull()
   })
 })
 
@@ -256,25 +313,60 @@ describe("display readers", () => {
       moreResources: true,
     })
   })
+
+  it("readAccountNonFungibles: an empty account, and an emptied vault, are not failures", async () => {
+    fetchSpy.mockResolvedValueOnce(ok({ items: [] }))
+    expect(await readAccountNonFungibles(SELLER)).toEqual({ groups: [], moreResources: false })
+    fetchSpy.mockResolvedValueOnce(ok({ items: [{ resource_address: NFT, vaults: { items: [{ total_count: 0 }, { total_count: 1, items: ["#3#"] }] } }] }))
+    expect(await readAccountNonFungibles(SELLER)).toEqual({ groups: [{ resource: NFT, ids: ["#3#"], more: false }], moreResources: false })
+  })
+
+  // A shape it does not know must read "could not read", never "holds no NFTs".
+  it.each([
+    ["a renamed vault list", { resource_address: NFT, vaults: { entries: [{ items: ["#1#"] }] } }],
+    ["a vault with NFTs but no id list", { resource_address: NFT, vaults: { items: [{ total_count: 2, nfids: ["#1#", "#2#"] }] } }],
+    ["an id that is not a local id", { resource_address: NFT, vaults: { items: [{ total_count: 1, items: ["1"] }] } }],
+    ["a resource that is not an address", { resource_address: "x", vaults: { items: [] } }],
+  ])("readAccountNonFungibles: null on %s", async (_label, item) => {
+    fetchSpy.mockResolvedValueOnce(ok({ items: [item] }))
+    expect(await readAccountNonFungibles(SELLER)).toBeNull()
+  })
 })
 
 // ── The service and the routes ──────────────────────────────────────────────
 
-/** Route the Gateway by path, so call order does not matter. */
-function gatewayStub(opts: { entries?: unknown[]; next?: number; holder?: string; failComponent?: boolean } = {}) {
+type Handler = (body: any) => Response | Promise<Response>
+
+/** Route the Gateway by path, so call order does not matter. `resourceRead`
+ *  answers entity/details for anything but the component, `nftRead`
+ *  non-fungible/data, `onComponent` runs before each component read. */
+function gatewayStub(
+  opts: {
+    entries?: unknown[]
+    next?: number
+    holder?: string
+    failComponent?: boolean
+    resourceRead?: Handler
+    nftRead?: Handler
+    onComponent?: () => void
+  } = {},
+) {
   fetchSpy.mockImplementation(async (url: unknown, init?: RequestInit) => {
     const path = String(url).slice(GATEWAY.length)
     const body = JSON.parse(String(init?.body ?? "{}"))
     if (path === "/state/entity/details") {
-      if (body.addresses?.[0] === SWAP) return opts.failComponent ? notOk() : ok(componentDetails(opts.next ?? 3))
-      return ok({ items: [] })
+      if (body.addresses?.[0] === SWAP) {
+        opts.onComponent?.()
+        return opts.failComponent ? notOk() : ok(componentDetails(opts.next ?? 3))
+      }
+      return opts.resourceRead ? opts.resourceRead(body) : ok({ items: [] })
     }
     if (path === "/state/key-value-store/data") {
       const want = new Set(body.keys.map((k: any) => k.key_json.value))
       const entries = (opts.entries ?? kvFixture.entries).filter((e: any) => want.has(e.key.programmatic_json.value))
       return ok({ ledger_state: LEDGER, key_value_store_address: KV, entries })
     }
-    if (path === "/state/non-fungible/data") return ok({ non_fungible_ids: [] })
+    if (path === "/state/non-fungible/data") return opts.nftRead ? opts.nftRead(body) : ok({ non_fungible_ids: [] })
     if (path === "/state/non-fungible/location") {
       return ok({ non_fungible_ids: [{ non_fungible_id: body.non_fungible_ids[0], is_burned: false, owning_vault_global_ancestor_address: opts.holder ?? SELLER }] })
     }
@@ -345,10 +437,161 @@ describe("getSwapBoard / getSwapDetail", () => {
     expect(await getSwapDetail(5)).toEqual({ kind: "not_found" })
   })
 
+  // A listing this site cannot parse must read as a refusal, never as "no
+  // such listing" (a buyer's page) or as an empty board.
+  it("a listing that does not parse, or has no entry, is unreadable — on its page and on the board", async () => {
+    gatewayStub({ entries: [...kvFixture.entries, listedEntry(3, open, "not-an-account")], next: 5 })
+    expect(await getSwapDetail(3)).toEqual({ kind: "unreadable" })
+    // Id 4 is below next_listing_id but has no entry.
+    expect(await getSwapDetail(4)).toEqual({ kind: "unreadable" })
+    expect((await getSwapBoard({}))!.unreadable).toEqual([4, 3])
+    // The open filter matches nothing it can read: listings [] with the ids
+    // still reported is the state the board shows as "could not be read".
+    const openOnly = await getSwapBoard({ status: "open" })
+    expect(openOnly!.listings).toEqual([])
+    expect(openOnly!.unreadable).toEqual([4, 3])
+  })
+
   it("unknown when the chain cannot be read", async () => {
     gatewayStub({ failComponent: true })
     expect(await getSwapBoard({})).toBeNull()
     expect(await getSwapDetail(1)).toEqual({ kind: "unknown" })
+  })
+
+  // Display data for whatever a resource read returns: every address a name.
+  const named: Handler = (body) =>
+    ok({
+      items: body.addresses.map((address: string) => ({
+        address,
+        metadata: { items: [{ key: "name", value: { typed: { value: "Stranger's name" } } }] },
+        details: address === XRD ? { type: "FungibleResource", divisibility: 18 } : { type: "NonFungibleResource" },
+      })),
+    })
+  const resourceReads = () =>
+    fetchSpy.mock.calls.filter((c) => pathOf(c) === "/state/entity/details" && bodyOf(c).addresses[0] !== SWAP)
+  const nftReads = () => fetchSpy.mock.calls.filter((c) => pathOf(c) === "/state/non-fungible/data")
+
+  // The asks are a stranger's to write and the blueprint sets no limit.
+  it("a listing with 300 asks: its page looks up the first 8, at most 4 at a time, and says there are more", async () => {
+    const askRes = resources(300)
+    const big = withAsks(listedEntry(3, open), askRes.map((resource) => ({ kind: "nonFungible", resource, id: "#1#" })))
+    let inFlight = 0
+    let peak = 0
+    gatewayStub({
+      entries: [...kvFixture.entries, big],
+      next: 4,
+      resourceRead: named,
+      nftRead: async () => {
+        peak = Math.max(peak, ++inFlight)
+        await new Promise((r) => setTimeout(r, 5))
+        inFlight--
+        return ok({ non_fungible_ids: [] })
+      },
+    })
+    const r = await getSwapDetail(3)
+    expect(r.kind).toBe("ok")
+    if (r.kind !== "ok") return
+    expect(r.view.moreAsks).toBe(true)
+    expect(DETAIL_ASK_DISPLAY_CAP).toBe(8)
+    // The listed NFT's collection + the first 8 asks'.
+    expect(nftReads().map((c) => bodyOf(c).resource_address)).toEqual(expect.arrayContaining([NFT, ...askRes.slice(0, 8)]))
+    expect(nftReads()).toHaveLength(9)
+    expect(peak).toBeLessThanOrEqual(4)
+    expect(resourceReads().flatMap((c) => bodyOf(c).addresses).sort()).toEqual([NFT, ...askRes.slice(0, 8)].sort())
+    expect(Object.keys(r.view.resources)).toHaveLength(9)
+
+    // A card names its first ask only, so the board looks up nothing past it.
+    fetchSpy.mockClear()
+    const b = await getSwapBoard({})
+    expect(b!.listings).toHaveLength(3)
+    expect(resourceReads().flatMap((c) => bodyOf(c).addresses)).not.toContain(askRes[1])
+    expect(nftReads().map((c) => bodyOf(c).resource_address)).toEqual([NFT])
+  })
+
+  it("a failed display lookup is not retried for 30 s — a bad address must not cost a Gateway call per view", async () => {
+    let clock = 1_800_000_000_000
+    vi.spyOn(Date, "now").mockImplementation(() => clock)
+    gatewayStub({ entries: entries(), next: 5, resourceRead: () => notOk(), nftRead: () => notOk() })
+    await getSwapDetail(3)
+    await getSwapDetail(3)
+    expect(resourceReads()).toHaveLength(1)
+    expect(nftReads()).toHaveLength(1)
+    clock += 31_000
+    await getSwapDetail(3)
+    expect(resourceReads()).toHaveLength(2)
+    expect(nftReads()).toHaveLength(2)
+  })
+
+  it("resource lookups are cached a batch of 20 at a time — one failed batch does not blank the page", async () => {
+    const asked = resources(25, "f")
+    const poison = asked[24]
+    const many = asked.map((r, i) => withAsks(listedEntry(3 + i, open), [{ kind: "fungible", resource: r, amount: "1" }]))
+    gatewayStub({
+      entries: [...kvFixture.entries, ...many],
+      next: 28,
+      resourceRead: (body) => (body.addresses.includes(poison) ? notOk() : named(body)),
+    })
+    const b = await getSwapBoard({})
+    expect(resourceReads()).toHaveLength(2)
+    expect(b!.resources[asked[0]]).toBeDefined()
+    expect(b!.resources[XRD]).toBeDefined()
+    expect(b!.resources[poison]).toBeUndefined()
+  })
+
+  it("a hidden listing serves nothing a stranger wrote — no NFT, ask or collection names, only XRD's own", async () => {
+    vi.stubEnv("NFT_SWAP_HIDDEN", "3")
+    const [askNft, askToken] = resources(2)
+    const hiddenOne = withAsks(listedEntry(3, open), [
+      { kind: "nonFungible", resource: askNft, id: "#1#" },
+      { kind: "fungible", resource: XRD, amount: "10" },
+      { kind: "fungible", resource: askToken, amount: "1" },
+    ])
+    gatewayStub({ entries: [...kvFixture.entries, hiddenOne], next: 4, resourceRead: named })
+    const d = await getSwapDetail(3)
+    expect(d.kind).toBe("ok")
+    if (d.kind !== "ok") return
+    expect(d.view.listing.hidden).toBe(true)
+    expect(d.view.listing.asset).toEqual({ name: null, imageUrl: null })
+    expect(Object.keys(d.view.resources)).toEqual([XRD])
+    expect(d.view.askNfts).toEqual({})
+    expect(nftReads()).toHaveLength(0)
+
+    // The seller's own board view: listed, flagged, and still nameless.
+    const mine = await getSwapBoard({ seller: SELLER })
+    expect(mine!.listings.map((l) => l.listingId)).toContain(3)
+    expect(mine!.resources[askNft]).toBeUndefined()
+    expect(mine!.resources[NFT]).toBeDefined() // listings 1 and 2 are not hidden
+  })
+
+  it("the board cache is stamped when the read starts: a 20 s read is not served as fresh 1 s later", async () => {
+    let clock = 1_800_000_000_000
+    vi.spyOn(Date, "now").mockImplementation(() => clock)
+    gatewayStub({ entries: entries(), next: 5, onComponent: () => void (clock += 20_000) })
+    await getSwapBoard({})
+    clock += 1_000
+    await getSwapBoard({})
+    expect(fetchSpy.mock.calls.filter((c) => bodyOf(c).addresses?.[0] === SWAP)).toHaveLength(2)
+  })
+
+  it("a malformed NFT_SWAP_HIDDEN token is logged once, not dropped silently", async () => {
+    vi.stubEnv("NFT_SWAP_HIDDEN", "3, 4;5")
+    gatewayStub({ entries: entries(), next: 5 })
+    await getSwapBoard({})
+    await getSwapBoard({ status: "open" })
+    await getSwapDetail(3)
+    const logged = vi.mocked(console.error).mock.calls.filter((c) => String(c[0]).includes("NFT_SWAP_HIDDEN"))
+    expect(logged).toHaveLength(1)
+    expect(String(logged[0][0])).toContain("4;5")
+  })
+
+  it("a receipt the Gateway has not indexed yet reads unknown on the page, not 'no holder'", async () => {
+    gatewayStub({ entries: entries(), next: 5 })
+    fetchSpy.mockImplementation(((orig) => async (url: unknown, init?: RequestInit) =>
+      String(url).endsWith("/state/non-fungible/location") ? ok({ non_fungible_ids: [] }) : orig(url, init))(
+      fetchSpy.getMockImplementation()!,
+    ))
+    const d = await getSwapDetail(3)
+    expect(d.kind === "ok" && d.view.receipt).toBeNull()
   })
 })
 
@@ -400,6 +643,15 @@ describe("GET /api/v1/swaps and /api/v1/swaps/{id}", () => {
     const res = await call("1")
     expect(res.status).toBe(200)
     expect((await res.json()).data.listing.state).toBe("Filled")
+  })
+
+  it("the detail route answers 502 LISTING_UNREADABLE for a listing that exists but does not parse", async () => {
+    gatewayStub({ entries: [...kvFixture.entries, listedEntry(3, LEDGER_SECS + 86400, "not-an-account")], next: 4 })
+    const res = await getDetailRoute(new Request("http://x", { headers: { "x-forwarded-for": `10.2.0.${++n}` } }) as any, {
+      params: Promise.resolve({ id: "3" }),
+    })
+    expect(res.status).toBe(502)
+    expect((await res.json()).error.code).toBe("LISTING_UNREADABLE")
   })
 
   it("rate-limits one address at 60 a minute", async () => {

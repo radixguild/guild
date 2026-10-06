@@ -8,9 +8,14 @@ import { getSwapBoard, SWAP_FILTERS, type SwapFilter } from "@/lib/nft-swap-serv
 // nft-swap-service.ts — never baked at build time.
 export const dynamic = "force-dynamic"
 
-// Unauthenticated and chain-backed: a cache miss costs a dozen Gateway reads,
-// and the Gateway budget is shared with every escrow read the app makes. 60 a
-// minute per address is far above a person clicking filters.
+// Unauthenticated and chain-backed, and the Gateway budget is shared with every
+// escrow read the app makes. A board miss (once per 15 s, shared by every
+// caller) is 1 component read + up to 10 key-value-store batches sent together.
+// Display data for a page of `limit` (≤ 100) listings, cold, is one NFT read
+// per distinct collection on it (≤ 100) + one resource read per 20 resources
+// (NFT + first ask: ≤ 10), 4 in flight at most — so ≈ 120 Gateway calls for a
+// cold page at worst, 0 for a warm one. Good display reads keep 5 min, failed
+// ones 30 s. 60 a minute per address is far above a person clicking filters.
 const limiter = createRateLimiter({ windowMs: 60_000, max: 60 })
 
 /**

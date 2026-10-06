@@ -8,10 +8,12 @@
 // entity/details call, 100 ids per non-fungible/data call (101 / 21 / 101
 // answer 400).
 
+import { NFT_SWAP_COMPONENT, NFT_SWAP_PACKAGE } from "./config"
 import { GATEWAY } from "./constants"
 import { GATEWAY_READ_TIMEOUT_MS, readNonFungibleHolder, readTxEventFields } from "./gateway"
 import {
   SWAP_SCAN_CAP,
+  canonicalLocalId,
   displayText,
   isLocalId,
   isResourceAddress,
@@ -22,7 +24,7 @@ import {
 } from "./nft-swap"
 
 const KV_BATCH = 100
-const ENTITY_BATCH = 20
+export const ENTITY_BATCH = 20
 const NF_DATA_BATCH = 100
 
 async function post(path: string, body: unknown): Promise<any | null> {
@@ -92,21 +94,26 @@ function feeFor(config: any, method: string): SwapFee | null {
 /**
  * The component's state: where its listings live, how many there are, the
  * receipt resource, the live fee dials and the ledger clock — one call.
- * Refuses (null) anything that is not an `NftSwap` component — and, when
- * `expectedPackage` is given, one instantiated from any other package — so a
- * wrong address in env reads as "could not read", not as an empty board.
+ * Refuses (null) anything that is not an `NftSwap` component — and one
+ * instantiated from any other package than the pinned one — so a wrong
+ * address in env reads as "could not read", not as an empty board. The live
+ * component is always pinned to NFT_SWAP_PACKAGE, whatever the caller passes:
+ * the List form escrows the user's NFT on the strength of this read. Any other
+ * component (a test, a future cutover) is pinned only when `expectedPackage`
+ * is given.
  */
 export async function readSwapComponentState(
   component: string,
   expectedPackage?: string,
 ): Promise<SwapComponentState | null> {
+  const pinned = component === NFT_SWAP_COMPONENT ? NFT_SWAP_PACKAGE : expectedPackage
   const json = await post("/state/entity/details", {
     addresses: [component],
     opt_ins: { component_royalty_config: true },
   })
   const details = json?.items?.[0]?.details
   if (!details || details.blueprint_name !== "NftSwap") return null
-  if (expectedPackage !== undefined && details.package_address !== expectedPackage) return null
+  if (pinned !== undefined && details.package_address !== pinned) return null
   const fields = details?.state?.fields
   if (!Array.isArray(fields)) return null
   const f = (name: string) => fields.find((x: any) => x?.field_name === name)?.value
@@ -140,7 +147,8 @@ export async function readSwapComponentState(
  * Read listings by id. A listing that exists but does not parse lands in
  * `unreadable` rather than vanishing; an id with no entry lands in `missing`.
  * One failed batch fails the whole read (null) — a board with a silent gap in
- * it would look complete.
+ * it would look complete. The batches go out together (at most
+ * SWAP_SCAN_CAP / 100 = 10), so a cold board waits one round trip, not ten.
  */
 export async function readSwapListingsById(
   listingsKvStore: string,
@@ -150,11 +158,17 @@ export async function readSwapListingsById(
   const unreadable: number[] = []
   const seen = new Set<number>()
   let ledgerNow: number | null = null
-  for (const batch of chunks(ids, KV_BATCH)) {
-    const json = await post("/state/key-value-store/data", {
-      key_value_store_address: listingsKvStore,
-      keys: batch.map((id) => ({ key_json: { kind: "U64", value: String(id) } })),
-    })
+  const batches = chunks(ids, KV_BATCH)
+  const answers = await Promise.all(
+    batches.map((batch) =>
+      post("/state/key-value-store/data", {
+        key_value_store_address: listingsKvStore,
+        keys: batch.map((id) => ({ key_json: { kind: "U64", value: String(id) } })),
+      }),
+    ),
+  )
+  for (const [i, json] of answers.entries()) {
+    const batch = batches[i]
     const entries = json?.entries
     if (!Array.isArray(entries)) return null
     ledgerNow = ledgerNow ?? ledgerSecs(json)
@@ -225,14 +239,16 @@ export async function readSwapListing(
 
 /** Who holds listing `listingId`'s receipt — the only credential that can
  *  cancel, extend or withdraw. `holder` is the account (or component) the
- *  receipt's vault belongs to; null = unknown. */
+ *  receipt's vault belongs to; null = unknown. Call it only for a listing
+ *  that exists: `list` mints the receipt in the same transaction
+ *  (nft_swap.rs), so "not minted" can only be a Gateway replica behind the
+ *  listing read — unknown, not a fact. */
 export async function readListingReceiptHolder(
   receiptResource: string,
   listingId: number,
 ): Promise<{ holder: string | null; burned: boolean } | null> {
   const r = await readNonFungibleHolder(receiptResource, receiptLocalId(listingId))
-  if (r === null) return null
-  if (!r.minted) return { holder: null, burned: false }
+  if (r === null || !r.minted) return null
   return { holder: r.burned ? null : r.holder, burned: r.burned }
 }
 
@@ -316,18 +332,20 @@ export interface NftDisplay {
 }
 
 /** The Radix NFT display fields (`name`, `key_image_url`) for ids of one
- *  resource, batched. Ids the Gateway does not return are simply absent. */
+ *  resource, batched. Ids the Gateway does not return are simply absent. The
+ *  map is keyed by canonicalLocalId. */
 export async function readNftDisplay(resource: string, ids: string[]): Promise<Map<string, NftDisplay> | null> {
   if (!isResourceAddress(resource)) return null
-  const unique = [...new Set(ids.filter(isLocalId))]
+  const unique = [...new Set(ids.filter(isLocalId).map(canonicalLocalId))]
   const out = new Map<string, NftDisplay>()
   for (const batch of chunks(unique, NF_DATA_BATCH)) {
     const json = await post("/state/non-fungible/data", { resource_address: resource, non_fungible_ids: batch })
     const items = json?.non_fungible_ids
     if (!Array.isArray(items)) return null
     for (const it of items) {
-      const id = it?.non_fungible_id
-      if (!isLocalId(id)) continue
+      const raw = it?.non_fungible_id
+      if (!isLocalId(raw)) continue
+      const id = canonicalLocalId(raw)
       const fields = it?.data?.programmatic_json?.fields
       const f = (name: string) =>
         Array.isArray(fields) ? fields.find((x: any) => x?.field_name === name)?.value : undefined
@@ -352,7 +370,9 @@ export interface AccountNftGroup {
 }
 
 /** The non-fungibles an account holds — first page of resources, first page
- *  of ids per vault, with `more` flags rather than a silent cut. */
+ *  of ids per vault, with `more` flags rather than a silent cut. Any item it
+ *  does not recognise makes the whole read null: a skipped one would read as
+ *  "This account holds no NFTs". */
 export async function readAccountNonFungibles(
   account: string,
 ): Promise<{ groups: AccountNftGroup[]; moreResources: boolean } | null> {
@@ -367,11 +387,19 @@ export async function readAccountNonFungibles(
   for (const it of items) {
     const resource = it?.resource_address
     const vaults = it?.vaults?.items
-    if (!isResourceAddress(resource) || !Array.isArray(vaults)) continue
+    if (!isResourceAddress(resource) || !Array.isArray(vaults)) return null
     const ids: string[] = []
     let more = Boolean(it?.vaults?.next_cursor)
     for (const v of vaults) {
-      if (Array.isArray(v?.items)) for (const id of v.items) if (isLocalId(id)) ids.push(id)
+      if (!Array.isArray(v?.items)) {
+        // An emptied vault may carry no id list; one with NFTs in it must.
+        if (v?.total_count === 0) continue
+        return null
+      }
+      for (const id of v.items) {
+        if (!isLocalId(id)) return null
+        ids.push(id)
+      }
       if (v?.next_cursor) more = true
     }
     if (ids.length > 0) groups.push({ resource, ids, more })

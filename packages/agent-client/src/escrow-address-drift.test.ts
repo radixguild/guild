@@ -97,6 +97,7 @@ const APP_CONFIG_EXPORTS = [
   'MANAGER',
   'DAPP_DEF',
   'NFT_SWAP_COMPONENT',
+  'NFT_SWAP_PACKAGE',
 ] as const;
 type AppConfig = Record<(typeof APP_CONFIG_EXPORTS)[number], string>;
 let appConfig: AppConfig | null = null;
@@ -309,6 +310,13 @@ describe('SDK defaults vs guild-app/src/lib/config.ts', () => {
   test('nftSwapComponent matches NFT_SWAP_COMPONENT', () => {
     if (STANDALONE) return;
     expect(CONFIG.nftSwapComponent).toBe(requireAppConfig().NFT_SWAP_COMPONENT);
+  });
+
+  // readSwapState refuses any component not from this package, so a drift
+  // here would refuse every swap verb on the live component.
+  test('nftSwapPackage matches NFT_SWAP_PACKAGE', () => {
+    if (STANDALONE) return;
+    expect(CONFIG.nftSwapPackage).toBe(requireAppConfig().NFT_SWAP_PACKAGE);
   });
 
   test('claimReceiptResource', () => {
