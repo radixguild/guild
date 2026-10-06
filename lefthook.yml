@@ -36,13 +36,24 @@ pre-commit:
       # overrides are judged too. Missing node is a SKIP, never a block: a hook must not
       # be what wedges a clone, and the pre-merge check is the backstop.
       #
-      # A missing scanner is a SKIP for the same reason. scripts/pii-scan.mjs is not in the
-      # public repo (it stays with the maintainers), so a contributor's clone has nothing to
-      # run here. Only the file's absence skips: wherever it exists, its exit code decides.
-      # tests/unit/lefthook-identity-hook.test.ts (guild-app) runs this block both ways.
+      # A missing scanner is a SKIP for the same reason, and it says so on every commit.
+      # scripts/pii-scan.mjs is not in the public repo (it stays with the maintainers), so a
+      # contributor's clone has nothing to run here. Only the file's absence skips: wherever
+      # it exists, its exit code decides.
+      #
+      # MAINTAINERS: this is a maintainer hook. Your scanner lives outside this tree, so
+      # export GUILD_PII_SCAN=<path to pii-scan.mjs> (shell profile) and run
+      # `lefthook install` once per clone. With GUILD_PII_SCAN set the hook never skips:
+      # a missing file or a missing node FAILS the commit, so a moved scanner is loud.
+      # tests/unit/lefthook-identity-hook.test.ts (guild-app) runs this block every way.
       run: |
+        if [ -n "${GUILD_PII_SCAN:-}" ]; then
+          [ -f "$GUILD_PII_SCAN" ] || { echo "identity check FAILED: GUILD_PII_SCAN is set but names no file" >&2; exit 1; }
+          command -v node >/dev/null 2>&1 || { echo "identity check FAILED: GUILD_PII_SCAN is set but node is not on PATH" >&2; exit 1; }
+          exec node "$GUILD_PII_SCAN" --check-ident
+        fi
         command -v node >/dev/null 2>&1 || { echo "identity check skipped: node not on PATH (checked again before merge)"; exit 0; }
-        [ -f scripts/pii-scan.mjs ] || { echo "identity check skipped: scripts/pii-scan.mjs is not in this clone (checked again before merge)"; exit 0; }
+        [ -f scripts/pii-scan.mjs ] || { echo "identity check skipped: scripts/pii-scan.mjs is not in this clone and GUILD_PII_SCAN is unset (checked again before merge)"; exit 0; }
         node scripts/pii-scan.mjs --check-ident
       fail_text: |
         This commit would be recorded under an identity that is not on the allowlist
