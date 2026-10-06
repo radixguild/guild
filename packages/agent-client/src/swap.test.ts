@@ -21,6 +21,10 @@ import {
   runFillSwap,
   runListSwap,
   runWithdrawSwap,
+  readListedListingId,
+  readNftHolder,
+  readResourceKind,
+  readSwapListing,
   readSwapState,
   swapStatus,
   type ListingRead,
@@ -31,9 +35,9 @@ import {
 import { main as posterMain } from './guild-poster.js';
 import { main as workerMain } from './guild-worker.js';
 
-const KV = JSON.parse(
-  readFileSync(join(import.meta.dir, '..', '..', '..', 'guild-app', 'tests', 'fixtures', 'nft-swap', 'listings-kv-mainnet-2026-10-06.json'), 'utf8')
-);
+const FIX = join(import.meta.dir, '..', '..', '..', 'guild-app', 'tests', 'fixtures', 'nft-swap');
+const KV = JSON.parse(readFileSync(join(FIX, 'listings-kv-mainnet-2026-10-06.json'), 'utf8'));
+const LISTED_TX = JSON.parse(readFileSync(join(FIX, 'list-1-committed-details.json'), 'utf8'));
 const STANDALONE = !!process.env.GUILD_NO_SIBLING;
 
 const CONFIG = loadConfig();
@@ -103,6 +107,15 @@ describe('parseSwapListing — same answer as guild-app on the mainnet records',
     bad.fields.find((f: any) => f.field_name === 'asks').elements[0].variant_name = 'Bundle';
     expect(parseSwapListing(1, bad)).toBeNull();
     expect(app.parseSwapListing(1, bad)).toBeNull();
+  });
+
+  // The kit and the app must name the same NFT the same way, or a pre-sign
+  // holder check reads a different id than the one the site shows.
+  test.skipIf(STANDALONE)('canonicalLocalId: parity with guild-app', async () => {
+    const app = (await import('../../../guild-app/src/lib/nft-swap')) as { canonicalLocalId: (id: string) => string };
+    for (const id of ['#01#', '#000#', '#0#', '[AbCd]', '{AAAAAAAAAAAAAAAA-BBBBBBBBBBBBBBBB-CCCCCCCCCCCCCCCC-DDDDDDDDDDDDDDDD}', '<Gold_1>']) {
+      expect(canonicalLocalId(id)).toBe(app.canonicalLocalId(id));
+    }
   });
 
   test('status at the ledger clock; expiry inside the ceiling', () => {
@@ -191,6 +204,114 @@ describe('readSwapState — refuses what is not the live NftSwap component', () 
   });
 });
 
+// Every leg test injects the readers; these run the real ones against the
+// mainnet shapes, so a reader that drops a pin or reads the wrong field
+// cannot hide behind the stubs. Each answers by path, so call order is free.
+describe('the chain readers, against a stubbed Gateway', () => {
+  type Answer = unknown | ((body: any) => unknown);
+  const withGateway = async (routes: Record<string, Answer>, fn: () => Promise<void>) => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      const a = routes[new URL(String(url)).pathname];
+      const json = typeof a === 'function' ? (a as (b: any) => unknown)(JSON.parse(String(init?.body ?? '{}'))) : a;
+      // A path with no answer is a Gateway error.
+      return json === undefined ? new Response('{}', { status: 500 }) : new Response(JSON.stringify(json));
+    }) as unknown as typeof fetch;
+    try { await fn(); } finally { globalThis.fetch = real; }
+  };
+  const component = {
+    ledger_state: { proposer_round_timestamp: '2026-10-06T07:00:00.000Z' },
+    items: [{ details: {
+      blueprint_name: 'NftSwap',
+      package_address: CONFIG.nftSwapPackage,
+      state: { fields: [
+        { field_name: 'listings', value: STATE.listingsKvStore },
+        { field_name: 'next_listing_id', value: '3' },
+        { field_name: 'listing_receipt_manager', value: RECEIPT },
+      ] },
+    } }],
+  };
+  /** The KV fixture answering only the keys asked for, after `edit`. */
+  const kv = (edit: (entries: any[]) => any[] = (e) => e) => (body: any) => {
+    const want = new Set(body.keys.map((k: any) => k.key_json.value));
+    const entries = edit(JSON.parse(JSON.stringify(KV.entries)));
+    return { ...KV, entries: entries.filter((e) => want.has(e.key.programmatic_json.value)) };
+  };
+  const KV_LEDGER = Math.floor(Date.parse(KV.ledger_state.proposer_round_timestamp) / 1000);
+
+  test('readSwapListing: the mainnet record, at the clock of the listing read', async () => {
+    await withGateway({ '/state/entity/details': component, '/state/key-value-store/data': kv() }, async () => {
+      const r = await readSwapListing(CONFIG, 1);
+      expect(r.kind).toBe('ok');
+      if (r.kind !== 'ok') return;
+      expect(r.listing).toMatchObject({ listingId: 1, state: 'Filled', filledWith: 0 });
+      expect(r.state.ledgerNow).toBe(KV_LEDGER);
+      expect((await readSwapListing(CONFIG, 3)).kind).toBe('not_found');
+    });
+  });
+
+  test('readSwapListing: an absent or malformed entry is unreadable; a failed read is unknown', async () => {
+    const absent = kv((es) => es.filter((e) => e.key.programmatic_json.value !== '2'));
+    await withGateway({ '/state/entity/details': component, '/state/key-value-store/data': absent }, async () => {
+      expect((await readSwapListing(CONFIG, 2)).kind).toBe('unreadable');
+    });
+    const malformed = kv((es) => {
+      es[0].value.programmatic_json.fields.find((f: any) => f.field_name === 'seller').value = 'not-an-account';
+      return es;
+    });
+    await withGateway({ '/state/entity/details': component, '/state/key-value-store/data': malformed }, async () => {
+      expect((await readSwapListing(CONFIG, 1)).kind).toBe('unreadable');
+    });
+    await withGateway({ '/state/entity/details': component }, async () => {
+      expect((await readSwapListing(CONFIG, 1)).kind).toBe('unknown');
+    });
+  });
+
+  test('readNftHolder: the holder; burned or never minted is undefined; unreadable is null', async () => {
+    const at = (item: object) => ({ '/state/non-fungible/location': { non_fungible_ids: [{ non_fungible_id: '#2#', ...item }] } });
+    await withGateway(at({ is_burned: false, owning_vault_global_ancestor_address: SELLER }), async () => {
+      expect(await readNftHolder(CONFIG, RECEIPT, '#2#')).toBe(SELLER);
+    });
+    await withGateway(at({ is_burned: true }), async () => {
+      expect(await readNftHolder(CONFIG, RECEIPT, '#2#')).toBeUndefined();
+    });
+    await withGateway({ '/state/non-fungible/location': { non_fungible_ids: [] } }, async () => {
+      expect(await readNftHolder(CONFIG, RECEIPT, '#2#')).toBeUndefined();
+    });
+    await withGateway({}, async () => {
+      expect(await readNftHolder(CONFIG, RECEIPT, '#2#')).toBeNull();
+    });
+  });
+
+  test('readResourceKind: fungible with divisibility 0-18, non-fungible, anything else null', async () => {
+    const as = (details: object) => ({ '/state/entity/details': { items: [{ details }] } });
+    await withGateway(as({ type: 'FungibleResource', divisibility: 18 }), async () => {
+      expect(await readResourceKind(CONFIG, MAINNET_XRD)).toEqual({ kind: 'fungible', divisibility: 18 });
+    });
+    await withGateway(as({ type: 'FungibleResource', divisibility: 19 }), async () => {
+      expect(await readResourceKind(CONFIG, MAINNET_XRD)).toBeNull();
+    });
+    await withGateway(as({ type: 'NonFungibleResource' }), async () => {
+      expect(await readResourceKind(CONFIG, NFT)).toEqual({ kind: 'nonFungible' });
+    });
+    await withGateway(as({ type: 'Component' }), async () => {
+      expect(await readResourceKind(CONFIG, NFT)).toBeNull();
+    });
+  });
+
+  test('readListedListingId: the proving run list tx reads 1; another emitter or a failed tx reads null', async () => {
+    await withGateway({ '/transaction/committed-details': LISTED_TX }, async () => {
+      expect(await readListedListingId(CONFIG, 'txid')).toBe(1);
+      const elsewhere = { ...CONFIG, nftSwapComponent: 'component_rdx1czka54tdxyva098x7djgdsqplt63n9qdglep47atkzpml45hp88yly' };
+      expect(await readListedListingId(elsewhere, 'txid')).toBeNull();
+    });
+    const failed = { transaction: { ...LISTED_TX.transaction, transaction_status: 'CommittedFailure' } };
+    await withGateway({ '/transaction/committed-details': failed }, async () => {
+      expect(await readListedListingId(CONFIG, 'txid')).toBeNull();
+    });
+  });
+});
+
 describe('fill-swap', () => {
   test('dry run: the manifest pays exactly the chain stored ask, signs nothing', async () => {
     const { d, signed } = deps();
@@ -218,6 +339,8 @@ describe('fill-swap', () => {
 
   test.each([
     ['expired', listing({ expiresAt: LEDGER - 1 }), 'is expired'],
+    // fill asserts now < expires_at: a listing expiring at this very second is already expired.
+    ['expiring at the ledger clock', listing({ expiresAt: LEDGER }), 'is expired'],
     ['filled', listing({ state: 'Filled', filledWith: 0 }), 'is filled'],
     ['cancelled', listing({ state: 'Cancelled' }), 'is cancelled'],
   ])('refuses a listing that is %s — nothing signed', async (_n, l, msg) => {
@@ -362,6 +485,15 @@ describe('cancel-swap / withdraw-swap — the receipt is the credential', () => 
 
     const burned = deps({ holder: undefined });
     expect((await runCancelSwap({ listingId: 3, live: true, identity: id, config: CONFIG, deps: burned.d })).message).toContain('burned');
+  });
+
+  // nft_swap.rs keeps cancel open after expiry, so an expired NFT is never stranded.
+  test('cancel: an expired, still Listed listing signs the cancel', async () => {
+    const id = await identity();
+    const expired = deps({ read: { kind: 'ok', state: STATE, listing: listing({ expiresAt: LEDGER - 1 }) }, holder: id.address });
+    const r = await runCancelSwap({ listingId: 3, live: true, identity: id, config: CONFIG, deps: expired.d });
+    expect(r.refused).toBeUndefined();
+    expect(expired.signed).toEqual([cancelSwapManifest(SWAP, id.address, RECEIPT, 3)]);
   });
 
   test('cancel refuses anything but Listed; withdraw refuses anything but Filled-and-owed', async () => {

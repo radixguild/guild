@@ -102,6 +102,80 @@ describe("shapes the proving run did not exercise", () => {
   })
 })
 
+// The proving run flew list (one fungible ask), fungible fill, withdraw and
+// cancel; the shapes below never ran on mainnet, and the string expectations
+// above are written by the same hand as the builders. The toolkit is the
+// wallet's own compiler: it resolves every Bucket/Proof name and types every
+// argument, so a slip in an unflown shape fails here, not in a user's wallet.
+describe("every builder compiles in the real Radix Engine Toolkit", () => {
+  async function compile(manifest: string) {
+    const { RadixEngineToolkit } = await import("@radixdlt/radix-engine-toolkit")
+    const parsed = await RadixEngineToolkit.Instructions.convert({ kind: "String", value: manifest }, 1, "Parsed")
+    return parsed.value as any[]
+  }
+  /** Instruction kind, and the method for a call — the transaction's outline. */
+  const outline = (ins: any[]) => ins.map((i) => (i.kind === "CallMethod" ? `${i.kind} ${i.methodName}` : i.kind))
+  const swapCall = (ins: any[], method: string) => ins.find((i) => i.kind === "CallMethod" && i.methodName === method)
+  const kinds = (call: any) => call.args.fields.map((f: any) => f.kind)
+
+  const NFT_ASK = { kind: "nonFungible" as const, resource: RECEIPT, id: "<rare_7>" }
+  const XRD_ASK = { kind: "fungible" as const, resource: XRD, amount: "5000.25" }
+  const proof = ["CallMethod create_proof_of_non_fungibles", "PopFromAuthZone"]
+
+  it("extend: proof of the receipt, then extend_listing(Proof)", async () => {
+    const ins = await compile(extendSwapListingManifest(SWAP, GUILD_ADMIN_2, RECEIPT, 3))
+    expect(outline(ins)).toEqual([...proof, "CallMethod extend_listing"])
+    expect(kinds(swapCall(ins, "extend_listing"))).toEqual(["Proof"])
+  })
+
+  it("burn: the receipt itself, as burn_listing_receipt(Bucket)", async () => {
+    const ins = await compile(burnListingReceiptManifest(SWAP, GUILD_ADMIN_2, RECEIPT, 2))
+    expect(outline(ins)).toEqual([
+      "CallMethod withdraw_non_fungibles",
+      "TakeNonFungiblesFromWorktop",
+      "CallMethod burn_listing_receipt",
+    ])
+    expect(kinds(swapCall(ins, "burn_listing_receipt"))).toEqual(["Bucket"])
+  })
+
+  it("non-fungible fill: fill(u64, u8, Bucket) with exactly that one id", async () => {
+    const ins = await compile(fillSwapManifest(SWAP, POSTER_2, 9, 1, NFT_ASK))
+    expect(outline(ins)).toEqual([
+      "CallMethod withdraw_non_fungibles",
+      "TakeNonFungiblesFromWorktop",
+      "CallMethod fill",
+      "CallMethod try_deposit_batch_or_abort",
+    ])
+    expect(kinds(swapCall(ins, "fill"))).toEqual(["U64", "U8", "Bucket"])
+  })
+
+  it.each([
+    ["two alternatives", [XRD_ASK, NFT_ASK]],
+    ["three mixed alternatives", [NFT_ASK, XRD_ASK, { kind: "fungible" as const, resource: THROWAWAY_NFT, amount: "1" }]],
+  ])("list with %s: list(Address, Bucket, Array<Enum>, i64), one Enum per alternative in order", async (_n, asks) => {
+    const ins = await compile(listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#2#", asks, 1790114665))
+    expect(outline(ins)).toEqual([
+      "CallMethod withdraw_non_fungibles",
+      "TakeNonFungiblesFromWorktop",
+      "CallMethod list",
+      "CallMethod try_deposit_batch_or_abort",
+    ])
+    const call = swapCall(ins, "list")
+    expect(kinds(call)).toEqual(["Address", "Bucket", "Array", "I64"])
+    const arr = call.args.fields[2]
+    expect(arr.elementValueKind).toBe("Enum")
+    // Ask::Fungible { resource, amount } = 0, Ask::NonFungible { resource, id } = 1 (nft_swap.rs).
+    expect(arr.elements.map((e: any) => [e.discriminator, e.fields.map((f: any) => f.kind)])).toEqual(
+      asks.map((a) => (a.kind === "fungible" ? [0, ["Address", "Decimal"]] : [1, ["Address", "NonFungibleLocalId"]])),
+    )
+  })
+
+  it("the gate has teeth: a bucket name used but never declared does not compile", async () => {
+    const m = fillSwapManifest(SWAP, POSTER_2, 9, 1, NFT_ASK).replace(/Bucket\("payment"\)/, 'Bucket("pay")')
+    await expect(compile(m)).rejects.toThrow(/UndefinedBucket/)
+  })
+})
+
 describe("the builders refuse what the chain would refuse, or worse, accept", () => {
   const ok = { kind: "fungible" as const, resource: XRD, amount: "1" }
 

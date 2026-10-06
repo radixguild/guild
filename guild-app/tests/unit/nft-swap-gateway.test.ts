@@ -437,6 +437,21 @@ describe("getSwapBoard / getSwapDetail", () => {
     expect(await getSwapDetail(5)).toEqual({ kind: "not_found" })
   })
 
+  // A listing this site cannot parse must read as a refusal, never as "no
+  // such listing" (a buyer's page) or as an empty board.
+  it("a listing that does not parse, or has no entry, is unreadable — on its page and on the board", async () => {
+    gatewayStub({ entries: [...kvFixture.entries, listedEntry(3, open, "not-an-account")], next: 5 })
+    expect(await getSwapDetail(3)).toEqual({ kind: "unreadable" })
+    // Id 4 is below next_listing_id but has no entry.
+    expect(await getSwapDetail(4)).toEqual({ kind: "unreadable" })
+    expect((await getSwapBoard({}))!.unreadable).toEqual([4, 3])
+    // The open filter matches nothing it can read: listings [] with the ids
+    // still reported is the state the board shows as "could not be read".
+    const openOnly = await getSwapBoard({ status: "open" })
+    expect(openOnly!.listings).toEqual([])
+    expect(openOnly!.unreadable).toEqual([4, 3])
+  })
+
   it("unknown when the chain cannot be read", async () => {
     gatewayStub({ failComponent: true })
     expect(await getSwapBoard({})).toBeNull()
@@ -628,6 +643,15 @@ describe("GET /api/v1/swaps and /api/v1/swaps/{id}", () => {
     const res = await call("1")
     expect(res.status).toBe(200)
     expect((await res.json()).data.listing.state).toBe("Filled")
+  })
+
+  it("the detail route answers 502 LISTING_UNREADABLE for a listing that exists but does not parse", async () => {
+    gatewayStub({ entries: [...kvFixture.entries, listedEntry(3, LEDGER_SECS + 86400, "not-an-account")], next: 4 })
+    const res = await getDetailRoute(new Request("http://x", { headers: { "x-forwarded-for": `10.2.0.${++n}` } }) as any, {
+      params: Promise.resolve({ id: "3" }),
+    })
+    expect(res.status).toBe(502)
+    expect((await res.json()).error.code).toBe("LISTING_UNREADABLE")
   })
 
   it("rate-limits one address at 60 a minute", async () => {
