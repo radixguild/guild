@@ -293,8 +293,9 @@ function TrustContent() {
                 Take this site offline or roll it back; suspend an account&rsquo;s access to this
                 site; stop new tasks being funded; change escrow settings (a change applies only to
                 steps taken after it, except the two Known Issues names, which reach claims already
-                in flight); cancel a task the operator posted, until work is submitted; and rule
-                disputes, as the only arbiter.
+                in flight); cancel a task the operator posted, until work is submitted; rule
+                disputes, as the only arbiter; and mint more arbiter badges, each assigned to one
+                account, so one arbiter is a choice today, not a limit the contract enforces.
               </dd>
             </div>
             <div>
