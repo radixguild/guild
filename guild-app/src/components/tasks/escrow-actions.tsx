@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { GetXrdLinks } from "@/components/get-xrd-links"
 import { useWallet } from "@/hooks/useWallet"
+import type { SessionFailure } from "@/lib/session-outcome"
 import { useEscrowPostingFrozen } from "@/hooks/useEscrowPostingFrozen"
 import {
   PostingPausedNotice,
@@ -105,17 +106,31 @@ import {
 // is wasted chain reads + a confusing "already settled" error, not corruption).
 // A ref flips SYNCHRONOUSLY on the first call, so the second returns at once;
 // it clears in `finally` when the handler settles.
-function useTxGuard() {
+//
+// 2026-10-06 (the money-buttons lane): the guard also owns the two things
+// every handler used to get wrong on its own. `reset` runs before the press
+// (clears the previous press's sentence), and `onThrow` catches a handler that
+// throws anywhere after setLoading(true) — before this, such a throw died
+// unhandled with the button disabled and no text (ensureSession() could do
+// exactly that from signIn's /verify fetch; so can any Gateway read).
+function useTxGuard(hooks?: { reset?: () => void; onThrow?: (e: unknown) => void }) {
   const inFlight = useRef(false)
+  // `hooks` is a fresh literal each render (its callbacks only call stable
+  // state setters), so the guard is re-made each render too — harmless, it is
+  // only ever read from a click handler.
   return useCallback(async (fn: () => Promise<void>) => {
     if (inFlight.current) return
     inFlight.current = true
+    hooks?.reset?.()
     try {
       await fn()
+    } catch (e) {
+      console.error("escrow action threw after the press", e)
+      hooks?.onThrow?.(e)
     } finally {
       inFlight.current = false
     }
-  }, [])
+  }, [hooks])
 }
 
 // Shared success alert (with a dashboard tx link).
@@ -204,6 +219,83 @@ function SessionMismatchAlert() {
 // ── Deposit (create_task) — /tasks/create after the task is saved, and the
 //    unfunded-task detail view ("Skip for now — fund later" recovery path) ────
 
+// ── Never silent (2026-10-03 task 70; every button since 2026-10-06) ──────────
+//
+// Every button here hands a transaction to rdt.walletApi.sendTransaction
+// through one gate, ensureSessionDetailed(), after its own pre-flights. Three
+// things used to leave a press mute: the gate answered a bare false (and could
+// throw), a wallet that never answered left the spinner on for good, and a
+// handler that threw anywhere after setLoading(true) died with the button
+// disabled and no text. Each has one shared answer below and every button uses
+// all three — escrow-money-buttons-never-silent.test.tsx presses each one.
+
+/**
+ * A handler threw somewhere after the press. The page cannot know whether the
+ * wallet had already been asked, so it says both halves and keeps the thrown
+ * text under Error details.
+ */
+export const TX_BACKSTOP =
+  "This page hit an error and stopped. If your wallet showed a transaction and you approved it, refresh this page to see where it stands; if the wallet showed nothing, nothing was sent. The error is under Error details."
+
+/** Each button's own certain fact when sign-in does not complete: what was NOT sent. */
+export const SIGN_IN_LEAD = {
+  fund: "Sign-in didn't complete, so no funding transaction was sent to your wallet.",
+  claim: "Sign-in didn't complete, so no claim transaction was sent to your wallet.",
+  submit: "Sign-in didn't complete, so no submit transaction was sent to your wallet.",
+  approve: "Sign-in didn't complete, so no approval transaction was sent to your wallet.",
+  release: "Sign-in didn't complete, so no release transaction was sent to your wallet.",
+  cancel: "Sign-in didn't complete, so no cancel transaction was sent to your wallet.",
+  dispute: "Sign-in didn't complete, so no dispute transaction was sent to your wallet.",
+  finalize: "Sign-in didn't complete, so no settlement transaction was sent to your wallet.",
+  withdraw: "Sign-in didn't complete, so no collection transaction was sent to your wallet.",
+  resync: "Sign-in didn't complete, so nothing was re-synced.",
+  expire: "Sign-in didn't complete, so no expire-claim transaction was sent to your wallet.",
+} as const
+
+/** The last sentence of each button's wait hint: what is not done until the wallet approves. */
+export const WAIT_CLOSING = {
+  fund: "Nothing is funded until you approve it in the wallet.",
+  claim: "Nothing is claimed until you approve it in the wallet.",
+  submit: "Nothing is submitted until you approve it in the wallet.",
+  approve: "Nothing is released until you approve it in the wallet.",
+  release: "Nothing is released until you approve it in the wallet.",
+  cancel: "Nothing is cancelled until you approve it in the wallet.",
+  dispute: "No dispute is raised until you approve it in the wallet.",
+  finalize: "Nothing is settled until you approve it in the wallet.",
+  withdraw: "Nothing is collected until you approve it in the wallet.",
+  push: "Nothing is delivered until you approve it in the wallet.",
+  resync: "Nothing is re-synced until you approve the sign-in in the wallet.",
+  expire: "Nothing expires until you approve it in the wallet.",
+} as const
+
+/**
+ * Sign-in did not complete, so the button's transaction was never sent. `lead`
+ * is the button's own certain fact (SIGN_IN_LEAD); `failure` adds the cause and
+ * the fix the gate reported (session-outcome.ts). Without one — the gate itself
+ * could not be reached — the generic check stands, because the one silent case
+ * left is a request that never got through.
+ */
+export function signInIncomplete(lead: string, failure?: SessionFailure): string {
+  return failure
+    ? `${lead} ${failure.message}`
+    : `${lead} If your wallet never showed a sign-in request, the request didn't get through: reload the page, or disconnect and reconnect with the Connect button at the top, then try again.`
+}
+
+/**
+ * Under a still-spinning button once the wallet has gone WALLET_WAIT_HINT_MS
+ * without answering. Before it, a request the toolkit could not deliver left
+ * "…ing" on screen indefinitely, with nothing to check and the button disabled.
+ * Every action here needs the person's signature, so `closing` (WAIT_CLOSING)
+ * holds however long the wait.
+ */
+export function walletWaitHint(closing: string): string {
+  return `Still waiting for your Radix Wallet. If the wallet isn't showing a request, it hasn't received this one: cancel the pending request from the Connect button at the top of the page (or reload), reconnect, and try again. ${closing}`
+}
+
+function errText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
 export function EscrowDepositButton({
   taskId,
   posterId,
@@ -225,12 +317,21 @@ export function EscrowDepositButton({
   termsBlock?: string
   onSuccess?: (txId: string) => void
 }) {
-  const { account, rdt, ensureSession, sessionMismatch } = useWallet()
+  const { account, rdt, ensureSessionDetailed, sessionMismatch } = useWallet()
   const { rate: usdRate } = useXrdUsd()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [txId, setTxId] = useState("")
-  const runGuarded = useTxGuard()
+  const [summary, setSummary] = useState<string | undefined>(undefined)
+  const walletWait = useWalletWaitHint()
+  const runGuarded = useTxGuard({
+    reset: () => setSummary(undefined),
+    onThrow: (e) => {
+      setSummary(TX_BACKSTOP)
+      setError(errText(e))
+      setLoading(false)
+    },
+  })
   const postingFrozen = useEscrowPostingFrozen()
   // P4-04 pre-flight: this file had ZERO balance checks anywhere, so a poster
   // short on XRD discovered it only after the wallet attempted (and reverted)
@@ -322,12 +423,14 @@ export function EscrowDepositButton({
     // Session is needed for the post-tx confirm (POST /tasks/[id]/escrow is
     // withAuth). Establish it BEFORE the on-chain tx so we don't spend gas on a
     // tx the DB can't then confirm. No-op if already signed in.
-    if (!(await ensureSession())) {
-      setError("Approve the wallet signature to continue.")
+    const gate = await walletWait.during(ensureSessionDetailed())
+    if (!gate.ok) {
+      setSummary(signInIncomplete(SIGN_IN_LEAD.fund, gate))
+      setError(gate.detail ?? "")
       setLoading(false)
       return
     }
-    const result = await sendDepositTx({ rewardXrd, title, description, termsBlock, account: account!, rdt: rdt! })
+    const result = await walletWait.during(sendDepositTx({ rewardXrd, title, description, termsBlock, account: account!, rdt: rdt! }))
     if (!result.ok) {
       setError(result.error ?? "Deposit failed")
       setLoading(false)
@@ -385,7 +488,12 @@ export function EscrowDepositButton({
         <Lock className="mr-2 h-4 w-4" />
         {loading ? "Sending..." : "Fund Escrow"}
       </Button>
-      <TxError error={error} />
+      {loading && walletWait.slow && (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          {walletWaitHint(WAIT_CLOSING.fund)}
+        </p>
+      )}
+      <TxError error={error} summary={summary} />
     </div>
   )
 }
@@ -413,12 +521,21 @@ export function EscrowClaimButton({
   posterCancelStats?: PosterCancelStats
   onSuccess?: (txId: string) => void
 }) {
-  const { account, rdt, ensureSession, sessionMismatch, badge, badgeLoading } = useWallet()
+  const { account, rdt, ensureSessionDetailed, sessionMismatch, badge, badgeLoading } = useWallet()
   const { rate: usdRate } = useXrdUsd()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [txId, setTxId] = useState("")
-  const runGuarded = useTxGuard()
+  const [summary, setSummary] = useState<string | undefined>(undefined)
+  const walletWait = useWalletWaitHint()
+  const runGuarded = useTxGuard({
+    reset: () => setSummary(undefined),
+    onThrow: (e) => {
+      setSummary(TX_BACKSTOP)
+      setError(errText(e))
+      setLoading(false)
+    },
+  })
   // P4-05 pre-flight: same convention as the Deposit balance check (P4-04,
   // useXrdBalance.ts) — both hooks called unconditionally, ahead of every
   // early return below (rules of hooks). useClaimBond is the SAME live
@@ -577,8 +694,10 @@ export function EscrowClaimButton({
     // Session is needed for the post-tx confirm (POST /tasks/[id]/escrow is
     // withAuth). Establish it BEFORE the on-chain tx so we don't spend gas on a
     // tx the DB can't then confirm. No-op if already signed in.
-    if (!(await ensureSession())) {
-      setError("Approve the wallet signature to continue.")
+    const gate = await walletWait.during(ensureSessionDetailed())
+    if (!gate.ok) {
+      setSummary(signInIncomplete(SIGN_IN_LEAD.claim, gate))
+      setError(gate.detail ?? "")
       setLoading(false)
       return
     }
@@ -658,13 +777,13 @@ export function EscrowClaimButton({
       setLoading(false)
       return
     }
-    const result = await sendClaimTx({
+    const result = await walletWait.during(sendClaimTx({
       escrowComponent: ESCROW_COMPONENT,
       account: account!,
       badgeId: badge.id,
       taskId: onChainTaskId!,
       rdt: rdt!,
-    })
+    }))
     if (!result.ok) {
       const failure = result.error ?? "Claim failed"
       // "task must be Open" = the chain already moved past this claim (raced,
@@ -752,7 +871,12 @@ export function EscrowClaimButton({
         <ArrowRight className="mr-2 h-4 w-4" />
         {loading ? "Claiming..." : "Claim Task"}
       </Button>
-      <TxError error={error} />
+      {loading && walletWait.slow && (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          {walletWaitHint(WAIT_CLOSING.claim)}
+        </p>
+      )}
+      <TxError error={error} summary={summary} />
     </div>
   )
 }
@@ -787,14 +911,23 @@ export function EscrowSubmitButton({
   hasSubmission?: boolean
   onSuccess?: (txId: string) => void
 }) {
-  const { account, rdt, ensureSession, sessionMismatch } = useWallet()
+  const { account, rdt, ensureSessionDetailed, sessionMismatch } = useWallet()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   // Click-time backstop for the hasSubmission prop (the count can be stale):
   // the submissions fetch failing closed flips this and we render the link.
   const [needsSubmission, setNeedsSubmission] = useState(false)
   const [txId, setTxId] = useState("")
-  const runGuarded = useTxGuard()
+  const [summary, setSummary] = useState<string | undefined>(undefined)
+  const walletWait = useWalletWaitHint()
+  const runGuarded = useTxGuard({
+    reset: () => setSummary(undefined),
+    onThrow: (e) => {
+      setSummary(TX_BACKSTOP)
+      setError(errText(e))
+      setLoading(false)
+    },
+  })
 
   if (!isEscrowDeployed()) return null
   if (!account || !rdt) return null
@@ -830,8 +963,10 @@ export function EscrowSubmitButton({
     // Session is needed for the submissions read AND the post-tx confirm (both
     // withAuth). Establish it BEFORE the on-chain tx so we don't spend gas on a
     // tx the DB can't then confirm. No-op if already signed in.
-    if (!(await ensureSession())) {
-      setError("Approve the wallet signature to continue.")
+    const gate = await walletWait.during(ensureSessionDetailed())
+    if (!gate.ok) {
+      setSummary(signInIncomplete(SIGN_IN_LEAD.submit, gate))
+      setError(gate.detail ?? "")
       setLoading(false)
       return
     }
@@ -860,7 +995,7 @@ export function EscrowSubmitButton({
       setLoading(false)
       return
     }
-    const result = await sendSubmitTx({
+    const result = await walletWait.during(sendSubmitTx({
       escrowComponent: ESCROW_COMPONENT,
       account: account!,
       claimReceiptId,
@@ -870,7 +1005,7 @@ export function EscrowSubmitButton({
       description,
       termsBlock,
       rdt: rdt!,
-    })
+    }))
     if (!result.ok) {
       const failure = result.error ?? "Submit failed"
       // The claim expired mid-flow (expire_claim reset the task to Open and the
@@ -907,7 +1042,12 @@ export function EscrowSubmitButton({
         <Send className="mr-2 h-4 w-4" />
         {loading ? "Submitting..." : "Submit Work"}
       </Button>
-      <TxError error={error} />
+      {loading && walletWait.slow && (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          {walletWaitHint(WAIT_CLOSING.submit)}
+        </p>
+      )}
+      <TxError error={error} summary={summary} />
     </div>
   )
 }
@@ -932,12 +1072,21 @@ export function EscrowApproveButton({
   workerAddress: string | null
   onSuccess?: (txId: string) => void
 }) {
-  const { account, rdt, ensureSession, sessionMismatch } = useWallet()
+  const { account, rdt, ensureSessionDetailed, sessionMismatch } = useWallet()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [txId, setTxId] = useState("")
   const [windowWarning, setWindowWarning] = useState<string | null>(null)
-  const runGuarded = useTxGuard()
+  const [summary, setSummary] = useState<string | undefined>(undefined)
+  const walletWait = useWalletWaitHint()
+  const runGuarded = useTxGuard({
+    reset: () => setSummary(undefined),
+    onThrow: (e) => {
+      setSummary(TX_BACKSTOP)
+      setError(errText(e))
+      setLoading(false)
+    },
+  })
   // The review deadline PINNED at submit_task (TaskInfo.review_deadline). Until
   // 2026-09-24 the warning below counted a 72h "dispute window" from the DB
   // row's updatedAt, which moves on ANY write to the row. Fails open: no read,
@@ -970,8 +1119,10 @@ export function EscrowApproveButton({
     // Session is needed for the post-tx confirm (POST /tasks/[id]/escrow is
     // withAuth). Establish it BEFORE the on-chain tx so we don't spend gas on a
     // tx the DB can't then confirm. No-op if already signed in.
-    if (!(await ensureSession())) {
-      setError("Approve the wallet signature to continue.")
+    const gate = await walletWait.during(ensureSessionDetailed())
+    if (!gate.ok) {
+      setSummary(signInIncomplete(SIGN_IN_LEAD.approve, gate))
+      setError(gate.detail ?? "")
       setLoading(false)
       return
     }
@@ -980,12 +1131,12 @@ export function EscrowApproveButton({
     // re-read the funded reward on-chain rather than trust a possibly-drifted DB
     // value. The pull manifest carries no amount and no destination, so there is
     // nothing for a drifted value to poison and no fund row to need.
-    const result = await sendApproveTx({
+    const result = await walletWait.during(sendApproveTx({
       escrowComponent: ESCROW_COMPONENT,
       account: account!,
       receiptId: String(onChainTaskId),
       rdt: rdt!,
-    })
+    }))
     if (!result.ok) {
       setError(result.error ?? "Approval failed")
       setLoading(false)
@@ -1015,7 +1166,12 @@ export function EscrowApproveButton({
         <CheckCircle className="mr-2 h-4 w-4" />
         {loading ? settlementCopy("approveButtonLoading") : settlementCopy("approveButtonIdle")}
       </Button>
-      <TxError error={error} />
+      {loading && walletWait.slow && (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          {walletWaitHint(WAIT_CLOSING.approve)}
+        </p>
+      )}
+      <TxError error={error} summary={summary} />
     </div>
   )
 }
@@ -1050,11 +1206,20 @@ export function ReleaseAfterReviewTimeoutButton({
   workerId: string | null
   onSuccess?: (txId: string) => void
 }) {
-  const { account, rdt, ensureSession, sessionMismatch } = useWallet()
+  const { account, rdt, ensureSessionDetailed, sessionMismatch } = useWallet()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [txId, setTxId] = useState("")
-  const runGuarded = useTxGuard()
+  const [summary, setSummary] = useState<string | undefined>(undefined)
+  const walletWait = useWalletWaitHint()
+  const runGuarded = useTxGuard({
+    reset: () => setSummary(undefined),
+    onThrow: (e) => {
+      setSummary(TX_BACKSTOP)
+      setError(errText(e))
+      setLoading(false)
+    },
+  })
   // Fails OPEN on purpose, same posture as ClaimDeadlineNotice: this renders a
   // countdown/action, not a silent money movement — a Gateway hiccup hides the
   // affordance rather than showing a wrong one.
@@ -1089,15 +1254,17 @@ export function ReleaseAfterReviewTimeoutButton({
     // Session is needed for the post-tx confirm (withAuth). Establish it
     // BEFORE the on-chain tx so we don't spend gas on a tx the DB can't then
     // confirm. No-op if already signed in.
-    if (!(await ensureSession())) {
-      setError("Approve the wallet signature to continue.")
+    const gate = await walletWait.during(ensureSessionDetailed())
+    if (!gate.ok) {
+      setSummary(signInIncomplete(SIGN_IN_LEAD.release, gate))
+      setError(gate.detail ?? "")
       setLoading(false)
       return
     }
-    const result = await sendReleaseAfterReviewTimeoutTx({
+    const result = await walletWait.during(sendReleaseAfterReviewTimeoutTx({
       taskId: onChainTaskId!,
       rdt: rdt!,
-    })
+    }))
     if (!result.ok) {
       setError(result.error ?? "Release failed")
       setLoading(false)
@@ -1141,7 +1308,12 @@ export function ReleaseAfterReviewTimeoutButton({
           ? "The poster's review window has lapsed. This is a PUBLIC method — anyone may call it, not just the two of you — and it pays exactly what an approval pays: the reward and your held claim bond credited to the worker, the insurance credited home to the poster. Each of you then collects with your own signed withdrawal, same as approval."
           : `The poster's review window is still open (estimated from the last on-chain read). Once it lapses, anyone — not just the two of you — may call this to finalize the release. The chain enforces the exact deadline; a too-early call fails and still costs the network fee.`}
       </p>
-      <TxError error={error} />
+      {loading && walletWait.slow && (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          {walletWaitHint(WAIT_CLOSING.release)}
+        </p>
+      )}
+      <TxError error={error} summary={summary} />
     </div>
   )
 }
@@ -1160,36 +1332,35 @@ export function ReleaseAfterReviewTimeoutButton({
 // never answers.
 
 /**
- * Pressed, but sign-in did not complete, so the cancel was never sent. It
- * replaces the shared "Approve the wallet signature to continue." on this
- * button: that line asks the poster to approve a request, and when the request
- * never reached the wallet there is nothing to approve. ensureSession() returns
- * a bare false for every cause (dismissed in the wallet, the ROLA challenge not
- * fetched, the request not delivered, /verify refusing), so this states what is
- * certain — no transaction was sent — and the check that covers the silent ones.
+ * Pressed, but sign-in did not complete, so the cancel was never sent — the
+ * generic form (no reported cause). It replaces the shared "Approve the wallet
+ * signature to continue." that asked the poster to approve a request their
+ * wallet never showed. With a reported cause the button shows
+ * signInIncomplete(SIGN_IN_LEAD.cancel, failure) instead.
  */
-export const CANCEL_SIGN_IN_INCOMPLETE =
-  "Sign-in didn't complete, so no cancel transaction was sent to your wallet. If your wallet never showed a sign-in request, the request didn't get through: reload the page, or disconnect and reconnect with the Connect button at the top, then try again."
+export const CANCEL_SIGN_IN_INCOMPLETE = signInIncomplete(SIGN_IN_LEAD.cancel)
 
 /** How long a press waits on the wallet before the page says so. */
 export const WALLET_WAIT_HINT_MS = 20_000
 
+/** The cancel button's wait hint (walletWaitHint with its own closing). */
+export const CANCEL_WALLET_WAIT_HINT = walletWaitHint(WAIT_CLOSING.cancel)
+
 /**
- * Under a still-spinning Cancel once the wallet has gone WALLET_WAIT_HINT_MS
- * without answering. Before it, a request the toolkit could not deliver left
- * "Cancelling..." on screen indefinitely, with nothing to check and the button
- * disabled. A cancel needs the poster's signature, so the last sentence holds
- * however long the wait.
+ * The chain says this task has moved past the point where either cancel
+ * method applies (submitted, settled or refunded), and the DB row was behind.
+ * No transaction is sent: the method would only revert and burn the fee.
  */
-export const CANCEL_WALLET_WAIT_HINT =
-  "Still waiting for your Radix Wallet. If the wallet isn't showing a request, it hasn't received this one: cancel the pending request from the Connect button at the top of the page (or reload), reconnect, and try again. Nothing is cancelled until you approve it in the wallet."
+export const CANCEL_NOT_CANCELLABLE =
+  "This task can no longer be cancelled: on-chain it has already moved past the point where a cancel applies (the work was submitted, or the task settled or was refunded), so no cancel transaction was sent. Refresh to see its current status."
 
 /**
  * Times the stretch of a handler that waits on the wallet. `start()` arms a
- * WALLET_WAIT_HINT_MS timer and returns the function that disarms it; call
- * that in a `finally` as soon as the wallet answers, so the hint never covers a
- * later wait that is not the wallet's (confirmEscrowTx alone retries for up to
- * ~16 s after a successful send).
+ * WALLET_WAIT_HINT_MS timer and returns the function that disarms it;
+ * `during(p)` arms it for exactly as long as `p` is pending. Disarm as soon as
+ * the wallet answers, so the hint never covers a later wait that is not the
+ * wallet's (confirmEscrowTx alone retries for up to ~16 s after a successful
+ * send). Every button wraps its sign-in gate and its send in `during`.
  */
 function useWalletWaitHint() {
   const [slow, setSlow] = useState(false)
@@ -1200,7 +1371,18 @@ function useWalletWaitHint() {
       setSlow(false)
     }
   }, [])
-  return { slow, start }
+  const during = useCallback(
+    async <T,>(p: Promise<T>): Promise<T> => {
+      const stop = start()
+      try {
+        return await p
+      } finally {
+        stop()
+      }
+    },
+    [start],
+  )
+  return { slow, start, during }
 }
 
 export function EscrowCancelButton({
@@ -1224,14 +1406,20 @@ export function EscrowCancelButton({
   phase: "open" | "claimed"
   onSuccess?: (txId: string) => void
 }) {
-  const { account, rdt, ensureSession, sessionMismatch } = useWallet()
+  const { account, rdt, ensureSessionDetailed, sessionMismatch } = useWallet()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  // True when the press stopped at sign-in; `error` then holds any detail.
-  const [signInFailed, setSignInFailed] = useState(false)
   const [txId, setTxId] = useState("")
-  const runGuarded = useTxGuard()
+  const [summary, setSummary] = useState<string | undefined>(undefined)
   const walletWait = useWalletWaitHint()
+  const runGuarded = useTxGuard({
+    reset: () => setSummary(undefined),
+    onThrow: (e) => {
+      setSummary(TX_BACKSTOP)
+      setError(errText(e))
+      setLoading(false)
+    },
+  })
 
   if (!isEscrowDeployed()) return null
   if (!account || !rdt) return null
@@ -1243,46 +1431,51 @@ export function EscrowCancelButton({
   async function handleCancel() {
     setLoading(true)
     setError("")
-    setSignInFailed(false)
-    // Everything up to the wallet's answer runs under the wait hint, and in a
-    // try: ensureSession() can THROW (signIn's /verify fetch has no catch of its
-    // own), and a throw here used to leave "Cancelling..." up for good — no
-    // message, button disabled.
-    const stopWaitHint = walletWait.start()
-    let signedIn = false
-    let result: EscrowTxResult | null = null
-    try {
-      // Session is needed for the post-tx confirm (POST /tasks/[id]/escrow is
-      // withAuth). Establish it BEFORE the on-chain tx so we don't spend gas on
-      // a tx the DB can't then confirm. No-op if already signed in.
-      signedIn = await ensureSession()
-      if (signedIn) {
-        result = await sendCancelTx({
-          escrowComponent: ESCROW_COMPONENT,
-          account: account!,
-          taskId: onChainTaskId!,
-          phase,
-          workerAccount: workerId,
-          rdt: rdt!,
-        })
+    // Session is needed for the post-tx confirm (POST /tasks/[id]/escrow is
+    // withAuth). Establish it BEFORE the on-chain tx so we don't spend gas on
+    // a tx the DB can't then confirm. No-op if already signed in. Reported,
+    // never thrown, and under the wait hint: a sign-in request the wallet
+    // never answers is the same silence as a transaction it never answers.
+    const gate = await walletWait.during(ensureSessionDetailed())
+    if (!gate.ok) {
+      setSummary(signInIncomplete(SIGN_IN_LEAD.cancel, gate))
+      setError(gate.detail ?? "")
+      setLoading(false)
+      return
+    }
+    // Which cancel applies is the chain's call, not the DB row's. The row can
+    // lag the chain — a claim whose confirm was lost leaves the task "open" in
+    // the DB while the escrow says Claimed, and cancel_task then reverts on the
+    // blueprint's state assert and burns the lock fee. Read the live state
+    // first, as the claim button does: Open → cancel_task, Claimed →
+    // cancel_task_by_poster_after_claim, anything later → no cancel applies,
+    // pull the DB forward instead. An unreadable state (null: a Gateway hiccup)
+    // falls back to the row's phase — fail open, the on-chain assert stays the
+    // backstop.
+    const live = await readEscrowTaskState(onChainTaskId!, ESCROW_COMPONENT)
+    const livePhase: "open" | "claimed" | null =
+      live == null ? phase : live === "Open" ? "open" : live === "Claimed" ? "claimed" : null
+    if (livePhase === null) {
+      const resync = await resyncEscrowTask(taskDbId)
+      if (resync.ok && resync.applied > 0) {
+        onSuccess?.("")
+        setLoading(false)
+        return
       }
-    } catch (e) {
-      // Kept as the detail line under whichever summary applies below.
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      stopWaitHint()
-    }
-    if (!signedIn) {
-      setSignInFailed(true)
+      setSummary(CANCEL_NOT_CANCELLABLE)
       setLoading(false)
       return
     }
-    if (result === null) {
-      // sendCancelTx threw, which its contract says it never does (it returns
-      // failures). The catch above already put what it threw on screen.
-      setLoading(false)
-      return
-    }
+    const result = await walletWait.during(
+      sendCancelTx({
+        escrowComponent: ESCROW_COMPONENT,
+        account: account!,
+        taskId: onChainTaskId!,
+        phase: livePhase,
+        workerAccount: workerId,
+        rdt: rdt!,
+      }),
+    )
     if (!result.ok) {
       const failure = result.error ?? "Cancel failed"
       // Missing receipt NFT = the task already settled/cancelled on-chain (the
@@ -1338,7 +1531,7 @@ export function EscrowCancelButton({
           ? settlementCopy("cancelDescriptionOpen")
           : settlementCopy("cancelDescriptionClaimed")}
       </p>
-      <TxError error={error} summary={signInFailed ? CANCEL_SIGN_IN_INCOMPLETE : undefined} />
+      <TxError error={error} summary={summary} />
     </div>
   )
 }
@@ -1358,7 +1551,7 @@ export function RaiseDisputeButton({
   workerId: string | null
   onSuccess?: (txId: string) => void
 }) {
-  const { account, rdt, ensureSession, sessionMismatch } = useWallet()
+  const { account, rdt, ensureSessionDetailed, sessionMismatch } = useWallet()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [txId, setTxId] = useState("")
@@ -1372,7 +1565,16 @@ export function RaiseDisputeButton({
   // Set when the dispute landed on-chain but the statement did not reach us.
   // A warning, never an error: the dispute is real and irreversible by then.
   const [evidenceWarning, setEvidenceWarning] = useState("")
-  const runGuarded = useTxGuard()
+  const [summary, setSummary] = useState<string | undefined>(undefined)
+  const walletWait = useWalletWaitHint()
+  const runGuarded = useTxGuard({
+    reset: () => setSummary(undefined),
+    onThrow: (e) => {
+      setSummary(TX_BACKSTOP)
+      setError(errText(e))
+      setLoading(false)
+    },
+  })
 
   // The flag decides whether OUR UI exposes this affordance, not whether it
   // is safe to — BUG-7 + H1 are closed structurally under pull, and P3-3/DB-5
@@ -1398,8 +1600,10 @@ export function RaiseDisputeButton({
     // Session is needed for the post-tx confirm (POST /tasks/[id]/escrow is
     // withAuth). Establish it BEFORE the on-chain tx so we don't spend gas on a
     // tx the DB can't then confirm. No-op if already signed in.
-    if (!(await ensureSession())) {
-      setError("Approve the wallet signature to continue.")
+    const gate = await walletWait.during(ensureSessionDetailed())
+    if (!gate.ok) {
+      setSummary(signInIncomplete(SIGN_IN_LEAD.dispute, gate))
+      setError(gate.detail ?? "")
       setLoading(false)
       return
     }
@@ -1428,7 +1632,7 @@ export function RaiseDisputeButton({
     // Empty statement -> no commitment at all (Enum<0u8>), which is honest:
     // better an explicit absence than a hash of "".
     const statement = normalizeDisputeEvidence(evidence)
-    const result = await sendRaiseDisputeTx({
+    const result = await walletWait.during(sendRaiseDisputeTx({
       escrowComponent: ESCROW_COMPONENT,
       account: account!,
       taskId: onChainTaskId!,
@@ -1436,7 +1640,7 @@ export function RaiseDisputeButton({
       proofLocalId,
       evidence: statement ? disputeEvidencePreimage(statement) : undefined,
       rdt: rdt!,
-    })
+    }))
     if (!result.ok) {
       setError(result.error ?? "Dispute failed")
       setLoading(false)
@@ -1503,7 +1707,12 @@ export function RaiseDisputeButton({
         for the poster, an unruled dispute recovers half the reward and half the worker&apos;s
         bond.
       </p>
-      <TxError error={error} />
+      {loading && walletWait.slow && (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          {walletWaitHint(WAIT_CLOSING.dispute)}
+        </p>
+      )}
+      <TxError error={error} summary={summary} />
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>
           <DialogHeader>
@@ -1611,13 +1820,22 @@ export function FinalizeDisputeButton({
   disputedAt: Date | null
   onSuccess?: (txId: string) => void
 }) {
-  const { account, rdt, ensureSession, sessionMismatch } = useWallet()
+  const { account, rdt, ensureSessionDetailed, sessionMismatch } = useWallet()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [txId, setTxId] = useState("")
   // Re-render each minute while the window countdown is showing.
   const [now, setNow] = useState(() => Date.now())
-  const runGuarded = useTxGuard()
+  const [summary, setSummary] = useState<string | undefined>(undefined)
+  const walletWait = useWalletWaitHint()
+  const runGuarded = useTxGuard({
+    reset: () => setSummary(undefined),
+    onThrow: (e) => {
+      setSummary(TX_BACKSTOP)
+      setError(errText(e))
+      setLoading(false)
+    },
+  })
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60_000)
     return () => clearInterval(t)
@@ -1653,8 +1871,10 @@ export function FinalizeDisputeButton({
     // Session is needed for the post-tx confirm (withAuth). Establish it
     // BEFORE the on-chain tx so we don't spend gas on a tx the DB can't then
     // confirm. No-op if already signed in.
-    if (!(await ensureSession())) {
-      setError("Approve the wallet signature to continue.")
+    const gate = await walletWait.during(ensureSessionDetailed())
+    if (!gate.ok) {
+      setSummary(signInIncomplete(SIGN_IN_LEAD.finalize, gate))
+      setError(gate.detail ?? "")
       setLoading(false)
       return
     }
@@ -1662,10 +1882,10 @@ export function FinalizeDisputeButton({
     // and the raiser from chain because the caller routed the settlement;
     // under pull the component credits both entitlements itself, so the only
     // input is the task id and there is nothing to verify before routing.
-    const result = await sendAutoResolveTx({
+    const result = await walletWait.during(sendAutoResolveTx({
       taskId: onChainTaskId!,
       rdt: rdt!,
-    })
+    }))
     if (!result.ok) {
       setError(result.error ?? "Auto-resolve failed")
       setLoading(false)
@@ -1711,7 +1931,12 @@ export function FinalizeDisputeButton({
              window — a too-early transaction fails and still costs the network
              fee.`}
       </p>
-      <TxError error={error} />
+      {loading && walletWait.slow && (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          {walletWaitHint(WAIT_CLOSING.finalize)}
+        </p>
+      )}
+      <TxError error={error} summary={summary} />
     </div>
   )
 }
@@ -1770,12 +1995,21 @@ export function EscrowWithdrawButton({
   onChainTaskId: number | null
   onSuccess?: (txId: string) => void
 }) {
-  const { account, rdt, ensureSession, sessionMismatch } = useWallet()
+  const { account, rdt, ensureSessionDetailed, sessionMismatch } = useWallet()
   const { rate: usdRate } = useXrdUsd()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [txId, setTxId] = useState("")
-  const runGuarded = useTxGuard()
+  const [summary, setSummary] = useState<string | undefined>(undefined)
+  const walletWait = useWalletWaitHint()
+  const runGuarded = useTxGuard({
+    reset: () => setSummary(undefined),
+    onThrow: (e) => {
+      setSummary(TX_BACKSTOP)
+      setError(errText(e))
+      setLoading(false)
+    },
+  })
   // Hooks must run unconditionally — the early returns come after.
   // This one does NOT fail open. See the `status === "error"` branch below.
   const { info, status: infoStatus, reload: reloadInfo } = useOnChainTaskInfo(onChainTaskId)
@@ -1838,12 +2072,14 @@ export function EscrowWithdrawButton({
     // Session is needed for the post-tx resync (POST /tasks/[id]/escrow/resync
     // is withAuth). Establish it BEFORE the on-chain tx, same as every other
     // action here, so we don't spend gas on a collection the DB can't record.
-    if (!(await ensureSession())) {
-      setError("Approve the wallet signature to continue.")
+    const gate = await walletWait.during(ensureSessionDetailed())
+    if (!gate.ok) {
+      setSummary(signInIncomplete(SIGN_IN_LEAD.withdraw, gate))
+      setError(gate.detail ?? "")
       setLoading(false)
       return
     }
-    const result = await sendWithdrawTx(
+    const result = await walletWait.during(sendWithdrawTx(
       affordance.party === "worker"
         ? {
             escrowComponent: ESCROW_COMPONENT,
@@ -1862,7 +2098,7 @@ export function EscrowWithdrawButton({
             receiptResource: affordance.receiptResource,
             rdt: rdt!,
           },
-    )
+    ))
     if (!result.ok) {
       setError(result.error ?? "Collection failed")
       setLoading(false)
@@ -1909,7 +2145,12 @@ export function EscrowWithdrawButton({
         recorded for you when the task was {affordance.party === "worker" ? "claimed" : "posted"} —
         the amount and destination are set on-chain, not by this page.
       </p>
-      <TxError error={error} />
+      {loading && walletWait.slow && (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          {walletWaitHint(WAIT_CLOSING.withdraw)}
+        </p>
+      )}
+      <TxError error={error} summary={summary} />
     </div>
   )
 }
@@ -1953,7 +2194,16 @@ export function EscrowPushEntitlementButton({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [txId, setTxId] = useState("")
-  const runGuarded = useTxGuard()
+  const [summary, setSummary] = useState<string | undefined>(undefined)
+  const walletWait = useWalletWaitHint()
+  const runGuarded = useTxGuard({
+    reset: () => setSummary(undefined),
+    onThrow: (e) => {
+      setSummary(TX_BACKSTOP)
+      setError(errText(e))
+      setLoading(false)
+    },
+  })
 
   if (!isEscrowDeployed() || onChainTaskId == null) return null
   if (!info) return null
@@ -1971,11 +2221,11 @@ export function EscrowPushEntitlementButton({
       // No ensureSession: this is a pure chain action with nothing to confirm
       // server-side, and requiring an account would re-close what the blueprint
       // deliberately left open to anyone.
-      const res = await sendPushEntitlementTx({
+      const res = await walletWait.during(sendPushEntitlementTx({
         taskId: onChainTaskId!,
         party,
         rdt: rdt!,
-      })
+      }))
       if (res.ok && res.txId) {
         setTxId(res.txId)
         onSuccess?.(res.txId)
@@ -2001,7 +2251,12 @@ export function EscrowPushEntitlementButton({
         claimed, so this cannot send the money anywhere else.{" "}
         <span className="font-medium">You pay only the network fee.</span>
       </p>
-      <TxError error={error} />
+      {loading && walletWait.slow && (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          {walletWaitHint(WAIT_CLOSING.push)}
+        </p>
+      )}
+      <TxError error={error} summary={summary} />
     </div>
   )
 }
@@ -2016,11 +2271,20 @@ export function EscrowResyncButton({
   /** Called when the resync applied at least one missed confirm. */
   onSynced?: () => void
 }) {
-  const { account, rdt, ensureSession } = useWallet()
+  const { account, rdt, ensureSessionDetailed } = useWallet()
   const [loading, setLoading] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const [error, setError] = useState("")
-  const runGuarded = useTxGuard()
+  const [summary, setSummary] = useState<string | undefined>(undefined)
+  const walletWait = useWalletWaitHint()
+  const runGuarded = useTxGuard({
+    reset: () => setSummary(undefined),
+    onThrow: (e) => {
+      setSummary(TX_BACKSTOP)
+      setError(errText(e))
+      setLoading(false)
+    },
+  })
 
   if (!isEscrowDeployed()) return null
   if (!account || !rdt) return null
@@ -2034,8 +2298,10 @@ export function EscrowResyncButton({
     setLoading(true)
     setError("")
     setNote(null)
-    if (!(await ensureSession())) {
-      setError("Approve the wallet signature to continue.")
+    const gate = await walletWait.during(ensureSessionDetailed())
+    if (!gate.ok) {
+      setSummary(signInIncomplete(SIGN_IN_LEAD.resync, gate))
+      setError(gate.detail ?? "")
       setLoading(false)
       return
     }
@@ -2069,7 +2335,12 @@ export function EscrowResyncButton({
         {loading ? "Checking the chain..." : "Resync from chain"}
       </Button>
       {note && <p className="text-xs text-muted-foreground">{note}</p>}
-      <TxError error={error} />
+      {loading && walletWait.slow && (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          {walletWaitHint(WAIT_CLOSING.resync)}
+        </p>
+      )}
+      <TxError error={error} summary={summary} />
     </div>
   )
 }
@@ -2135,11 +2406,20 @@ export function ExpireClaimButton({
   onChainTaskId: number | null
   onSuccess?: (txId: string) => void
 }) {
-  const { account, rdt, ensureSession, sessionMismatch } = useWallet()
+  const { account, rdt, ensureSessionDetailed, sessionMismatch } = useWallet()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [txId, setTxId] = useState("")
-  const runGuarded = useTxGuard()
+  const [summary, setSummary] = useState<string | undefined>(undefined)
+  const walletWait = useWalletWaitHint()
+  const runGuarded = useTxGuard({
+    reset: () => setSummary(undefined),
+    onThrow: (e) => {
+      setSummary(TX_BACKSTOP)
+      setError(errText(e))
+      setLoading(false)
+    },
+  })
   // Hooks must run unconditionally — the early returns come after.
   const { info } = useOnChainTaskInfo(onChainTaskId)
   // Wave B deleted the flat `claim_bond_xrd` field ESCROW_CLAIM_BOND_XRD used
@@ -2177,17 +2457,19 @@ export function ExpireClaimButton({
     // Session is needed for the post-tx resync (POST /tasks/[id]/escrow/resync
     // is withAuth). Establish it BEFORE the on-chain tx, same as every other
     // action here, so we don't spend gas on an expiry the DB can't then record.
-    if (!(await ensureSession())) {
-      setError("Approve the wallet signature to continue.")
+    const gate = await walletWait.during(ensureSessionDetailed())
+    if (!gate.ok) {
+      setSummary(signInIncomplete(SIGN_IN_LEAD.expire, gate))
+      setError(gate.detail ?? "")
       setLoading(false)
       return
     }
-    const result = await sendExpireClaimTx({
+    const result = await walletWait.during(sendExpireClaimTx({
       escrowComponent: ESCROW_COMPONENT,
       account: account!,
       taskId: onChainTaskId!,
       rdt: rdt!,
-    })
+    }))
     if (!result.ok) {
       setError(result.error ?? "Expire claim failed")
       setLoading(false)
@@ -2241,7 +2523,12 @@ export function ExpireClaimButton({
         until {graceHours === 1 ? "an hour" : `${graceHours} hours`} after the deadline — a
         too-early transaction fails and still costs the network fee.
       </p>
-      <TxError error={error} />
+      {loading && walletWait.slow && (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          {walletWaitHint(WAIT_CLOSING.expire)}
+        </p>
+      )}
+      <TxError error={error} summary={summary} />
     </div>
   )
 }

@@ -52,6 +52,7 @@ vi.mock("@/hooks/useWallet", () => ({
     connected: true,
     rdt: {},
     ensureSession: vi.fn(async () => true),
+    ensureSessionDetailed: vi.fn(async () => ({ ok: true })),
     sessionMismatch: false,
   }),
 }))

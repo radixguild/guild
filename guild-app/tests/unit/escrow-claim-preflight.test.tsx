@@ -25,6 +25,7 @@ vi.mock("@/hooks/useWallet", () => ({
     account: ACCOUNT,
     rdt: {},
     ensureSession: vi.fn().mockResolvedValue(true),
+    ensureSessionDetailed: vi.fn().mockResolvedValue({ ok: true }),
     sessionMismatch: false,
     badge: { id: "#1#" }, // render-time badge gate satisfied
     badgeLoading: false,
