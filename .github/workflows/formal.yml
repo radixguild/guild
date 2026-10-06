@@ -36,6 +36,7 @@ on:
     paths:
       - 'formal/**'
       - 'escrow/scrypto/guild-marketplace-escrow/src/**'
+      - .github/workflows/formal.yml
   workflow_dispatch:
 
 concurrency:
@@ -77,7 +78,11 @@ jobs:
           # assert it still holds with `node formal/bin/formal.mjs ground <model>`. That
           # assertion, as a reviewable commit, is the only part of model-vs-code
           # agreement a machine can enforce.
-          changed="$(git diff --name-only "$BASE_SHA"...HEAD -- ':(glob)formal/**' ':(glob)escrow/scrypto/guild-marketplace-escrow/src/**')"
+          #
+          # This workflow file is watched too, as npm-lockfile.yml watches its own: an
+          # action bump (the weekly Dependabot group) or an edit to the Apalache cache key
+          # must run the job it changes, not merge green on a skipped gate.
+          changed="$(git diff --name-only "$BASE_SHA"...HEAD -- ':(glob)formal/**' ':(glob)escrow/scrypto/guild-marketplace-escrow/src/**' ':(glob).github/workflows/formal.yml')"
           if [ -n "$changed" ]; then echo "run=true"; else echo "run=false"; fi >> "$GITHUB_OUTPUT"
           printf 'relevant files changed:\n%s\n' "${changed:-(none)}"
 

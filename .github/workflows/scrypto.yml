@@ -7,6 +7,7 @@ on:
       - 'escrow/scrypto/**'
       - 'badge-manager/scrypto/radix-badge-manager/**'
       - 'blueprints/agent-badge-controller/**'
+      - .github/workflows/scrypto.yml
   pull_request:
     # No branch filter — stacked PRs (base = another feature branch) must report
     # `scrypto gate` too, not only after they retarget to main. Same reasoning as
@@ -67,7 +68,10 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          changed="$(git diff --name-only "$BASE_SHA"...HEAD -- ':(glob)escrow/scrypto/**' ':(glob)badge-manager/scrypto/radix-badge-manager/**' ':(glob)blueprints/agent-badge-controller/**')"
+          # This workflow file is watched too, as npm-lockfile.yml watches its own: an
+          # action bump (the weekly Dependabot group) or a hand edit to a step must run
+          # the jobs it changes, not merge green on a skipped gate.
+          changed="$(git diff --name-only "$BASE_SHA"...HEAD -- ':(glob)escrow/scrypto/**' ':(glob)badge-manager/scrypto/radix-badge-manager/**' ':(glob)blueprints/agent-badge-controller/**' ':(glob).github/workflows/scrypto.yml')"
           if [ -n "$changed" ]; then echo "run=true"; else echo "run=false"; fi >> "$GITHUB_OUTPUT"
           printf 'relevant files changed:\n%s\n' "${changed:-(none)}"
 
