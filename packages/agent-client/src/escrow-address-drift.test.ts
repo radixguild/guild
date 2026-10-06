@@ -96,6 +96,7 @@ const APP_CONFIG_EXPORTS = [
   'BADGE_NFT',
   'MANAGER',
   'DAPP_DEF',
+  'NFT_SWAP_COMPONENT',
 ] as const;
 type AppConfig = Record<(typeof APP_CONFIG_EXPORTS)[number], string>;
 let appConfig: AppConfig | null = null;
@@ -302,6 +303,12 @@ describe('SDK defaults vs guild-app/src/lib/config.ts', () => {
   test('escrowComponent', () => {
     if (STANDALONE) return;
     expect(CONFIG.escrowComponent).toBe(requireAppConfig().ESCROW_COMPONENT);
+  });
+
+  // P7-05: the swap verbs act on the component the /swaps pages read.
+  test('nftSwapComponent matches NFT_SWAP_COMPONENT', () => {
+    if (STANDALONE) return;
+    expect(CONFIG.nftSwapComponent).toBe(requireAppConfig().NFT_SWAP_COMPONENT);
   });
 
   test('claimReceiptResource', () => {
