@@ -22,7 +22,7 @@ import { isMainModule } from './runtime.js';
 import { sweepToOwner, type SweepResult } from './sweep.js';
 import { withdrawWorkerReward } from './withdraw.js';
 import { workerCliMain } from './worker-cli.js';
-import { runFillSwap } from './swap.js';
+import { parseWholeNumber, runFillSwap } from './swap.js';
 
 export interface ParsedArgs {
   command: string;
@@ -67,7 +67,9 @@ export function parseArgv(argv: string[], valueOptions: Set<string> = VALUE_OPTI
       options.set(arg.slice(2, eq), arg.slice(eq + 1));
     } else if (valueOptions.has(arg)) {
       const value = tail[++i];
-      if (value === undefined || value.startsWith('--')) {
+      // An unset shell variable (`--alternative "$ALT"`) arrives as '' — the
+      // same mistake as `--alternative=`, so it fails the same way.
+      if (value === undefined || value.startsWith('--') || value.trim() === '') {
         throw new Error(`${arg} needs a value`);
       }
       options.set(arg.slice(2), value);
@@ -205,7 +207,13 @@ export const EXIT_COLLECTED_NOT_SWEPT = 3;
 
 export async function main(argv: string[] = process.argv.slice(2), overrides: Partial<MainDeps> = {}): Promise<number> {
   const deps: MainDeps = { withdrawWorkerReward, sweepToOwner, runFillSwap, loadIdentity: loadIdentityIfPresent, ...overrides };
-  const args = parseArgv(argv);
+  let args: ParsedArgs;
+  try {
+    args = parseArgv(argv);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 2;
+  }
   switch (args.command) {
     case 'doctor': {
       const report = await runDoctor({ includeAuth: args.flags.has('auth') });
@@ -358,19 +366,19 @@ export async function main(argv: string[] = process.argv.slice(2), overrides: Pa
     }
 
     case 'fill-swap': {
-      const raw = args.rest[0];
-      const listingId = Number(raw);
-      if (!raw || !Number.isInteger(listingId) || listingId <= 0) {
+      const listingId = parseWholeNumber(args.rest[0]);
+      if (listingId === null || listingId <= 0) {
         console.error('fill-swap needs a positive listing id:  guild-worker fill-swap <listingId> [--alternative <n>]');
         return 2;
       }
       let alternative: number | undefined;
       if (args.options.has('alternative')) {
-        alternative = Number(args.options.get('alternative'));
-        if (!Number.isInteger(alternative) || alternative < 0) {
-          console.error('--alternative must be a whole number from 0');
+        const parsed = parseWholeNumber(args.options.get('alternative'));
+        if (parsed === null) {
+          console.error('--alternative must be a whole number from 0, in plain digits');
           return 2;
         }
+        alternative = parsed;
       }
       const live = args.flags.has('live');
       const identity = await deps.loadIdentity();

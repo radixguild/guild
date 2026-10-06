@@ -10,9 +10,12 @@ import { loadConfig, MAINNET_XRD } from './config.js';
 import { AgentIdentity } from './identity.js';
 import { cancelSwapManifest, fillSwapManifest, listSwapManifest, withdrawSwapProceedsManifest, type SwapAsk } from './manifests.js';
 import {
+  canonicalLocalId,
   expiryForDays,
+  feeRefusal,
   parseAmount,
   parseNftRef,
+  parseWholeNumber,
   parseSwapListing,
   runCancelSwap,
   runFillSwap,
@@ -117,6 +120,27 @@ describe('parseSwapListing — same answer as guild-app on the mainnet records',
     expect(parseAmount('0.0')).toBeNull();
     expect(parseAmount('1e3')).toBeNull();
   });
+
+  test('parseWholeNumber: plain digits only, never Number() coercion', () => {
+    expect(parseWholeNumber('0')).toBe(0);
+    expect(parseWholeNumber('12')).toBe(12);
+    for (const raw of [undefined, '', ' ', '0x10', '1e1', '1.0', '-1', '+1', ' 1', '99999999999999999999']) {
+      expect(parseWholeNumber(raw)).toBeNull();
+    }
+  });
+
+  test('canonicalLocalId: the spelling the ledger stores', () => {
+    expect(canonicalLocalId('#01#')).toBe('#1#');
+    expect(canonicalLocalId('#000#')).toBe('#0#');
+    expect(canonicalLocalId('#0#')).toBe('#0#');
+    expect(canonicalLocalId('[AbCd]')).toBe('[abcd]');
+    expect(canonicalLocalId('{AAAAAAAAAAAAAAAA-BBBBBBBBBBBBBBBB-CCCCCCCCCCCCCCCC-DDDDDDDDDDDDDDDD}')).toBe(
+      '{aaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-cccccccccccccccc-dddddddddddddddd}',
+    );
+    expect(canonicalLocalId('<Gold_1>')).toBe('<Gold_1>');
+    expect(parseNftRef(`${NFT}:#02#`)).toEqual({ resource: NFT, id: '#2#' });
+    expect(parseNftRef(`${NFT}:[AB]`)).toEqual({ resource: NFT, id: '[ab]' });
+  });
 });
 
 describe('readSwapState — refuses what is not the live NftSwap component', () => {
@@ -144,6 +168,17 @@ describe('readSwapState — refuses what is not the live NftSwap component', () 
     await withFetch(body({}), async () => {
       const s = await readSwapState(CONFIG);
       expect(s).toMatchObject({ nextListingId: 3, receiptResource: RECEIPT, fees: { fill: { unit: 'XRD', amount: '0' }, extend: null } });
+    });
+  });
+
+  // The blueprint name is free to copy; the package is what is pinned, for an
+  // override as much as for the live address.
+  test('an overridden component is pinned to the configured package', async () => {
+    const LOOKALIKE = 'component_rdx1cplookalikexxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+    const OTHER_PKG = 'package_rdx1pkgnotthelivepackagexxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+    await withFetch(body({ package_address: OTHER_PKG }), async () => {
+      expect(await readSwapState({ ...CONFIG, nftSwapComponent: LOOKALIKE })).toBeNull();
+      expect(await readSwapState({ ...CONFIG, nftSwapComponent: LOOKALIKE, nftSwapPackage: OTHER_PKG })).not.toBeNull();
     });
   });
   test('another package at the live address, or another blueprint, reads as null', async () => {
@@ -215,6 +250,55 @@ describe('fill-swap', () => {
     expect(f.message).toBe('fill not committed: CommittedFailure (txid_rdx1bad)');
   });
 
+  test('a component that will not read names both override variables', async () => {
+    const { d } = deps({ read: { kind: 'unknown' } });
+    const r = await runFillSwap({ listingId: 3, live: false, identity: null, config: CONFIG, deps: d });
+    expect(r.message).toContain('GUILD_NFT_SWAP_COMPONENT and GUILD_NFT_SWAP_PACKAGE');
+  });
+
+  // Every kit transaction locks a fixed 5 XRD, and the royalty is paid out of it.
+  test.each([
+    ['unknown', null],
+    ['in USD', { unit: 'USD' as const, amount: '1' }],
+    ['10 XRD', { unit: 'XRD' as const, amount: '10' }],
+    ['3.6 XRD (under 1.5 XRD left for the network)', { unit: 'XRD' as const, amount: '3.6' }],
+    ['3.500000000000000001 XRD', { unit: 'XRD' as const, amount: '3.500000000000000001' }],
+  ])('--live refuses a fill fee that is %s — nothing signed; the dry run says so', async (_n, fill) => {
+    const state = { ...STATE, fees: { ...STATE.fees, fill } };
+    const { d, signed } = deps({ read: { kind: 'ok', state, listing: listing() } });
+    const r = await runFillSwap({ listingId: 3, live: true, identity: await identity(), config: CONFIG, deps: d });
+    expect(r.refused).toBe(true);
+    expect(r.message).toContain('5 XRD fee lock');
+    expect(r.message).toContain('radixguild.com');
+    expect(signed).toEqual([]);
+
+    const lines: string[] = [];
+    const dry = await runFillSwap({ listingId: 3, live: false, identity: null, config: CONFIG, deps: d, log: (l) => lines.push(l) });
+    expect(dry.dryRun).toBe(true);
+    expect(lines.join('\n')).toContain('--live would refuse');
+    expect(lines.join('\n')).not.toContain('transaction preview');
+  });
+
+  test('a fill fee that leaves 1.5 XRD of the lock signs', async () => {
+    expect(feeRefusal({ unit: 'XRD', amount: '3.5' }, 'fill')).toBeNull();
+    expect(feeRefusal({ unit: 'XRD', amount: '0' }, 'fill')).toBeNull();
+    const state = { ...STATE, fees: { ...STATE.fees, fill: { unit: 'XRD' as const, amount: '3.5' } } };
+    const { d, signed } = deps({ read: { kind: 'ok', state, listing: listing() } });
+    const r = await runFillSwap({ listingId: 3, live: true, identity: await identity(), config: CONFIG, deps: d });
+    expect(r.refused).toBeUndefined();
+    expect(signed).toHaveLength(1);
+  });
+
+  test('an unresolved commit is reported as outcome unknown, never as not committed', async () => {
+    for (const status of ['Unknown', 'Pending'] as const) {
+      const { d } = deps({ signAndSubmitManifest: async () => ({ intentHash: 'txid_rdx1late', status }) });
+      const r = await runFillSwap({ listingId: 3, live: true, identity: await identity(), config: CONFIG, deps: d });
+      expect(r).toMatchObject({ refused: true, status: 'Unknown', intentHash: 'txid_rdx1late' });
+      expect(r.message).toContain('outcome unknown — the transaction was submitted; look up txid_rdx1late before retrying');
+      expect(r.message).not.toContain('not committed');
+    }
+  });
+
   test('--live with no key refuses before reading anything', async () => {
     const { d } = deps({ readSwapListing: async () => { throw new Error('must not read'); } });
     const r = await runFillSwap({ listingId: 3, live: true, identity: null, config: CONFIG, deps: d });
@@ -248,6 +332,7 @@ describe('list-swap', () => {
     expect((await run([{ kind: 'fungible', resource: NFT, amount: '1' }])).message).toContain('is an NFT collection');
     expect((await run([{ kind: 'nonFungible', resource: MAINNET_XRD, id: '#1#' }])).message).toContain('is a token');
     expect((await run([{ kind: 'nonFungible', resource: NFT, id: '#2#' }])).message).toContain('the NFT being listed');
+    expect((await run([{ kind: 'nonFungible', resource: NFT, id: '#02#' }])).message).toContain('the NFT being listed');
     expect((await run([xrd5000], 31)).message).toContain('--days');
     expect((await run([])).message).toContain('at least one ask');
   });
@@ -303,6 +388,9 @@ describe('the CLIs dispatch the swap verbs', () => {
 
   test('guild-poster cancel-swap / withdraw-swap need a listing id; a refusal exits 1', async () => {
     expect(await posterMain(['cancel-swap'], { identity: null })).toBe(2);
+    for (const raw of ['1e1', '0x10', ' ']) expect(await posterMain(['withdraw-swap', raw], { identity: null })).toBe(2);
+    expect(await posterMain(['list-swap', '--nft', `${NFT}:#2#`, '--price', '5', '--days', '1e1'], { identity: null })).toBe(2);
+    expect(await posterMain(['list-swap', '--nft', `${NFT}:#2#`, '--price', '5', '--days', ''], { identity: null })).toBe(2);
     const { d } = deps();
     expect(await posterMain(['withdraw-swap', '3'], { identity: null, swapDeps: d })).toBe(1);
   });
@@ -310,6 +398,9 @@ describe('the CLIs dispatch the swap verbs', () => {
   test('guild-worker fill-swap: usage, then the runner with the parsed alternative', async () => {
     expect(await workerMain(['fill-swap'])).toBe(2);
     expect(await workerMain(['fill-swap', '3', '--alternative', '-1'])).toBe(2);
+    // Number() reads each of these as a real index or id: '' and ' ' as 0.
+    for (const alt of ['', ' ', '0x1', '1e0', '1.0']) expect(await workerMain(['fill-swap', '3', '--alternative', alt])).toBe(2);
+    for (const id of ['0x10', '1e1', ' ', '3.0']) expect(await workerMain(['fill-swap', id])).toBe(2);
     let seen: number | undefined = -99;
     const code = await workerMain(['fill-swap', '3', '--alternative', '1'], {
       loadIdentity: async () => null,

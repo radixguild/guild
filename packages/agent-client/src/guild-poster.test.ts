@@ -1162,6 +1162,13 @@ describe('main() — CLI dispatch + argv parsing', () => {
     });
   });
 
+  // Number() reads these as 10, 16 and 1 — a task id other than the one typed.
+  test.each(['1e1', '0x10', '1.0', ' 1'])('approve with task id %p exits 2, never coerced', async (raw) => {
+    await withEnv({ POSTER_PRIVATE_KEY: undefined }, async () => {
+      expect(await main(['approve', raw])).toBe(2);
+    });
+  });
+
   test('withdraw dry-run dispatches through main() end to end with an injected identity', async () => {
     const id = await identity();
     const code = await main(['withdraw', '99'], { identity: id });

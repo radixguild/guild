@@ -10,7 +10,23 @@ import {
   loadConfig,
   loadPosterPrivateKeyHex,
   loadPosterAccountAddress,
+  LIVE_NFT_SWAP_PACKAGE,
 } from './config.js';
+
+describe('loadConfig — the NFT swap pin', () => {
+  test('defaults to the live component and package; GUILD_NFT_SWAP_PACKAGE overrides the package', () => {
+    const saved = process.env.GUILD_NFT_SWAP_PACKAGE;
+    try {
+      delete process.env.GUILD_NFT_SWAP_PACKAGE;
+      expect(loadConfig().nftSwapPackage).toBe(LIVE_NFT_SWAP_PACKAGE);
+      process.env.GUILD_NFT_SWAP_PACKAGE = 'package_rdx1pkgoverride';
+      expect(loadConfig().nftSwapPackage).toBe('package_rdx1pkgoverride');
+    } finally {
+      if (saved === undefined) delete process.env.GUILD_NFT_SWAP_PACKAGE;
+      else process.env.GUILD_NFT_SWAP_PACKAGE = saved;
+    }
+  });
+});
 
 describe('normalizeLocalId', () => {
   test('wraps a bare string id in angle brackets', () => {
