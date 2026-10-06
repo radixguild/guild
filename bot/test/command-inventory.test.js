@@ -87,15 +87,22 @@ test("every ADMIN handler refuses non-admins before it does anything else", () =
 // 2026-10-06: /agent create printed a raw API key in the chat it was typed in; /signer names
 // the signing account; /adminfeedback and /banned list members. Right after the admin guard,
 // each refuses to answer outside a private chat (services/guards.js refuseOutsidePrivate).
+// /signer reads its subcommand first: `disable`, the emergency stop, works in any chat.
 test("/agent, /signer, /adminfeedback and /banned answer only in a private chat", () => {
   const DM_GUARD = "if (await refuseOutsidePrivate(ctx, copy.adminCommandDmOnly())) return;";
+  const SIGNER_PRELUDE = [
+    'const args = ctx.message.text.split(" ").slice(1);',
+    'const sub = (args[0] || "").toLowerCase();',
+    'if (sub !== "disable" && await refuseOutsidePrivate(ctx, copy.adminCommandDmOnly())) return;',
+  ];
   for (const name of ["agent", "signer", "adminfeedback", "banned"]) {
     const body = handlerSource(name);
     assert.ok(body, "no handler for /" + name);
     assert.match(body, /^bot\.command\("[a-z]+", async \(ctx\) => \{/, "/" + name + " must be async to await the guard");
     const statements = body.split("\n").slice(1).map((l) => l.trim()).filter((l) => l && !l.startsWith("//"));
     assert.equal(statements[0], ADMIN_GUARD, "/" + name);
-    assert.equal(statements[1], DM_GUARD, "/" + name);
+    if (name === "signer") assert.deepEqual(statements.slice(1, 4), SIGNER_PRELUDE, "/signer");
+    else assert.equal(statements[1], DM_GUARD, "/" + name);
   }
 });
 

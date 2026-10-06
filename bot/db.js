@@ -704,13 +704,18 @@ function init() {
     CREATE INDEX IF NOT EXISTS idx_users_address ON users(radix_address);
     CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status, ends_at);
     CREATE INDEX IF NOT EXISTS idx_votes_proposal ON votes(proposal_id);
+    CREATE INDEX IF NOT EXISTS idx_wallet_links_address ON wallet_links(radix_address);
   `);
 
   // The badge NFT a vote was cast with (2026-10-06). The badge is transferable, so
   // deduping on the wallet alone let one badge vote again from every wallet it was
   // moved to. Rows from before this column have badge_id NULL and are not compared;
   // the partial unique index backs recordVote's check against a concurrent insert.
-  try { db.exec("ALTER TABLE votes ADD COLUMN badge_id TEXT"); } catch(e) {}
+  try {
+    db.exec("ALTER TABLE votes ADD COLUMN badge_id TEXT");
+  } catch (e) {
+    if (!/duplicate column/i.test(e.message)) throw e; // already migrated is the only expected failure
+  }
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_votes_proposal_badge ON votes(proposal_id, badge_id) WHERE badge_id IS NOT NULL");
 
   return db;

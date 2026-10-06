@@ -109,7 +109,9 @@ async function notifyDiscord(content) {
     await fetch(DISCORD_WEBHOOK, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      // No mentions resolve: proposal and task titles are member-written text, and
+      // "@everyone" in one would ping the whole server (2026-10-06).
+      body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
     });
   } catch (e) {
     console.error("[Discord] Webhook failed:", e.message);
@@ -1104,9 +1106,11 @@ bot.command("project", (ctx) => ctx.reply(copy.projectsOnTheWeb({ portal: PORTAL
 
 bot.command("signer", async (ctx) => {
   if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply("Admin only.");
-  if (await refuseOutsidePrivate(ctx, copy.adminCommandDmOnly())) return;
   const args = ctx.message.text.split(" ").slice(1);
   const sub = (args[0] || "").toLowerCase();
+  // `disable` is the emergency stop and prints nothing about the account, so it works in
+  // any chat; everything else answers only in a DM.
+  if (sub !== "disable" && await refuseOutsidePrivate(ctx, copy.adminCommandDmOnly())) return;
 
   if (sub === "status") {
     const status = txSigner.getSignerStatus();

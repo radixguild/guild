@@ -7,8 +7,11 @@
 //   - submit took any string as the PR URL                                    → 400
 //   - every read returned raw rows: *_tg_id next to wallets, applicants' pitches
 //   - POST /proposals/temp-check always answered 500
-//   - claim/submit write only the legacy SQLite board, which no shipped client calls:
-//     they now answer 503 unless FEATURE_LEGACY_BOUNTY=true (off in production)
+//   - claim/submit/breakdown write only the legacy SQLite board, which no shipped client
+//     calls: they now answer 503 unless FEATURE_LEGACY_BOUNTY=true (off in production)
+//   - temp-check, once it worked, let any proposals:create key post to the groups: it
+//     answers 503 unless FEATURE_AGENT_PROPOSALS=true (off in production)
+//   - a JSON body of `null` answered 500
 //
 // Like api-badge-gate-outage.test.js: the real server runs in a child process on a
 // throwaway database, listening on port 0 (api.js installs module-scope intervals). The
@@ -50,6 +53,7 @@ const SERVER_SCRIPT = [
   'const limited = key("limited", ["tasks:read"], 2);',
   'const admin = key("admin-agent", ["admin"]);',
   'const creatorAgent = key("creator-agent", ["tasks:read"]);',
+  'const breaker = key("breaker", ["projects:read", "projects:breakdown"]);',
   'const fund = (id) => raw.prepare("UPDATE bounties SET funded = 1 WHERE id = ?").run(id);',
   // An open, funded task with a human application on it.
   'const open = db.createBounty("Write the FAQ", 50, 111, { creatorAddress: POSTER }); fund(open);',
@@ -73,7 +77,7 @@ const SERVER_SCRIPT = [
   'const pid = db.createProposal("Weekly call?", 111, { type: "yesno" });',
   'db.updateProposalMessage(pid, 77, -100123);',
   'process.stdout.write("SEED " + JSON.stringify({',
-  '  keys: { reader: reader.rawKey, worker: worker.rawKey, proposer: proposer.rawKey, limited: limited.rawKey, admin: admin.rawKey, creatorAgent: creatorAgent.rawKey },',
+  '  keys: { reader: reader.rawKey, worker: worker.rawKey, proposer: proposer.rawKey, limited: limited.rawKey, admin: admin.rawKey, creatorAgent: creatorAgent.rawKey, breaker: breaker.rawKey },',
   '  ids: { open, big, humanTask, agentsTask, groupId },',
   '}) + "\\n");',
   'const { startApi } = require(' + req('services/api.js') + ');',
@@ -144,11 +148,11 @@ function tgIdKeys(value, at = '$', found = []) {
   return found;
 }
 
-describe('agent API with the legacy board on (FEATURE_LEGACY_BOUNTY=true)', () => {
+describe('agent API with both flags on (FEATURE_LEGACY_BOUNTY, FEATURE_AGENT_PROPOSALS)', () => {
   let server;
   let s; // { port, keys, ids }
   before(async () => {
-    server = startServer({ FEATURE_LEGACY_BOUNTY: 'true' });
+    server = startServer({ FEATURE_LEGACY_BOUNTY: 'true', FEATURE_AGENT_PROPOSALS: 'true' });
     s = await server.ready;
   });
   after(() => server && server.stop());
@@ -319,6 +323,17 @@ describe('agent API with the legacy board on (FEATURE_LEGACY_BOUNTY=true)', () =
     const short = await call(s.port, 'POST', '/api/agent/proposals/temp-check', { key: s.keys.proposer, body: { title: 'Hm' } });
     assert.equal(short.json.error, 'title_required');
   });
+
+  it('REGRESSION: a JSON body of null reads as an empty body, not a 500', async () => {
+    const res = await fetch('http://127.0.0.1:' + s.port + '/api/agent/proposals/temp-check', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ' + s.keys.proposer, 'content-type': 'application/json', 'x-forwarded-for': '10.8.0.1' },
+      body: 'null',
+    });
+    const json = await res.json();
+    assert.notEqual(res.status, 500, JSON.stringify(json));
+    assert.equal(json.error, 'title_required');
+  });
 });
 
 describe('agent API with the legacy board off (production default)', () => {
@@ -352,10 +367,35 @@ describe('agent API with the legacy board off (production default)', () => {
     assert.equal(r.status, 403);
   });
 
-  it('the reads and temp-check do not depend on the flag', async () => {
+  it('REGRESSION: project breakdown answers 503 and writes no task', async () => {
+    const before = await call(s.port, 'GET', '/api/agent/projects/' + s.ids.groupId, { key: s.keys.breaker });
+    const r = await call(s.port, 'POST', '/api/agent/projects/' + s.ids.groupId + '/breakdown', {
+      key: s.keys.breaker, body: { tasks: [{ title: 'Injected task', reward_xrd: 1e12 }] },
+    });
+    assert.equal(r.status, 503, r.text);
+    assert.equal(r.json.error, 'service_unavailable');
+    const after = await call(s.port, 'GET', '/api/agent/projects/' + s.ids.groupId, { key: s.keys.breaker });
+    assert.equal(after.json.data.tasks.length, before.json.data.tasks.length);
+  });
+
+  it('REGRESSION: temp-check answers 503 and creates no proposal (FEATURE_AGENT_PROPOSALS off)', async () => {
+    const proposals = async () => (await call(s.port, 'GET', '/api/agent/proposals', { key: s.keys.proposer })).json.data.length;
+    const before = await proposals();
+    const r = await call(s.port, 'POST', '/api/agent/proposals/temp-check', { key: s.keys.proposer, body: { title: 'Open a docs channel?' } });
+    assert.equal(r.status, 503, r.text);
+    assert.equal(r.json.error, 'service_unavailable');
+    assert.equal(await proposals(), before);
+  });
+
+  it('the scope checks still come first for breakdown and temp-check (403, not 503)', async () => {
+    const b = await call(s.port, 'POST', '/api/agent/projects/' + s.ids.groupId + '/breakdown', { key: s.keys.reader, body: { tasks: [{ title: 'x' }] } });
+    assert.equal(b.status, 403);
+    const t = await call(s.port, 'POST', '/api/agent/proposals/temp-check', { key: s.keys.reader, body: { title: 'Open a docs channel?' } });
+    assert.equal(t.status, 403);
+  });
+
+  it('the reads do not depend on the flags', async () => {
     const read = await call(s.port, 'GET', '/api/agent/tasks/' + s.ids.open, { key: s.keys.reader });
     assert.equal(read.status, 200);
-    const temp = await call(s.port, 'POST', '/api/agent/proposals/temp-check', { key: s.keys.proposer, body: { title: 'Open a docs channel?' } });
-    assert.equal(temp.status, 200, temp.text);
   });
 });

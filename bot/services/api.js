@@ -13,7 +13,7 @@ const txSigner = require("./tx-signer");
 const agentBridge = require("./agent-bridge");
 const agentView = require("./agent-projection");
 const escrowFunding = require("./escrow-funding");
-const { legacyBountyBoardEnabled } = require("./feature-flags");
+const { legacyBountyBoardEnabled, agentProposalsEnabled } = require("./feature-flags");
 const { parsePRUrl } = require("./github");
 
 const API_PORT = parseInt(process.env.API_PORT || "3003");
@@ -299,7 +299,13 @@ function startApi() {
       return new Promise((resolve, reject) => {
         let body = "";
         req.on("data", chunk => { body += chunk; if (body.length > 8192) { reject(new Error("too_large")); req.destroy(); } });
-        req.on("end", () => { try { resolve(JSON.parse(body || "{}")); } catch { resolve({}); } });
+        // Only a JSON object is a body: `null`, a number or an array read as {} (a `null`
+        // body used to reach the handlers and answer 500 on the first property read).
+        req.on("end", () => {
+          let parsed = {};
+          try { parsed = JSON.parse(body || "{}"); } catch { parsed = {}; }
+          resolve(parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {});
+        });
         req.on("error", reject);
       });
     }
@@ -1362,15 +1368,15 @@ function startApi() {
         return res.end(JSON.stringify({ ok: true, data: proposals.map(agentView.proposal) }));
       }
 
-      // The claim and submit legs below write only the bot's LEGACY SQLite task table; the
-      // chain is never touched. No shipped client calls them (the agent kits and the MCP
-      // server use radixguild.com's /api/v1 and the on-chain escrow), so since 2026-10-06
-      // they sit behind the legacy board's own flag, FEATURE_LEGACY_BOUNTY (default off;
-      // services/feature-flags.js).
+      // The claim, submit and project-breakdown legs below write only the bot's LEGACY
+      // SQLite task table; the chain is never touched. No shipped client calls them (the
+      // agent kits and the MCP server use radixguild.com's /api/v1 and the on-chain
+      // escrow), so since 2026-10-06 they sit behind the legacy board's own flag,
+      // FEATURE_LEGACY_BOUNTY (default off; services/feature-flags.js).
       const LEGACY_TASK_WRITE_OFF = JSON.stringify({
         ok: false,
         error: "service_unavailable",
-        detail: "Claiming and submitting through this API is switched off: it wrote only the bot's legacy task table, never the on-chain escrow. Tasks live on the web app: https://radixguild.com/agents",
+        detail: "Writing tasks through this API is switched off: it wrote only the bot's legacy task table, never the on-chain escrow. Tasks live on the web app: https://radixguild.com/agents",
       });
 
       // POST /api/agent/tasks/:id/claim
@@ -1471,6 +1477,16 @@ function startApi() {
           res.writeHead(403);
           return res.end(JSON.stringify({ ok: false, error: "insufficient_scope", detail: "Requires proposals:create" }));
         }
+        // Off unless FEATURE_AGENT_PROPOSALS=true (services/feature-flags.js): a working
+        // route lets any proposals:create key post to the groups and the Discord feed.
+        if (!agentProposalsEnabled()) {
+          res.writeHead(503);
+          return res.end(JSON.stringify({
+            ok: false,
+            error: "service_unavailable",
+            detail: "Creating proposals through this API is switched off. Proposals are raised in the Guild's Telegram group.",
+          }));
+        }
         const body = await readBody(req);
         const title = typeof body.title === "string" ? body.title.trim().slice(0, 500) : "";
         if (title.length < 5) {
@@ -1479,7 +1495,8 @@ function startApi() {
 
         const contentCheck = checkContent(title + " " + (typeof body.description === "string" ? body.description : ""));
         if (contentCheck.blocked) {
-          return res.end(JSON.stringify({ ok: false, error: "content_blocked", detail: contentCheck.reason }));
+          // checkContent returns {blocked, word}; it has no reason to pass on.
+          return res.end(JSON.stringify({ ok: false, error: "content_blocked", detail: "Content not allowed" }));
         }
 
         // Until 2026-10-06 this route always answered 500: proposals.creator_tg_id is a
@@ -1508,6 +1525,8 @@ function startApi() {
           res.writeHead(403);
           return res.end(JSON.stringify({ ok: false, error: "insufficient_scope", detail: "Requires projects:breakdown" }));
         }
+        // It wrote legacy bounties in the group lead's name and reset the project's budget.
+        if (!legacyBountyBoardEnabled()) { res.writeHead(503); return res.end(LEGACY_TASK_WRITE_OFF); }
         const groupId = parseInt(agentPath.split("/")[2]);
         const body = await readBody(req);
         if (!body.tasks || !Array.isArray(body.tasks) || body.tasks.length === 0) {
