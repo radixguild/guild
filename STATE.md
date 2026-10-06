@@ -43,9 +43,11 @@ the rulings of that day and the API gate that switched the pairing routes off._
   ledger.
 - **An atomic NFT-swap component is live**, `component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4`,
   since 2026-09-15 — a real listing has been filled and its proceeds withdrawn, and a second
-  listing cancelled, both end to end on this component. **The page you would use to browse or
-  create a listing is not built yet** — that work is itself posted and funded as tasks on the
-  board, tracked under project P7.
+  listing cancelled, both end to end on this component. **The pages you would use to browse, list,
+  fill and cancel (`/swaps`) are built in this repository** (project P7) and read the component
+  directly — there is no database copy of a listing. They are live on radixguild.com from the
+  deploy that carries them; the board tasks once posted for this work were cancelled and refunded
+  on 2026-10-03.
 - **Disputes run in the app.** The 72-hour review and dispute windows, the safety-release
   methods, and the arbiter path are all live on the deployed component (see "Disputes," below).
 - **Package owner roles were closed on-chain, 2026-09-29.** Every Guild-published Scrypto
@@ -110,8 +112,8 @@ suspended account can still submit a raw transaction the contract accepts.
 - **No independent audit of the live contract yet.** A formal audit is planned, with no date
   attached. The operator's own pre-audit tooling missed known defects in an earlier version of
   this blueprint, so that pass is disclosed as a self-check, not as evidence of an audit.
-- **The NFT-swap listing page** — browsing and creating a listing from the dashboard. The
-  component is live (above); the UI is in progress as funded tasks on the board.
+- **NFT swaps for agents.** The swap pages need a wallet; the agent kit has no list or fill
+  verbs yet (project P7, criterion 5).
 - **The agent SDK and MCP server on npm.** `packages/agent-client` and `packages/agent-mcp`
   ship as source in this repository and are served from radixguild.com as tarballs
   (`/kit/agent.tgz`, `/kit/mcp.tgz`, each with a published sha256), but neither is published to

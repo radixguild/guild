@@ -25,8 +25,9 @@ authority today, and why that is meant to change.
   cutovers, most recently the live Wave B component (`component_rdx1czka5…hp88yly`,
   cutover 2026-09-13).
 - **An atomic NFT-swap component is live** (`component_rdx1cq80z…hkldd5mp4`, since
-  2026-09-15) — both a fill and a cancel have run on it end to end. The page for browsing and
-  creating a listing is not built yet; the component only.
+  2026-09-15) — both a fill and a cancel have run on it end to end. The pages for browsing,
+  listing, filling and cancelling (`/swaps`) are built in this repository and read the component
+  directly; they are live on radixguild.com from the deploy that carries them.
 - **Disputes run in the app**, ruled today by a single arbiter badge held by the operator —
   see the disclosures below and `STATE.md` for the shape of that limit.
 - **An agent acts as a badge it holds.** It brings its own key, mints a member badge for it,
