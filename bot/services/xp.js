@@ -21,6 +21,11 @@ function initXp() {
     CREATE INDEX IF NOT EXISTS idx_xp_status ON xp_rewards(status);
     CREATE INDEX IF NOT EXISTS idx_xp_address ON xp_rewards(radix_address, action, created_at);
   `);
+  // roll_bonus rows stopped 2026-10-06 (the dice game is closed and says its bonus counts
+  // nowhere). Void the pending backlog so a batch signer run can never write it on-chain:
+  // getXpQueue sums every pending row and markXpApplied flips them all. Idempotent; the
+  // rows are kept (status 'void'), not deleted.
+  db.prepare("UPDATE xp_rewards SET status = 'void' WHERE action = 'roll_bonus' AND status = 'pending'").run();
 }
 
 const XP_REWARDS = {
@@ -45,31 +50,13 @@ function queueXpReward(radixAddress, action) {
     "INSERT INTO xp_rewards (radix_address, action, xp_amount) VALUES (?, ?, ?)"
   ).run(radixAddress, action, xp);
 
-  // Grid game: roll the dice
-  const mainDb = require("../db");
-  const roll = mainDb.rollDice();
-  const bonus = mainDb.ROLL_BONUSES[roll - 1] || 0;
-  mainDb.recordRoll(radixAddress, roll);
+  // No dice roll and no roll_bonus row (2026-10-06). Until then every queued action also
+  // rolled the closed dice game, recorded the roll (and 7-day streak rolls) in game_state
+  // and queued a roll_bonus row of 5-100 XP into the same pending queue the XP batch
+  // signer reads — bonus XP that copy.diceGameClosed says "does not count anywhere".
+  console.log("[XP] +" + xp + " for " + radixAddress.slice(0, 20) + "... (" + action + ")");
 
-  if (bonus > 0) {
-    db.prepare(
-      "INSERT INTO xp_rewards (radix_address, action, xp_amount) VALUES (?, ?, ?)"
-    ).run(radixAddress, "roll_bonus", bonus);
-  }
-
-  // 7-day streak bonus: 3 extra rolls
-  const gameState = mainDb.getGameState(radixAddress);
-  if (gameState.streak_days > 0 && gameState.streak_days % 7 === 0) {
-    for (let i = 0; i < 3; i++) {
-      const streakRoll = mainDb.rollDice();
-      mainDb.recordRoll(radixAddress, streakRoll);
-    }
-    console.log("[XP] 7-day streak bonus: +3 rolls for " + radixAddress.slice(0, 20) + "...");
-  }
-
-  console.log("[XP] +" + xp + " for " + radixAddress.slice(0, 20) + "... (" + action + ") | Roll: " + roll + " (+" + bonus + " bonus)");
-
-  return { queued: true, xp, roll, bonus };
+  return { queued: true, xp };
 }
 
 function getXpQueue() {
@@ -92,7 +79,7 @@ function getXpStats() {
   if (!db) initXp();
   const pending = db.prepare("SELECT COUNT(*) as c FROM xp_rewards WHERE status = 'pending'").get();
   const applied = db.prepare("SELECT COUNT(*) as c FROM xp_rewards WHERE status = 'applied'").get();
-  const total = db.prepare("SELECT SUM(xp_amount) as t FROM xp_rewards").get();
+  const total = db.prepare("SELECT SUM(xp_amount) as t FROM xp_rewards WHERE status != 'void'").get();
   return {
     pending: pending?.c || 0,
     applied: applied?.c || 0,
