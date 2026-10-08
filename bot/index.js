@@ -47,6 +47,13 @@ try {
   });
 } catch (e) { console.error("[Init] TX signer init failed (non-fatal):", e.message); }
 try { agentBridge.init(db); } catch (e) { console.error("[Init] Agent bridge init failed (non-fatal):", e.message); }
+// Retention for the agent audit trail: once at boot, then daily (the timer is below with
+// the other background tasks). pruneAgentActivity never throws.
+const pruneAgentActivity = () => {
+  const r = agentBridge.pruneAgentActivity();
+  if (r.rateLimited || r.other) console.log("[AgentBridge] Pruned agent_activity: " + r.rateLimited + " rate_limited, " + r.other + " older rows");
+};
+pruneAgentActivity();
 let supportAi = null;
 try { supportAi = createSupportAi({ db }); } catch (e) { console.error("[Init] Support AI init failed (non-fatal):", e.message); }
 let verify = null;
@@ -1887,6 +1894,9 @@ setInterval(async () => {
     console.error("[PRWatcher] Background task failed:", e.message);
   }
 }, 5 * 60 * 1000);
+
+// Prune the agent audit trail daily (AGENT_ACTIVITY_RETENTION_DAYS / AGENT_RATE_LIMITED_RETENTION_DAYS)
+setInterval(pruneAgentActivity, 24 * 60 * 60 * 1000);
 
 // ── WG Sunset & Overdue Checker (every 6 hours) ─────────
 // Paused until working groups adopt bi-weekly reports (0 filed since Apr 2026).

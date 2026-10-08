@@ -660,6 +660,7 @@ function init() {
       FOREIGN KEY (agent_key_id) REFERENCES agent_keys(id)
     );
     CREATE INDEX IF NOT EXISTS idx_agent_activity_key ON agent_activity(agent_key_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_activity_created ON agent_activity(created_at);
   `);
 
   // Support AI — /ask RAG log (retrieval-grounded Q&A over the guild's own docs,
