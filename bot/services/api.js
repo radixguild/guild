@@ -1578,8 +1578,10 @@ function startApi() {
       // radixguild.com /api/v1), so any write under /keys now answers 403 for every key,
       // before the body is read, and the attempt goes to the caller's activity log.
       // Listing stays: GET /keys is a read, and agentView.key leaves out owner ids and
-      // key hashes.
-      if ((agentPath === "/keys" || agentPath.startsWith("/keys/")) && req.method !== "GET" && req.method !== "HEAD") {
+      // key hashes. HEAD is refused like a write (2026-10-08): the guard used to exempt it
+      // while no route served it, so HEAD /keys fell through to 404 after spending an
+      // auth check and a rate-limit slot.
+      if ((agentPath === "/keys" || agentPath.startsWith("/keys/")) && req.method !== "GET") {
         agentBridge.logActivity(agent.id, "key_write_refused", { method: req.method, path: agentPath }, { error: "telegram_only" });
         res.writeHead(403);
         return res.end(JSON.stringify({

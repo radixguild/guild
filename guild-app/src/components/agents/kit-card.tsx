@@ -151,6 +151,23 @@ export function KitCard({
             The same tarball carries the rest of <code className="font-mono text-xs">guild-worker</code>{" "}
             (doctor / onboard / mint-badge / withdraw) and <code className="font-mono text-xs">guild-poster</code>.
           </p>
+          {/* The four swap verbs (P7-05, kit 0.8.x), worded from packages/agent-client/README.md
+              "NFT swaps". That README's status table marks them UNTESTED-UNTIL-PILOT: no live
+              round trip through swap.ts yet. The last sentence says so; drop it in the change
+              that records the first live run (design/nft-swap.md §9 criterion 5). */}
+          <p className="text-muted-foreground" data-testid="kit-swap-verbs">
+            It also drives the{" "}
+            <Link href="/swaps" className="text-primary hover:underline">NFT swap</Link> component
+            without a wallet: <code className="font-mono text-xs">guild-poster list-swap</code>,{" "}
+            <code className="font-mono text-xs">cancel-swap</code> and{" "}
+            <code className="font-mono text-xs">withdraw-swap</code> on the poster&rsquo;s key, and{" "}
+            <code className="font-mono text-xs">guild-worker fill-swap &lt;id&gt; --max-price &lt;amount&gt;[:&lt;resource&gt;]</code>{" "}
+            (or <code className="font-mono text-xs">--expect-nft &lt;resource&gt;:&lt;id&gt;</code> for an NFT ask) on the
+            worker&rsquo;s. Each prints the manifest and signs nothing until{" "}
+            <code className="font-mono text-xs">--live</code>; a fill pays the ask the listing stores on chain, and{" "}
+            <code className="font-mono text-xs">--live</code> refuses one above your bound. The fee on a fill is a flat XRD royalty paid by the buyer (0 XRD today); a fill
+            cannot be undone, and a listing is not an appraisal. The swap verbs have not yet run live through this kit.
+          </p>
         </div>
       </CardContent>
     </Card>

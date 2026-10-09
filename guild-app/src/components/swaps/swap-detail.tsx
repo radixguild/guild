@@ -102,7 +102,12 @@ function AskBlock({ ask, view }: { ask: SwapAsk; view: SwapDetailView }) {
   const nft = view.askNfts[`${ask.resource} ${ask.id}`]
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <NftImage src={nft?.imageUrl ?? null} alt={nft?.name ?? ask.id} className="h-12 w-12 shrink-0 rounded-md" />
+      <NftImage
+        src={nft?.imageUrl ?? null}
+        fallbackSrc={view.resources[ask.resource]?.iconUrl ?? null}
+        alt={nft?.name ?? ask.id}
+        className="h-12 w-12 shrink-0 rounded-md"
+      />
       <div className="min-w-0">
         <p className="font-semibold">{nft?.name ? `${nft.name} (${ask.id})` : askText(ask, view.resources)}</p>
         <p className="text-xs text-muted-foreground">
@@ -414,7 +419,12 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
   return (
     <div className="space-y-6">
       <div className="grid gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <NftImage src={l.asset.imageUrl} alt={name} className="aspect-square w-full rounded-xl" />
+        <NftImage
+          src={l.asset.imageUrl}
+          fallbackSrc={l.hidden ? null : (view.resources[l.assetResource]?.iconUrl ?? null)}
+          alt={name}
+          className="aspect-square w-full rounded-xl"
+        />
         <div className="min-w-0 space-y-4">
           <header className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">

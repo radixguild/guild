@@ -52,6 +52,18 @@ Before 2026-10-01 the V1 readers used `ESCROW_COMPONENT` too, with the V1 defaul
 
 For the other settings, see `.env.example`.
 
+## Retention and caches
+
+| Setting | Unset means | Where |
+|---|---|---|
+| `AGENT_ACTIVITY_RETENTION_DAYS` | 90 days (floor 2: the daily XRD budget reads the last 24 h of this table) | `services/agent-bridge.js` `pruneAgentActivity`, run at boot and daily from `index.js` |
+| `AGENT_RATE_LIMITED_RETENTION_DAYS` | 1 day (floor 1) for the `rate_limited` audit rows, which are written once per key per hour window | same |
+| `BADGE_CACHE_TTL_MS` | 30000 ms before a cached badge read is re-fetched | `services/gateway.js` `getBadgeResult` |
+| `BADGE_CACHE_STALE_MAX_MS` | 10 × TTL (300000 ms): a cached entry is still served through a Gateway outage until it is this old, then the read reports `error` ("could not verify") instead; `0` disables stale serving | same |
+| `BADGE_CACHE_MAX` | 2000 entries, oldest-inserted evicted | same |
+
+Not pruned (append-only, by design or pending a ruling): `signer_audit`, `support_ai_log`, `xp_rewards`, `dispute_timeline`.
+
 ## Develop and test
 
 ```bash

@@ -344,6 +344,17 @@ describe('agent API with both flags on (FEATURE_LEGACY_BOUNTY, FEATURE_AGENT_PRO
     assert.equal(r.json.error, 'missing_auth');
   });
 
+  it('HEAD /keys is refused like a write (403), not served as a 404 fall-through', async () => {
+    // The guard used to exempt HEAD while no route served it: HEAD /keys reached the
+    // 404 after an auth check and a rate-limit slot. A HEAD response carries no body.
+    callNo++;
+    const res = await fetch('http://127.0.0.1:' + s.port + '/api/agent/keys', {
+      method: 'HEAD',
+      headers: { authorization: 'Bearer ' + s.keys.admin, 'x-forwarded-for': '10.9.250.' + (callNo % 250) },
+    });
+    assert.equal(res.status, 403);
+  });
+
   it('a refused key write lands in the caller\'s own activity log', async () => {
     const refusedRows = async (key) => {
       const r = await call(s.port, 'GET', '/api/agent/activity?limit=100', { key });
