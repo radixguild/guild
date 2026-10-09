@@ -141,6 +141,11 @@ export const LIST_COPY = {
   asksHeading: "2. What you will accept",
   asksIntro:
     "Add up to five alternatives. A buyer fills exactly one of them, in full. Amounts are exact: there are no partial fills and no change.",
+  /** Under the token picker (src/lib/common-tokens.ts). */
+  commonTokens: "Common tokens",
+  otherToken: "Other — paste a resource address",
+  commonTokensNote:
+    "Common tokens are a shortcut, not an endorsement. Any Radix token works: choose Other and paste its resource address.",
   expiryHeading: "3. How long it runs",
   expiryIntro:
     "Up to thirty days. After it expires nobody can fill it; you can cancel to take the NFT back, or extend it by thirty days.",

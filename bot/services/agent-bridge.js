@@ -150,8 +150,8 @@ const agentBuckets = new Map();
 
 function checkAgentRateLimit(agentId, maxPerHour) {
   const now = Date.now();
-  const bucket = agentBuckets.get(agentId) || { count: 0, reset: now + 3600000 };
-  if (now > bucket.reset) { bucket.count = 0; bucket.reset = now + 3600000; }
+  const bucket = agentBuckets.get(agentId) || { count: 0, reset: now + 3600000, logged: false };
+  if (now > bucket.reset) { bucket.count = 0; bucket.reset = now + 3600000; bucket.logged = false; }
   // Check BEFORE increment — rejected requests don't consume slots
   if (bucket.count >= maxPerHour) { agentBuckets.set(agentId, bucket); return false; }
   bucket.count++;
@@ -159,11 +159,25 @@ function checkAgentRateLimit(agentId, maxPerHour) {
   return bucket.count <= maxPerHour;
 }
 
-// Clean stale buckets every 30 min
+// True the first time a key is refused in its current window, false for every later
+// refusal in that window. The audit row for a spent key is written once per window: a
+// client hammering a spent key used to write one `rate_limited` row per request — up to
+// the per-IP limit of 200/min, for as long as it kept going, with nothing ever pruning
+// them (2026-10-08).
+function rateLimitedFirstInWindow(agentId) {
+  const bucket = agentBuckets.get(agentId);
+  if (!bucket) return true;
+  if (bucket.logged) return false;
+  bucket.logged = true;
+  return true;
+}
+
+// Clean stale buckets every 30 min. unref: a library timer must not keep a process alive
+// (the in-process tests would otherwise hang on exit).
 setInterval(() => {
   const now = Date.now();
   for (const [id, b] of agentBuckets) { if (now > b.reset + 3600000) agentBuckets.delete(id); }
-}, 1800000);
+}, 1800000).unref();
 
 // ── Daily Budget Check ──
 
@@ -202,6 +216,55 @@ function getActivity(agentKeyId, limit = 20) {
   ).all(safeLimit);
 }
 
+// ── Retention ──
+//
+// agent_activity is the audit trail of every agent action and the input to the daily XRD
+// budget (checkDailyBudget reads the last 24 h). Nothing pruned it before 2026-10-08, and
+// a spent key wrote a `rate_limited` row per refused request. Two windows: ordinary rows
+// (claim_task, submit_work, match_tasks, key_write_refused, key_revoked, …) are kept
+// AGENT_ACTIVITY_RETENTION_DAYS (default 90, floor 2 so the budget window is never cut),
+// `rate_limited` rows AGENT_RATE_LIMITED_RETENTION_DAYS (default 1, floor 1). Both are
+// floors on the env value: a bad value falls back to the default and warns.
+
+const RETENTION_DEFAULTS = { keepDays: 90, keepRateLimitedDays: 1 };
+
+function retentionDays(envName, fallback, floor) {
+  const v = process.env[envName];
+  if (v === undefined || v === "") return fallback;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < floor) {
+    console.warn("[AgentBridge] " + envName + "=" + JSON.stringify(v) + " ignored (must be a number >= " + floor + "); using " + fallback);
+    return fallback;
+  }
+  return n;
+}
+
+/**
+ * Delete agent_activity rows older than the retention windows.
+ * Returns { rateLimited, other } row counts. Never throws: a failed prune is logged and
+ * the next run retries (the table only grows by what the agents do meanwhile).
+ */
+function pruneAgentActivity(opts = {}) {
+  const nowSec = Math.floor((opts.now !== undefined ? opts.now : Date.now()) / 1000);
+  const keepDays = opts.keepDays !== undefined ? opts.keepDays
+    : retentionDays("AGENT_ACTIVITY_RETENTION_DAYS", RETENTION_DEFAULTS.keepDays, 2);
+  const keepRateLimitedDays = opts.keepRateLimitedDays !== undefined ? opts.keepRateLimitedDays
+    : retentionDays("AGENT_RATE_LIMITED_RETENTION_DAYS", RETENTION_DEFAULTS.keepRateLimitedDays, 1);
+  try {
+    const d = raw();
+    const rateLimited = d.prepare(
+      "DELETE FROM agent_activity WHERE action = 'rate_limited' AND created_at < ?"
+    ).run(nowSec - Math.round(keepRateLimitedDays * 86400)).changes;
+    const other = d.prepare(
+      "DELETE FROM agent_activity WHERE created_at < ?"
+    ).run(nowSec - Math.round(keepDays * 86400)).changes;
+    return { rateLimited, other };
+  } catch (e) {
+    console.error("[AgentBridge] Activity prune failed:", e.message);
+    return { rateLimited: 0, other: 0, error: e.message };
+  }
+}
+
 // ── Auth Middleware Helper ──
 
 /**
@@ -223,7 +286,10 @@ function authenticateRequest(req) {
   }
 
   if (!checkAgentRateLimit(agent.id, agent.rateLimitPerHour)) {
-    logActivity(agent.id, "rate_limited", {}, { error: "rate_limit_exceeded" });
+    // One audit row per key per window, not one per refused request.
+    if (rateLimitedFirstInWindow(agent.id)) {
+      logActivity(agent.id, "rate_limited", {}, { error: "rate_limit_exceeded", limit_per_hour: agent.rateLimitPerHour });
+    }
     return { error: "rate_limited", status: 429, detail: "Agent rate limit exceeded (" + agent.rateLimitPerHour + "/hour)" };
   }
 
@@ -243,5 +309,7 @@ module.exports = {
   checkDailyBudget,
   logActivity,
   getActivity,
+  rateLimitedFirstInWindow,
+  pruneAgentActivity,
   authenticateRequest,
 };

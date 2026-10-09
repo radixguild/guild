@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ESCROW_CLAIM_BOND_XRD,
   ESCROW_COMPONENT,
+  NFT_SWAP_COMPONENT,
+  NFT_SWAP_PACKAGE,
   TG_BOT_HANDLE,
   TG_BOT_URL,
   TG_GROUP_HANDLE,
@@ -149,6 +151,23 @@ const CHECKABLE_TODAY = [
     title: "The arbiter's independence is narrower than it sounds",
     body: "resolve_dispute checks one identity: the arbiter may not be the task's worker (the chain asserts it and reverts otherwise). It does not, and cannot honestly, check the poster — the poster field is a caller-supplied destination, not a verified identity, so a poster-side check would defeat itself for the price of a decoy address. In practice: an arbiter who funded a task may still rule on it. They cannot steal doing so — settlement pays only the accounts pinned at claim and funding, never the arbiter, beyond any arbiter fee funded (0 on tasks funded through this app) — but they can rule in their own favor as poster. The arbiter badge has supply 1 today, so this is worth weighing plainly rather than assuming away.",
     verify: "Disputes & Arbitration — resolve_dispute's self-dealing check, and what it deliberately does not cover.",
+  },
+  {
+    // The swap recipe design/nft-swap.md §9 promised beside the escrow ones
+    // (added 2026-10-07). Each call was run against the live component that day:
+    // entity/details → blueprint NftSwap, the package below, state fields
+    // `listings` (an internal_keyvaluestore_), `next_listing_id`,
+    // `listing_receipt_manager`; key-value-store/data with a U64 key returns the
+    // listing (src/lib/nft-swap-gateway.ts reads it the same way); the events are
+    // the ones nft_swap.rs emits. package/page/codes returned 447,882 bytes whose
+    // sha256 is the hash below — the bytes of the operator's own build, published
+    // 2026-09-15. The crate's src/ at this repository's first commit (b9755c3) is
+    // the source of that build (only tests/lib.rs differs); nobody else has
+    // rebuilt it. Rewrite the last sentence when someone does, or when a
+    // republished package replaces this one.
+    title: "The NFT swap component, live on mainnet",
+    body: "The /swaps board is read straight from the NftSwap component on the ledger; the site keeps no copy of it. A listing escrows one NFT with fixed asking terms, and a fill pays one of those terms and receives the NFT in the same transaction. There is no dispute path, no insurance and no review window, and a fill cannot be undone. The fee on a fill is a flat XRD royalty paid by the buyer, set by a dial the royalty-admin badge can change; it is 0 XRD today. Creator royalties are not collected, and a listing is not an appraisal.",
+    verify: `On the Radix Gateway (mainnet.radixdlt.com): POST /state/entity/details on ${NFT_SWAP_COMPONENT} shows blueprint NftSwap from package ${NFT_SWAP_PACKAGE}, the next listing id, and in the state field "listings" the key-value store that holds every listing (add opt_ins.component_royalty_config to see the fee dials). POST /state/key-value-store/data on that store with the key {"kind": "U64", "value": "<listing id>"} returns one listing: the NFT, the asking terms, the expiry and its state. POST /transaction/committed-details with opt_ins.receipt_events on a swap transaction shows its ListedEvent, FilledEvent, CancelledEvent, ExtendedEvent or ProceedsWithdrawnEvent. POST /state/package/page/codes on the package returns its WASM, whose sha256 is 81ec78e4d0ac6f7a8f249d5f2f13529c4619d69e0530d69da54244fd876a660c: the bytes of our own build of escrow/scrypto/guild-marketplace-escrow, published on 15 September 2026, from the source in this repository's first commit (only the crate's tests have changed since). Nobody else has rebuilt it to confirm that yet.`,
   },
 ];
 
@@ -373,7 +392,7 @@ function TrustContent() {
                       {ESCROW_COMPONENT}
                     </a>
                   ) : (
-                    <span className="text-muted-foreground">{c.verify}</span>
+                    <span className="text-muted-foreground break-words">{c.verify}</span>
                   )}
                 </div>
               </div>
