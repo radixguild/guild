@@ -147,6 +147,36 @@ describe("the line and the single source", () => {
     expect(text).not.toContain("on its card")
   })
 
+  // The four swap verbs (P7-05). Named on the card and in llms.txt with the --live spend bound, and
+  // the "not yet run live" sentence follows the kit README's own status row for swap.ts, so the
+  // copy cannot claim a live run the kit does not, nor keep denying one after the row flips.
+  describe("the NFT swap verbs", () => {
+    const KIT_README = join(process.cwd(), "..", "packages", "agent-client", "README.md")
+    const swapRow = (readFileSync(KIT_README, "utf8").split("\n").find((l) => l.startsWith("| NFT swap legs:")) ?? "")
+    const untested = /UNTESTED-UNTIL-PILOT/.test(swapRow)
+    const llms = readFileSync(join(process.cwd(), "public", "llms.txt"), "utf8")
+    const card = () => render(<KitCard sha256={SHA} />).container.querySelector('[data-testid="kit-swap-verbs"]')?.textContent ?? ""
+
+    it("the kit README still has the swap legs' status row this test reads", () => {
+      expect(swapRow).toContain("swap.ts")
+    })
+
+    it("names all four verbs and the --live bound flags, on the card and in llms.txt", () => {
+      const text = card()
+      for (const t of [text, llms]) {
+        for (const verb of ["guild-poster list-swap", "cancel-swap", "withdraw-swap", "guild-worker fill-swap", "--max-price <amount>[:<resource>]", "--expect-nft <resource>:<id>"]) {
+          expect(t).toContain(verb)
+        }
+      }
+    })
+
+    it("says the verbs have not run live through the kit exactly while the README says so", () => {
+      const sentence = /swap verbs have not yet run live through (?:this|the) kit/
+      expect(sentence.test(card())).toBe(untested)
+      expect(sentence.test(llms)).toBe(untested)
+    })
+  })
+
   it("passes the site's honest-copy rules in both shapes", () => {
     const texts = [
       render(<KitCard sha256={SHA} version="0.6.0" />).container.textContent ?? "",

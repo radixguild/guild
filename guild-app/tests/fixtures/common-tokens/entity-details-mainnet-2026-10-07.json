@@ -1,0 +1,70 @@
+{
+  "captured_at": "2026-10-07T07:36:16Z",
+  "source": "POST https://mainnet.radixdlt.com/state/entity/details (trimmed to the fields the test reads)",
+  "state_version": 561449614,
+  "items": [
+    {
+      "address": "resource_rdx1t4kc5ljyrwlxvg54s6gnctt7nwwgx89h9r2gvrpm369s23yhzyyzlx",
+      "type": "FungibleResource",
+      "divisibility": 18,
+      "symbol": "WOWO",
+      "name": "WOWO"
+    },
+    {
+      "address": "resource_rdx1t4tjx4g3qzd98nayqxm7qdpj0a0u8ns6a0jrchq49dyfevgh6u0gj3",
+      "type": "FungibleResource",
+      "divisibility": 18,
+      "symbol": "ASTRL",
+      "name": "Astrolescent"
+    },
+    {
+      "address": "resource_rdx1t52pvtk5wfhltchwh3rkzls2x0r98fw9cjhpyrf3vsykhkuwrf7jg8",
+      "type": "FungibleResource",
+      "divisibility": 18,
+      "symbol": "OCI",
+      "name": "Ociswap"
+    },
+    {
+      "address": "resource_rdx1t5kmyj54jt85malva7fxdrnpvgfgs623yt7ywdaval25vrdlmnwe97",
+      "type": "FungibleResource",
+      "divisibility": 18,
+      "symbol": "HUG",
+      "name": "Hug"
+    },
+    {
+      "address": "resource_rdx1t5xv44c0u99z096q00mv74emwmxwjw26m98lwlzq6ddlpe9f5cuc7s",
+      "type": "FungibleResource",
+      "divisibility": 18,
+      "symbol": "EARLY",
+      "name": "EARLY"
+    },
+    {
+      "address": "resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq",
+      "type": "FungibleResource",
+      "divisibility": 18,
+      "symbol": "DFP2",
+      "name": "DefiPlaza"
+    },
+    {
+      "address": "resource_rdx1thxj9m87sn5cc9ehgp9qxp6vzeqxtce90xm5cp33373tclyp4et4gv",
+      "type": "FungibleResource",
+      "divisibility": 6,
+      "symbol": "hUSDC",
+      "name": "Hyperlane USD Coin"
+    },
+    {
+      "address": "resource_rdx1tk3fxrz75ghllrqhyq8e574rkf4lsq2x5a0vegxwlh3defv225cth3",
+      "type": "FungibleResource",
+      "divisibility": 18,
+      "symbol": "WEFT",
+      "name": "Weft Finance"
+    },
+    {
+      "address": "resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd",
+      "type": "FungibleResource",
+      "divisibility": 18,
+      "symbol": "XRD",
+      "name": "Radix"
+    }
+  ]
+}

@@ -25,6 +25,9 @@ const SWAP = "component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5m
 const RECEIPT = "resource_rdx1nfq47l0t7glmntfjuandqdmlejzvffq4cvlvrha94kqr52mdrvt2e7";
 const NFT = "resource_rdx1ng3k9ll8yygujlamrszv5qu58nv9kqtala6cry2xql4006ccyrykdk";
 const XRD = "resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd";
+// A row of src/lib/common-tokens.ts (EARLY), and a fungible token that is not on that list.
+const EARLY = "resource_rdx1t5xv44c0u99z096q00mv74emwmxwjw26m98lwlzq6ddlpe9f5cuc7s";
+const OTHER_TOKEN = "resource_rdx1t" + "c".repeat(40) + "0003";
 const SELLER = "account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm";
 const LEDGER_ISO = "2026-10-06T07:00:00.000Z";
 const LEDGER = Date.parse(LEDGER_ISO) / 1000;
@@ -32,6 +35,8 @@ const LEDGER = Date.parse(LEDGER_ISO) / 1000;
 const RESOURCES = {
   [XRD]: { kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open" },
   [NFT]: { kind: "nonFungible", divisibility: null, name: "Guild Swap Throwaway NFT", symbol: null, iconUrl: null, withdraw: "open" },
+  [EARLY]: { kind: "fungible", divisibility: 18, name: "EARLY", symbol: "EARLY", iconUrl: null, withdraw: "open" },
+  [OTHER_TOKEN]: { kind: "fungible", divisibility: 18, name: "Some Token", symbol: "SOME", iconUrl: null, withdraw: "open" },
 };
 
 const ASKS = [
@@ -491,6 +496,55 @@ test.describe("NFT swap — List an NFT", () => {
       listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: XRD, amount: "5000" }], expiryForDays(LEDGER, 7)),
     );
     await expect(page).toHaveURL(/\/swaps\/3\?listed=1$/);
+  });
+
+  // The "Common tokens" select only pre-fills the address; what is sent is
+  // the address, looked up on the Gateway like any other.
+  test("Common tokens: picking EARLY lists for EARLY's resource address", async ({ page }) => {
+    await injectWalletMock(page);
+    await stubGateway(page);
+    await stubDetail(page, MOCK_ACCOUNT);
+    await page.goto("/swaps/list");
+
+    await page.getByRole("button", { name: /Guild swap throwaway 2/ }).click();
+    await page.getByLabel("Alternative 1 amount").fill("250");
+    await expect(page.getByLabel("Alternative 1 token", { exact: true })).toHaveValue(XRD);
+    await page.getByLabel("Alternative 1 token", { exact: true }).selectOption(EARLY);
+    await expect(page.getByText("EARLY (EARLY)")).toBeVisible();
+    await expect(page.getByLabel("Alternative 1 token address")).toHaveCount(0);
+    const go = page.getByRole("button", { name: "Open my wallet to list" });
+    await expect(go).toBeEnabled();
+    await go.click();
+
+    await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
+    expect((await sentManifests(page))[0]).toBe(
+      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: EARLY, amount: "250" }], expiryForDays(LEDGER, 7)),
+    );
+  });
+
+  test("Common tokens: Other opens a free-text address, and that address is what is sent", async ({ page }) => {
+    await injectWalletMock(page);
+    await stubGateway(page);
+    await stubDetail(page, MOCK_ACCOUNT);
+    await page.goto("/swaps/list");
+
+    await page.getByRole("button", { name: /Guild swap throwaway 2/ }).click();
+    await page.getByLabel("Alternative 1 amount").fill("7");
+    await page.getByLabel("Alternative 1 token", { exact: true }).selectOption("other");
+    const address = page.getByLabel("Alternative 1 token address");
+    await expect(address).toHaveValue("");
+    const go = page.getByRole("button", { name: "Open my wallet to list" });
+    await expect(go).toBeDisabled();
+    await address.fill(OTHER_TOKEN);
+    await expect(page.getByText("Some Token (SOME)")).toBeVisible();
+    await expect(page.getByLabel("Alternative 1 token", { exact: true })).toHaveValue("other");
+    await expect(go).toBeEnabled();
+    await go.click();
+
+    await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
+    expect((await sentManifests(page))[0]).toBe(
+      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: OTHER_TOKEN, amount: "7" }], expiryForDays(LEDGER, 7)),
+    );
   });
 
   test("an ask the chain would refuse keeps the wallet closed", async ({ page }) => {
