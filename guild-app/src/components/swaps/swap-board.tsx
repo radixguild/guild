@@ -43,7 +43,12 @@ function SwapCard({ l, board }: { l: SwapListingView; board: SwapBoardView }) {
     <Link href={`/swaps/${l.listingId}`} className="group block no-underline">
       <Card className="h-full overflow-hidden transition-colors group-hover:border-primary/50">
         <div className="relative">
-          <NftImage src={l.asset.imageUrl} alt={name} className="aspect-square w-full" />
+          <NftImage
+            src={l.asset.imageUrl}
+            fallbackSrc={l.hidden ? null : (board.resources[l.assetResource]?.iconUrl ?? null)}
+            alt={name}
+            className="aspect-square w-full"
+          />
           <div className="absolute left-2 top-2">
             <SwapStatusBadge status={l.status} />
           </div>
