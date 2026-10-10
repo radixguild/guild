@@ -1,0 +1,28 @@
+{
+  "_note": "Schema-shaped, NOT captured from a wallet. Built from @radixdlt/radix-dapp-toolkit 2.2.1 src/schemas (WalletInteractionSuccessResponse -> WalletUnauthorizedRequestResponseItems -> AccountsRequestResponseItem with challenge + proofs). Every value is obviously fake.",
+  "discriminator": "success",
+  "interactionId": "00000000-0000-4000-8000-000000000001",
+  "items": {
+    "discriminator": "unauthorizedRequest",
+    "oneTimeAccounts": {
+      "accounts": [
+        {
+          "address": "account_rdx12contracttest0000000000000000000000000000000000000000000",
+          "label": "Contract test account",
+          "appearanceId": 0
+        }
+      ],
+      "challenge": "0000000000000000000000000000000000000000000000000000000000000001",
+      "proofs": [
+        {
+          "accountAddress": "account_rdx12contracttest0000000000000000000000000000000000000000000",
+          "proof": {
+            "publicKey": "0000000000000000000000000000000000000000000000000000000000000002",
+            "signature": "00000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000004",
+            "curve": "curve25519"
+          }
+        }
+      ]
+    }
+  }
+}
