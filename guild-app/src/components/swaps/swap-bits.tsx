@@ -28,10 +28,28 @@ export const dashboardEntity = (address: string) => {
  * their NFT (and need every host allow-listed). Here the viewer's browser
  * loads it, without a referrer, under the site's CSP (img-src https:), and
  * only after safeImageUrl() accepted it as https.
+ *
+ * `fallbackSrc` is the collection's own `icon_url` (resource metadata, read
+ * by readResourceDisplay and passed through the same safeImageUrl gate). It
+ * shows when the NFT has no `key_image_url`, or when that image fails to
+ * load, and its alt text says it is the collection's icon, not this NFT's
+ * picture. Many collections set only the resource icon, the Guild's own
+ * included (2026-10-07: none of its NFTs carries a per-id image).
  */
-export function NftImage({ src, alt, className }: { src: string | null; alt: string; className?: string }) {
-  const [failed, setFailed] = useState(false)
-  if (!src || failed) {
+export function NftImage({
+  src,
+  fallbackSrc = null,
+  alt,
+  className,
+}: {
+  src: string | null
+  fallbackSrc?: string | null
+  alt: string
+  className?: string
+}) {
+  const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set())
+  const shown = pickNftImage(src, fallbackSrc, failed)
+  if (!shown) {
     return (
       <div
         className={cn("flex items-center justify-center bg-muted text-muted-foreground", className)}
@@ -42,18 +60,33 @@ export function NftImage({ src, alt, className }: { src: string | null; alt: str
       </div>
     )
   }
+  const isIcon = shown.source === "collection"
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={src}
-      alt={alt}
+      key={shown.url}
+      src={shown.url}
+      alt={isIcon ? `${alt} (collection icon)` : alt}
+      data-image-source={shown.source}
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-      className={cn("bg-muted object-cover", className)}
+      onError={() => setFailed((prev) => new Set(prev).add(shown.url))}
+      className={cn("bg-muted", isIcon ? "object-contain p-[12%]" : "object-cover", className)}
     />
   )
+}
+
+/** Which picture NftImage shows: the NFT's own image, else the collection
+ *  icon, else none. A URL that already failed to load is skipped. */
+export function pickNftImage(
+  src: string | null,
+  fallbackSrc: string | null,
+  failed: ReadonlySet<string>,
+): { url: string; source: "nft" | "collection" } | null {
+  if (src && !failed.has(src)) return { url: src, source: "nft" }
+  if (fallbackSrc && !failed.has(fallbackSrc)) return { url: fallbackSrc, source: "collection" }
+  return null
 }
 
 const STATUS_LABEL: Record<SwapStatus, string> = {

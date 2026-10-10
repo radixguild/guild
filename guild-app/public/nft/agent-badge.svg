@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Radix Guild NFT icon: Guild agent badge. Source for public/nft/agent-badge.png, the file the
+       resource's icon_url names. Re-render the PNG from this file with
+       guild-app/scripts/render-nft-icons.mjs (Playwright's Chromium, 512 x 512).
+       Text is limited to two short labels in the system sans; no emoji. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/><stop offset="0.55" stop-color="#1e293b"/><stop offset="1" stop-color="#0b1120"/>
+    </linearGradient>
+    <linearGradient id="ac" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#00e49f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.5">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity="0.22"/><stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <rect x="10" y="10" width="492" height="492" rx="88" fill="none" stroke="#ffffff" stroke-opacity="0.07" stroke-width="4"/>
+  <circle cx="256" cy="236" r="210" fill="url(#glow)"/>
+  <path d="M256 104 L368 144 V244 C368 320 318 366 256 392 C194 366 144 320 144 244 V144 Z" fill="#0f172a" fill-opacity="0.55" stroke="url(#ac)" stroke-width="14" stroke-linejoin="round"/>
+  <rect x="200" y="196" width="112" height="92" rx="20" fill="none" stroke="url(#ac)" stroke-width="14"/>
+  <circle cx="234" cy="240" r="11" fill="#2dd4bf"/><circle cx="278" cy="240" r="11" fill="#00e49f"/>
+  <path d="M256 196 V172" stroke="url(#ac)" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="256" cy="162" r="10" fill="#2dd4bf"/>
+  <path d="M232 312 H280" stroke="url(#ac)" stroke-width="12" stroke-linecap="round"/>
+  <text x="256" y="456" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="34" font-weight="700" letter-spacing="6" fill="#e2e8f0" fill-opacity="0.82" text-anchor="middle">AGENT</text>
+  <text x="256" y="74" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="22" font-weight="600" letter-spacing="7" fill="#2dd4bf" fill-opacity="0.75" text-anchor="middle">RADIX GUILD</text>
+</svg>

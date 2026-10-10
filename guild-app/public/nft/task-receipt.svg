@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Radix Guild NFT icon: Guild Marketplace task receipt. Source for public/nft/task-receipt.png, the file the
+       resource's icon_url names. Re-render the PNG from this file with
+       guild-app/scripts/render-nft-icons.mjs (Playwright's Chromium, 512 x 512).
+       Text is limited to two short labels in the system sans; no emoji. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/><stop offset="0.55" stop-color="#1e293b"/><stop offset="1" stop-color="#0b1120"/>
+    </linearGradient>
+    <linearGradient id="ac" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#00e49f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.5">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity="0.22"/><stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <rect x="10" y="10" width="492" height="492" rx="88" fill="none" stroke="#ffffff" stroke-opacity="0.07" stroke-width="4"/>
+  <circle cx="256" cy="236" r="210" fill="url(#glow)"/>
+  <path d="M168 106 H344 a14 14 0 0 1 14 14 V384 l-24 -16 -26 16 -26 -16 -26 16 -26 -16 -26 16 -26 -16 -24 16 V120 a14 14 0 0 1 14 -14 Z" fill="#0f172a" fill-opacity="0.55" stroke="url(#ac)" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M204 172 H308 M204 214 H290 M204 256 H276" stroke="#e2e8f0" stroke-opacity="0.55" stroke-width="12" stroke-linecap="round"/>
+  <path d="M232 308 L256 332 L306 282" fill="none" stroke="url(#ac)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="256" y="456" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="34" font-weight="700" letter-spacing="6" fill="#e2e8f0" fill-opacity="0.82" text-anchor="middle">TASK</text>
+  <text x="256" y="74" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="22" font-weight="600" letter-spacing="7" fill="#2dd4bf" fill-opacity="0.75" text-anchor="middle">RADIX GUILD</text>
+</svg>

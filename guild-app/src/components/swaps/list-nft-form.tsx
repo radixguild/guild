@@ -11,6 +11,7 @@ import { Plus, Trash2, Wallet } from "lucide-react"
 import { NFT_SWAP_COMPONENT } from "@/lib/config"
 import { XRD_ADDRESS } from "@/lib/radix"
 import { listSwapManifest } from "@/lib/manifests"
+import { COMMON_TOKENS, commonTokenFor } from "@/lib/common-tokens"
 import {
   askProblems,
   expiryForDays,
@@ -39,6 +40,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { askText, NftImage, TxDoneLine, TxErrorLine, useSwapTx, utcStamp } from "./swap-bits"
 
 const DAY_CHOICES = [1, 3, 7, 14, 30] as const
+/** The token select's value for "paste your own address". */
+const OTHER_TOKEN = "other"
 /** NFT pictures fetched for the picker, at most — the rest show their id. */
 const PICKER_DISPLAY_CAP = 60
 
@@ -277,7 +280,12 @@ export function ListNftForm() {
                           aria-pressed={on}
                           className={`overflow-hidden rounded-lg border text-left disabled:opacity-40 ${on ? "border-primary ring-2 ring-primary/40" : ""}`}
                         >
-                          <NftImage src={d?.imageUrl ?? null} alt={d?.name ?? id} className="aspect-square w-full" />
+                          <NftImage
+                            src={d?.imageUrl ?? null}
+                            fallbackSrc={r?.iconUrl ?? null}
+                            alt={d?.name ?? id}
+                            className="aspect-square w-full"
+                          />
                           <span className="block truncate px-1.5 py-1 text-[11px]">{d?.name ?? id}</span>
                         </button>
                       )
@@ -300,6 +308,7 @@ export function ListNftForm() {
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">{LIST_COPY.asksIntro}</p>
+          <p className="text-xs text-muted-foreground">{LIST_COPY.commonTokensNote}</p>
           {asks.map((a, i) => {
             const p = shownProblem(i)
             const d = askRes.get(a.resource)
@@ -334,21 +343,44 @@ export function ListNftForm() {
                   )}
                 </div>
                 {a.kind === "fungible" ? (
-                  <div className="grid gap-2 sm:grid-cols-[10rem_1fr]">
-                    <Input
-                      inputMode="decimal"
-                      placeholder="Amount"
-                      aria-label={`Alternative ${i + 1} amount`}
-                      value={a.amount}
-                      onChange={(e) => setAsk(i, { ...a, amount: e.target.value.trim() })}
-                    />
-                    <Input
-                      placeholder="Token resource address"
-                      aria-label={`Alternative ${i + 1} token`}
-                      className="font-mono text-xs"
-                      value={a.resource}
-                      onChange={(e) => setAsk(i, { ...a, resource: e.target.value.trim() })}
-                    />
+                  <div className="space-y-2">
+                    <div className="grid gap-2 sm:grid-cols-[10rem_1fr]">
+                      <Input
+                        inputMode="decimal"
+                        placeholder="Amount"
+                        aria-label={`Alternative ${i + 1} amount`}
+                        value={a.amount}
+                        onChange={(e) => setAsk(i, { ...a, amount: e.target.value.trim() })}
+                      />
+                      {/* The select only pre-fills the address. The address is what gets
+                          looked up on the Gateway and sent, whichever way it was entered. */}
+                      <select
+                        aria-label={`Alternative ${i + 1} token`}
+                        className="h-9 min-w-0 rounded-md border bg-background px-2 text-sm"
+                        value={commonTokenFor(a.resource)?.address ?? OTHER_TOKEN}
+                        onChange={(e) =>
+                          setAsk(i, { ...a, resource: e.target.value === OTHER_TOKEN ? "" : e.target.value })
+                        }
+                      >
+                        <optgroup label={LIST_COPY.commonTokens}>
+                          {COMMON_TOKENS.map((t) => (
+                            <option key={t.address} value={t.address}>
+                              {t.symbol} — {t.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <option value={OTHER_TOKEN}>{LIST_COPY.otherToken}</option>
+                      </select>
+                    </div>
+                    {!commonTokenFor(a.resource) && (
+                      <Input
+                        placeholder="Token resource address"
+                        aria-label={`Alternative ${i + 1} token address`}
+                        className="font-mono text-xs"
+                        value={a.resource}
+                        onChange={(e) => setAsk(i, { ...a, resource: e.target.value.trim() })}
+                      />
+                    )}
                   </div>
                 ) : (
                   <div className="grid gap-2 sm:grid-cols-[1fr_10rem]">
