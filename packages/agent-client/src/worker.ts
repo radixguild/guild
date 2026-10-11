@@ -106,18 +106,14 @@ export interface WorkerOptions {
    * only prior filter here was "not my own task" — so a standing/campaign
    * worker would bond a claim on a stranger's task, the task then reaches
    * `assigned`, and step 2 below hands its title/description straight to
-   * `doWork()` with zero review. Historically the wiring
-   * (`GUILD_DOWORK_CMD=bash ops/agent-env/dowork-claude.sh`) spliced that text
-   * into a `claude -p "$PROMPT" --dangerously-skip-permissions` run ON THE HOST
-   * — an attacker-authored brief bought unrestricted host shell the instant it
-   * was claimed. That executor is now the isolated sandbox
-   * (`ops/agent-env/sandbox/dowork-sandboxed.sh`), which contains the brief in a
-   * credential-free container. Timing matters: the sandbox is wired but not yet
-   * rolled out (its inference key + worker reactivation are pending), so TODAY
-   * this allowlist is the live control gating claim ELIGIBILITY — the container
-   * is the boundary-in-waiting. (It gates at the claim; guarding the assigned
-   * loop that re-runs a claimed brief each cycle is a complementary re-check.)
-   * Once the sandbox is rolled out it is the boundary and the allowlist can open.
+   * `doWork()` with zero review. A `doWork` command that splices that text into
+   * an agent run with permission prompts skipped, ON THE HOST, hands an
+   * attacker-authored brief unrestricted host shell the instant it is claimed.
+   * The safer executor runs the brief in an isolated, credential-free container.
+   * Until `doWork` runs in one, this allowlist is the control gating claim
+   * ELIGIBILITY; once it does, the container is the boundary and the allowlist
+   * can open. (The allowlist gates at the claim; guarding the assigned loop that
+   * re-runs a claimed brief each cycle is a complementary re-check.)
    * Restricting eligibility to explicitly trusted posters closes
    * that off at the one place a task can ever become "assigned to this
    * agent": the claim itself (step 2's `assigned` survey only ever contains
@@ -173,7 +169,7 @@ export interface WorkerOptions {
    */
   withdrawWorkerReward?: typeof withdrawWorkerRewardImpl;
   /**
-   * Custody ruling R1 (`--sweep-to`): after the survey pass, move everything
+   * Sweep (`--sweep-to`): after the survey pass, move everything
    * above the float to the agent's OWNER wallet — "owner" for the account
    * recorded in GUILD_OWNER_ACCOUNT, or an address (refused if it differs from
    * a recorded owner; see sweep.ts). Undefined (default) = never sweep.
@@ -788,7 +784,7 @@ export async function runWorkerCycle(options: WorkerOptions): Promise<WorkerCycl
   // agent that delivered work and got DISPUTED never learned it had been —
   // grep-confirmed zero references to 'disputed' or 'submitted' status in this
   // function before this pass. A standing worker would keep claiming new tasks
-  // while a 72h window ran out on money it had already earned. The whole
+  // while the dispute window ran out on money it had already earned. The whole
   // operator-facing half of this problem got a Telegram alert; the agent-facing
   // half got nothing, which is worse, because there is no human watching a
   // channel on the agent's side at all.

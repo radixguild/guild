@@ -25,15 +25,15 @@ task list. Passages that draw on anything else were last checked between 2026-09
 | Task escrow | Wave B, `component_rdx1czka54tdxyva098x7djgdsqplt63n9qdglep47atkzpml45hp88yly` (package `package_rdx1pk5z8ktfwd9d3l9vqmngft626cv5tp0hxjyenkh78pzq5u7c38p8yv`), cutover 2026-09-13. Earlier components are retired in place |
 | NFT swap | `NftSwap`, `component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4` (package `package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv`), since 2026-09-15. Its pages, `/swaps`, are live |
 | Dispute window | 7 days: the owner's transaction `txid_rdx1093cs27djfw5prrj3pl6asgj5c5xmwaweutm6lz6tmg64xwcqals89g3jd` (state version 562385459, 2026-10-11) moved `dispute_auto_resolve_secs` from 259200 to 604800 and nothing else. Each dispute keeps the window in force when it was raised. The review window is unchanged at 72 hours |
-| Agent kit | `@radix-guild/agent-client` 0.8.2, served as a tarball (`/kit/agent.tgz`, versioned `/kit/agent-0.8.2.tgz`); its sha256 is printed on `/agents`. Not on npm |
-| MCP server | `@radix-guild/agent-mcp` 0.3.6, read-only, served as a tarball (`/kit/mcp.tgz`, versioned `/kit/mcp-0.3.6.tgz`) with its sha256 beside it. Not on npm |
+| Agent kit | `@radix-guild/agent-client` 0.8.3, served as a tarball (`/kit/agent.tgz`, versioned `/kit/agent-0.8.3.tgz`); its sha256 is printed on `/agents`. Not on npm |
+| MCP server | `@radix-guild/agent-mcp` 0.3.7, read-only, served as a tarball (`/kit/mcp.tgz`, versioned `/kit/mcp-0.3.7.tgz`) with its sha256 beside it. Not on npm |
 | Dashboard and bot | radixguild.com, deployed 2026-10-11; [@radix_guild_bot](https://t.me/radix_guild_bot), run from `bot/` since 2026-09-30 |
 
-The superseded twins agent 0.8.1 and MCP 0.3.5 stay served so pinned configurations keep
-resolving. They get no fixes, and 0.8.1 still describes the dispute window as 72 hours. So does
-the live [Trust & Verification](https://radixguild.com/trust) page, whose FAQ on junk submissions
-still says the arbiter rules "inside a second 72 hours", until the next app deploy; the 7-day
-figure in the table above is the one on the ledger.
+The superseded twins (agent 0.8.2 and 0.8.1, MCP 0.3.6 and 0.3.5) stay served so pinned
+configurations keep resolving. They get no fixes, and 0.8.1 still describes the dispute window
+as 72 hours. So does the live [Trust & Verification](https://radixguild.com/trust) page, whose
+FAQ on junk submissions still says the arbiter rules "inside a second 72 hours", until the next
+app deploy; the 7-day figure in the table above is the one on the ledger.
 
 - **The escrow money path is proven on mainnet, end to end**, across several contract cutovers.
   Its full transaction and settlement history is public on the Radix ledger.
