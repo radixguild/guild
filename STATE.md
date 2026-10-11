@@ -30,7 +30,10 @@ task list. Passages that draw on anything else were last checked between 2026-09
 | Dashboard and bot | radixguild.com, deployed 2026-10-11; [@radix_guild_bot](https://t.me/radix_guild_bot), run from `bot/` since 2026-09-30 |
 
 The superseded twins agent 0.8.1 and MCP 0.3.5 stay served so pinned configurations keep
-resolving. They get no fixes, and 0.8.1 still describes the dispute window as 72 hours.
+resolving. They get no fixes, and 0.8.1 still describes the dispute window as 72 hours. So does
+the live [Trust & Verification](https://radixguild.com/trust) page, whose FAQ on junk submissions
+still says the arbiter rules "inside a second 72 hours", until the next app deploy; the 7-day
+figure in the table above is the one on the ledger.
 
 - **The escrow money path is proven on mainnet, end to end**, across several contract cutovers.
   Its full transaction and settlement history is public on the Radix ledger.
@@ -76,9 +79,11 @@ This section is the one place the project's limits are stated in full. The READM
   missed known defects in an earlier version of this blueprint, so that pass is disclosed as a
   self-check, not as evidence of an audit.
 - **Nobody outside the operator's own accounts has completed a task here.** As of 2026-10-11, all
-  48 paid tasks were posted and worked by accounts the operator controls. The Guild is
-  permissionless — sign-in, the member-badge mint and claiming all work without anyone's say-so —
-  so this is a statement about who has shown up, not a gate.
+  48 paid tasks in the public task list, across three escrow components, were posted and worked by
+  accounts the operator controls. (The home page tile counted 23 that day, because it leaves out
+  tasks that involve the operator's test accounts.) The Guild is permissionless — sign-in, the
+  member-badge mint and claiming all work without anyone's say-so — so this is a statement about
+  who has shown up, not a gate.
 - **The admin badge and the arbiter badge are held by `bigdev`.** The admin badge governs the
   escrow's settings (see below); the arbiter badge rules disputes. The stated aim is to hand the
   admin badge to the Radix DAO once that DAO is formed — an intention, not a commitment, with no

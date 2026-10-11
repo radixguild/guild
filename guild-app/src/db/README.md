@@ -54,19 +54,20 @@ domain and returns typed results; multi-step writes use `db.transaction()`.
 `src/db/index.ts` exports `db` as a Proxy that creates the connection on first use:
 
 ```typescript
-export const db = new Proxy({} as Database, {
-  get(target, prop) {
-    if (!dbInstance) {
-      dbInstance = createDb()
-    }
-    return dbInstance[prop as keyof Database]
-  }
+let _db: ReturnType<typeof createDb> | undefined
+
+export const db = new Proxy({} as ReturnType<typeof createDb>, {
+  get(_target, prop) {
+    if (!_db) _db = createDb()
+    return (_db as unknown as Record<string | symbol, unknown>)[prop]
+  },
 })
 ```
 
-Drizzle's `postgres()` client throws at import time when `DATABASE_URL` is unset, which broke
-`next build` before environment variables were available. **Do not refactor this pattern**: the
-build depends on it.
+`createDb()` (the same file) throws `DATABASE_URL environment variable is not set` when the variable
+is missing. The Proxy defers that call to the first property access, so importing the module does
+not need the variable: a build that imports it before the environment is set (such as `next build`)
+does not throw. **Do not make it eager**: every import without `DATABASE_URL` would then throw.
 
 ## Migrations
 

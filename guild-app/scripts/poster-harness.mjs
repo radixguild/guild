@@ -104,7 +104,7 @@ export const LIVE_TASK_RECEIPT =
   "resource_rdx1n2gxh84q62taekne4d5mys5yk23du7yyvma6zjuh0vvhn4w2vrtkju"
 export const MEMBER_BADGE =
   "resource_rdx1n22rq94kh6ugwnrvc65m2pwhle3s6ez6j7702vkn2ctkaxemz4ppwl"
-// BadgeManager (public_mint) — the guild Member badge component (global CLAUDE.md).
+// BadgeManager (public_mint) — the guild Member badge component (see docs/PROJECT-COMPONENTS.md).
 export const MANAGER =
   "component_rdx1czexylvvm0q4uhwpjaqmlznj9sd3y2jnmmah6qug9lm9sfm3tyrtva"
 // Sourced from the one canonical definition (src/lib/radix.ts), not a local

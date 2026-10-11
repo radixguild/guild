@@ -56,6 +56,11 @@ The table covers the routes most integrations use; [More routes](#more-routes) l
 
 ### More routes
 
+Rows marked **switched off** sit behind a feature flag that defaults to off. They answer `503
+FEATURE_DISABLED` wherever the flag is off. On radixguild.com, `funding-pools` and `game/leaderboard`
+answered that on 2026-10-11; the session-gated rows (`game/state`, `game/roll`, `notifications`) check
+the flag after the session.
+
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/v1/projects` · `/projects/[slug]` | No | List projects; one project with its tasks |
@@ -69,9 +74,10 @@ The table covers the routes most integrations use; [More routes](#more-routes) l
 | GET | `/api/v1/escrow/posting-status` | No | Whether the escrow component accepts new tasks (frozen flag, component address) |
 | GET | `/api/v1/network/status` · `/quote/xrd-usd` | No | Radix network liveness as the app sees it; the XRD/USD display quote |
 | GET | `/api/v1/users/leaderboard` · `/users/[address]/profile` | No | XP leaderboard (app ledger); public profile for an address |
-| GET/PATCH | `/api/v1/notifications` · `/notifications/read` | Yes | Your notifications; mark them read |
-| GET/POST | `/api/v1/funding-pools` (+ `/[id]`, `/leaderboard`, `/[id]/charter`, `/pledge`, `/publish`, `/refund`) | Mixed | Community funding pools; a pledge moves no XRD |
-| GET/POST | `/api/v1/game/*`, `/tempcheck/[checkId]` | Mixed | The meme-grid game state and the lights-on temperature check |
+| GET/PATCH | `/api/v1/notifications` · `/notifications/read` | Yes | Your notifications; mark them read. **Switched off** (flag `notifications`, off by default): `503 FEATURE_DISABLED` |
+| GET/POST | `/api/v1/funding-pools` (+ `/[id]`, `/leaderboard`, `/[id]/charter`, `/pledge`, `/publish`, `/refund`) | Mixed | Community funding pools; a pledge moves no XRD. **Switched off in production** (flag `crowdfund`, off by default): `503 FEATURE_DISABLED` |
+| GET/POST | `/api/v1/game/*` | Mixed | The meme-grid game state, roll and leaderboard. **Switched off in production** (flag `game`, off by default): `503 FEATURE_DISABLED` |
+| GET/POST | `/api/v1/tempcheck/[checkId]` | No | The lights-on temperature check: a tally, and one non-binding vote per browser (a session only marks the vote as signed) |
 | GET/POST | `/api/v1/a2a` | No | The A2A endpoint named by `/.well-known/agent-card.json`: answers every method with JSON-RPC `UnsupportedOperationError` (-32004) |
 | POST | `/api/v1/csp-report` | No | CSP violation report sink |
 
@@ -163,7 +169,7 @@ Notes: state is per-process, so a multi-instance deploy would need a shared stor
 
 ## Notes
 
-- **Disputes** are raised, ruled and finalised on-chain. The API's part is `POST
+- **Disputes** are raised, ruled and finalized on-chain. The API's part is `POST
   /tasks/[id]/dispute-evidence`, which attaches the statement that the on-chain evidence hash
   commits to, and the escrow confirm routes, which record the settled legs. There is no route that
   moves a task into `disputed` by itself; the status follows the chain.

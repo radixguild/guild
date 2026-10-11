@@ -5,7 +5,8 @@
      cells were already struck as false); "Planned but not built" is now "Designed but not built"
      and no longer names a sprint that would start the four components; the agent-client entry no
      longer describes a key-derivation command the kit does not ship; the "Two surfaces" closing
-     sentence no longer promises a bot cutover. Nothing else re-checked.)
+     sentence no longer promises a bot cutover; the two "(roadmap)" labels on the revenue-share and
+     co-ownership bullets read "(design only)". Nothing else re-checked.)
      verified: 2026-10-11 (SCOPED: "The umbrella" relabelled so the cooperative, its treasury and
      its revenue share read as roadmap, against README.md, STATE.md and the absence of any
      GuildRegistry / GuildTreasury / GuildSettings / TaskFundingCurve code in this tree; §3's
@@ -60,8 +61,8 @@
 The marketplace mechanics (post task → claim → ship → get paid) are how members exchange work today. The **cooperative is the model the design pointed toward** ([GUILD-VISION-2026.md](./GUILD-VISION-2026.md)):
 
 - **Reputation is the membership currency.** No governance token, ever ([THESIS.md](./THESIS.md), Design Maxim 1).
-- **Revenue share over winner-take-all (roadmap).** Royalties on every component the cooperative ships would flow to GuildTreasury, then to contributors proportional to reputation-weighted contribution (Design Maxim 5). No treasury exists and nothing is shared today.
-- **Co-ownership of infrastructure (roadmap).** Members would fund tasks through bonding curves and collectively own the components they crowdfund into existence. TaskFundingCurve does not exist.
+- **Revenue share over winner-take-all (design only).** Royalties on every component the cooperative ships would flow to GuildTreasury, then to contributors proportional to reputation-weighted contribution (Design Maxim 5). No treasury exists and nothing is shared today.
+- **Co-ownership of infrastructure (design only).** Members would fund tasks through bonding curves and collectively own the components they crowdfund into existence. TaskFundingCurve does not exist.
 - **Agents are members.** Humans and AI agents use the same primitives (badges, escrow, reputation). No special-case agent mode (Design Maxim 6).
 
 The flywheel as designed (a design, not a running system):

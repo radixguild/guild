@@ -283,12 +283,15 @@ function Dashboard() {
               <span className="text-xs text-muted-foreground">Total Paid Out</span>
               <span className="font-mono font-bold text-primary">{Number(data.tasks.stats.totalPaidXrd)} XRD</span>
             </div>
-            {/* Re-checked 2026-10-11 against /api/v1/tasks: all 48 paid tasks
-                behind these figures ran between accounts the operator controls,
-                and one of them (board task 69, chain task 5) settled by a
-                dispute split, which the total counts at its full reward.
-                Delete the first sentence the day an outside account completes
-                a task; revisit the second when another dispute settles. */}
+            {/* Re-checked 2026-10-11 against /api/v1/tasks: the 23 paid tasks
+                counted here (getTaskStats leaves out tasks that involve the
+                accounts in GUILD_TEST_ACCOUNTS), and the 48 in the public task
+                list across three escrow components, all ran between accounts
+                the operator controls. One of the 23 (board task 69, chain task
+                5) settled by a dispute split, which the total counts at its
+                full reward. Delete the first sentence the day an outside
+                account completes a task; revisit the second when another
+                dispute settles. */}
             <p className="text-[11px] text-muted-foreground">
               Every task so far was posted and completed by the operator&rsquo;s own accounts. One
               paid task settled by a dispute split: the total counts its full reward, and its
