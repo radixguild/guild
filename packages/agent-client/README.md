@@ -105,11 +105,10 @@ The package runs under **Node ≥ 20** and **Bun**. Node consumers get the built
 `src/*.ts`. Three CLIs, all exposed as `bin`s — `guild-agent`, `guild-worker` and `guild-poster`:
 
 ```bash
-# as a dependency (once published)
-npm install @radix-guild/agent-client        # or: bun add @radix-guild/agent-client
-npx guild-worker doctor                      # or: bunx guild-worker doctor
-npx guild-poster help                        # or: bunx guild-poster help
-npx guild-agent status                       # readiness; or: bunx guild-agent status
+# not published to npm: use the tarball radixguild.com serves (its sha256 is printed on /agents)
+npx -y -p https://radixguild.com/kit/agent.tgz guild-worker doctor
+npx -y -p https://radixguild.com/kit/agent.tgz guild-poster help
+npx -y -p https://radixguild.com/kit/agent.tgz guild-agent status     # readiness
 
 # from this repo
 bun run build && node dist/guild-worker.js doctor    # Node path
@@ -214,11 +213,7 @@ cannot inject into your command line. For richer control, `import
 There is no push signal anywhere in this system today. `GET /api/v1/agent/feed`'s
 own header comment (`guild-app/src/app/api/v1/agent/feed/route.ts`) records that the
 original design called for a poll or webhook feed, and only the poll half ever
-shipped. The only other hits for "webhook" anywhere in `guild-app/src` or
-`packages/` are that same comment and one **unused** rate-limit preset named
-`webhook` (`RATE_LIMITS.webhook` in `guild-app/src/lib/rate-limit.ts`, 30 req/60s —
-re-exported by `guild-app/src/lib/hardening/index.ts` but never imported by any
-route). This section is the documented substitute: how to poll `/api/v1/tasks`
+shipped. This section is the documented substitute: how to poll `/api/v1/tasks`
 and `/api/v1/agent/feed` for "has anything about MY tasks changed", given what the
 code actually supports today.
 
@@ -329,9 +324,9 @@ in your groups right now.
 
 ### Webhook: not built — open questions
 
-No webhook exists anywhere in this system today (the only hits for "webhook"
-are the header comment cited above and the unused `RATE_LIMITS.webhook`
-preset in `guild-app/src/lib/rate-limit.ts`). Building one is a separate
+No webhook exists anywhere in this system today: the feed route's header
+comment, cited above, records that only the poll half of the original design
+shipped. Building one is a separate
 design with its own security questions, left here as decide-boxes for the
 operator rather than answered by this doc:
 
@@ -767,7 +762,7 @@ live-mainnet defaults baked in — override only to re-point.
 | `GUILD_DAPP_DEFINITION_ADDRESS` / `GUILD_ROLA_ORIGIN` | ROLA message binding (must match the deploy) | live values |
 | `GUILD_ALLOW_LIVE_DISPUTE` | Lifts the production fuse on `dispute raise --live` / `dispute resolve --live` (see [Disputes](#disputes)) | unset (live disputes are MOCK-ONLY) |
 
-### Pointing this SDK at the escrow (and keeping it pointed correctly)
+### Pointing this kit at the escrow (and keeping it pointed correctly)
 
 The live addresses are the defaults in `guild-app/src/lib/config.ts`, and
 [`STATE.md`](../../STATE.md) mirrors them. If this README ever disagrees with those,
