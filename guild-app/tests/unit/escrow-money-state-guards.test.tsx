@@ -241,7 +241,7 @@ describe("Approve / Raise Dispute / Finalize read the live state first (GM-5)", 
   }
   const finalize = () => {
     H.account = POSTER
-    render(<FinalizeDisputeButton taskDbId={1} onChainTaskId={ON_CHAIN_TASK_ID} posterId={POSTER} workerId={WORKER} disputedAt={past(80)} />)
+    render(<FinalizeDisputeButton taskDbId={1} onChainTaskId={ON_CHAIN_TASK_ID} posterId={POSTER} workerId={WORKER} disputedAt={past(170)} />)
     fireEvent.click(screen.getByRole("button", { name: /finalize dispute/i }))
   }
 

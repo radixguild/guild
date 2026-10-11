@@ -48,7 +48,7 @@ const FLAGS = {
   //     off. The drift watcher + keeper alert on a dispute; they do not, and
   //     structurally cannot, prevent one.
   //   • The real residual, worth reading now that this IS on: a worker
-  //     can claim → submit garbage → raise_dispute → let the 72h window
+  //     can claim → submit garbage → raise_dispute → let the dispute window
   //     lapse into the component's default ruling, SplitEvenly — banking
   //     50% of the reward for zero work. Wave B (E1/E2) narrowed this but did
   //     not close it: the claim bond (10% of the reward, with an on-chain floor
@@ -68,14 +68,17 @@ const FLAGS = {
   //     dispute-resolution.md` §0 is a live runbook. What remains true is
   //     that there is still no arbiter UI and no route — arbitration is an
   //     OPERATOR ceremony, signed from the mobile wallet that holds the
-  //     supply-1 arbiter badge, not something the app can do for a poster.
+  //     supply-1 arbiter badge (the harness's `resolve --print-manifest`
+  //     prints a previewed manifest for that wallet's Send Raw Transaction),
+  //     not something the app can do for a poster.
   //     So the poster's counter exists but is not self-service, and the
-  //     72h SplitEvenly default fires if nobody runs it. That is a
+  //     SplitEvenly default fires if nobody runs it inside the window (7 days
+  //     for a dispute raised after the 2026-10-11 owner change, 72h before). That is a
   //     product-policy gap, not a security drain, and it is what turning
   //     this flag ON actually exposes users to. DB-5's ruling states it
   //     plainly in the copy rather than hiding it: SplitEvenly 50/50 on the
   //     reward, arbiter_fee_pct is 0 so insurance funds no arbiter, no public
-  //     SLA on a ruling landing before the 72h default fires, and a lost
+  //     SLA on a ruling landing before the default fires, and a lost
   //     revision request (review-form.tsx "Request changes") has no chain
   //     event and no heal path — accepted-by-design, not a bug to file.
   // See docs/AUDITOR-GUIDE.md §6 for the auditor-facing version of this.

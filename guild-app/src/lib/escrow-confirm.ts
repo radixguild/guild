@@ -85,7 +85,7 @@ export const KINDS = [
   "approve",
   "dispute",
   "resolve",
-  // The ARBITER's ruling (resolve_dispute), distinct from the 72h timeout.
+  // The ARBITER's ruling (resolve_dispute), distinct from the auto-resolve timeout.
   "arbitrate",
   "cancel",
   "expire",
@@ -474,7 +474,7 @@ async function applyEscrowConfirmInner(
     // fail-closed emitter + task_id pin verifyEscrowEvent did, plus the
     // raised_by parse the finalize flow will need from this tx anyway), and
     // it surfaces the tx's consensus timestamp — the on-chain disputed_at the
-    // blueprint's 72h auto-resolve window keys off.
+    // blueprint's auto-resolve window keys off.
     const raised = await readDisputeRaised(intentHash, ESCROW_COMPONENT, task.onChainTaskId)
     if (raised === null) {
       return fail(
@@ -635,7 +635,7 @@ async function applyEscrowConfirmInner(
   }
 
   // resolve — the dispute auto-resolved on-chain (public, time-gated keeper
-  // call: ANYONE may send it after the 72h window, so there is deliberately
+  // call: ANYONE may send it after the dispute window, so there is deliberately
   // no party check for ANY actor — the verified DisputeAutoResolvedEvent is
   // the gate). Ledger rows are written from the VERIFIED event amounts, never
   // from DB-recorded values.
@@ -648,7 +648,7 @@ async function applyEscrowConfirmInner(
   // operator-facing alert.
   if (kind === "resolve" || kind === "arbitrate") {
     // Two on-chain routes settle a dispute and they must book IDENTICALLY:
-    //   resolve   — auto_resolve_dispute, the 72h timeout, DisputeAutoResolvedEvent
+    //   resolve   — auto_resolve_dispute, the window timeout, DisputeAutoResolvedEvent
     //   arbitrate — resolve_dispute, a human arbiter, DisputeResolvedEvent
     // Both events carry worker_amount/poster_amount, so one handler serves both
     // and they cannot drift. The arbiter event additionally carries the fee.

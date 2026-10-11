@@ -29,7 +29,11 @@ import { autoResolveDisputeManifest } from "../src/lib/manifests"
 import { GATEWAY, ESCROW_COMPONENT } from "../src/lib/config"
 import { readEscrowTaskInfo } from "../src/lib/gateway"
 
-const AUTO_RESOLVE_SECS = 259_200 // 72h — docs/ESCROW-PARAMETER-SHEET.md
+// The component's INSTANTIATE value (72h — docs/ESCROW-PARAMETER-SHEET.md). Only a
+// fallback: the window a dispute runs on is pinned onto the task at raise_dispute
+// (info.disputeAutoResolveSecs), and the owner raised the live value to 7 days on
+// 2026-10-11, so a dispute raised since then pins 604800.
+const AUTO_RESOLVE_SECS = 259_200
 
 // ── THE CLASSIFIER ──────────────────────────────────────────────────────────
 // Exported and unit-tested, because a mutation run proved the first version of
@@ -109,8 +113,10 @@ async function main() {
   console.log(`  disputeRaisedBy:  ${info.disputeRaisedBy}`)
   console.log(`  disputedAt:       ${info.disputedAt?.toISOString() ?? "null"}`)
   if (info.disputedAt) {
-    const opens = new Date(info.disputedAt.getTime() + AUTO_RESOLVE_SECS * 1000)
-    console.log(`  window opens:     ${opens.toISOString()}   (disputedAt + 72h)`)
+    const windowSecs = info.disputeAutoResolveSecs ?? AUTO_RESOLVE_SECS
+    const source = info.disputeAutoResolveSecs != null ? "pinned on the task" : "instantiate value — no readable pin"
+    const opens = new Date(info.disputedAt.getTime() + windowSecs * 1000)
+    console.log(`  window opens:     ${opens.toISOString()}   (disputedAt + ${windowSecs / 3600}h, ${source})`)
     console.log(`  time remaining:   ${((opens - Date.now()) / 3_600_000).toFixed(2)} h`)
   }
   console.log(`  entitlements:     ${JSON.stringify(info.entitlements)}`)

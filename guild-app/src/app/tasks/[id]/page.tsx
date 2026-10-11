@@ -249,7 +249,7 @@ function TaskDetailView({ id }: { id: string }) {
                 ({cancelledStatusLabel(task)})
               </span>
             )}
-            {/* Live timing window: open→deadline, disputed→72h auto-resolve
+            {/* Live timing window: open→deadline, disputed→auto-resolve window
                 (disputedAt = persisted on-chain dispute time; updatedAt is the
                 legacy fallback, same chain as finalize) */}
             <CountdownChip
@@ -690,7 +690,7 @@ function TaskDetailView({ id }: { id: string }) {
             />
           )}
 
-          {/* Finalize dispute (poster or worker, after the 72h auto-resolve
+          {/* Finalize dispute (poster or worker, after the auto-resolve
               window; disputedAt = persisted on-chain dispute time, falling
               back to updatedAt for rows disputed before it was persisted) */}
           {task.status === "disputed" && (

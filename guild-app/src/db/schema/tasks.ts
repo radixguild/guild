@@ -80,7 +80,7 @@ export const tasks = pgTable(
     projectId: integer("project_id").references(() => projects.id),
     deadline: timestamp("deadline", { withTimezone: true }),
     // On-chain dispute time: the dispute tx's consensus timestamp (what the
-    // blueprint's disputed_at / 72h auto-resolve window keys off), captured by
+    // blueprint's disputed_at / auto-resolve window keys off), captured by
     // the dispute confirm. Null = never disputed, or disputed before this
     // column shipped (readers fall back to updatedAt — up to ~minutes early,
     // never authoritative; the CHAIN enforces the real window).

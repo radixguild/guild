@@ -173,7 +173,7 @@ describe('explainRefusal', () => {
       'when the poster approves',
       'when anyone triggers the release after the review window',
       'when the poster cancels after your claim',
-      'when a dispute is settled, whether an arbiter rules or the 72-hour default applies',
+      'when a dispute is settled, whether an arbiter rules or the 7-day default applies',
       'an expired claim forfeits its bond',
       'a dispute settled as a full refund to the poster credits the worker nothing',
     ]) {

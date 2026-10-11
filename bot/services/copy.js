@@ -151,13 +151,16 @@ function help({ portal }) {
 // splits it", which left out the unruled branch: escrow lib.rs credit_split_for_parties splits
 // the bond like the reward on BOTH ways out of a dispute (the arbiter's resolve_dispute and the
 // default auto_resolve_dispute applies after the window), so the clause hangs on "raised".
+// "7-day": the dispute window (dispute_auto_resolve_secs) the owner raised from 72h on
+// 2026-10-11. The "72-hour review window" beside it is review_window_secs, a different
+// setting that stays 72h.
 const BOND_SIZE = "10% of the reward, at least " + CLAIM_BOND_FLOOR_XRD + " XRD today (an owner setting)";
 const BOND_HELD =
   "It stays in escrow until the task settles — it is not handed back when you submit. It comes " +
   "back with your reward when the poster approves, or when the payment is released after the " +
   "72-hour review window, and in full if the poster cancels after your claim. If a dispute is " +
   "raised, it is split the same way as the reward instead, whether an arbiter rules or the " +
-  "72-hour default applies.";
+  "7-day default applies.";
 
 function tasksNotice({ portal }) {
   return (
@@ -668,7 +671,7 @@ function disputesOnTheWeb({ portal }) {
   return (
     "Disputes are raised on the task's page at radixguild.com, from your Radix Wallet — not in Telegram.\n\n" +
     "Either side can dispute once work is submitted. The poster has 72 hours to approve or dispute; " +
-    "after that anyone can release the payment to the worker. A dispute not ruled within 72 hours " +
+    "after that anyone can release the payment to the worker. A dispute not ruled within 7 days " +
     "splits the reward and bond evenly. The arbiter today is the operator, @bigdev_xrd.\n\n" +
     "The task board: " + portal + "/tasks"
   );

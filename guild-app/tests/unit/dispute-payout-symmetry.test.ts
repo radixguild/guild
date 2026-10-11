@@ -69,7 +69,7 @@ describe("the honest framing is actually present, not merely the false one absen
     // half the reward and half the worker's bond when nobody rules. And the
     // worker's loss is scoped to the default: an arbiter ruling for the worker
     // pays the reward, the insurance and the bond — more than an approval.
-    expect(src).toMatch(/Under the \{DEFAULT_DISPUTE_WINDOW_HOURS\}-hour default, a dispute can only lose a worker money/)
+    expect(src).toMatch(/Under that default, a dispute can only lose a worker money/)
     expect(src).toMatch(/for the poster, an unruled dispute recovers half the reward and half the worker(&apos;|')s bond/i)
   })
 })

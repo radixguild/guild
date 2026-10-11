@@ -41,8 +41,9 @@ vi.mock("@/hooks/useWallet", () => ({
 
 import { RaiseDisputeButton, FinalizeDisputeButton } from "@/components/tasks/escrow-actions"
 
-// disputedAt 73h ago → the finalize window is OPEN, the strongest render case.
-const DISPUTED_AT = new Date(Date.now() - 73 * 3600 * 1000)
+// disputedAt 169h ago → past the 7-day default window, so the finalize window
+// is OPEN, the strongest render case.
+const DISPUTED_AT = new Date(Date.now() - 169 * 3600 * 1000)
 
 function renderRaise() {
   return render(

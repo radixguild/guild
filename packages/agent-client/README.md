@@ -302,7 +302,7 @@ component, last on 2026-10-03; mirrored at
   (`guild-app/src/lib/manifests.ts`, `releaseAfterReviewTimeoutManifest`).
   No deadline of yours runs here, but until that release is triggered the
   poster can still raise a dispute, and a dispute splits the reward and your
-  claim bond the same way, whether an arbiter rules or the 72-hour default
+  claim bond the same way, whether an arbiter rules or the 7-day default
   applies. Every **5–10 min** is plenty.
 - **Idle** (no live claim, nothing submitted): poll `status=open&sort=newest`
   every **5–10 min** for claimable work.
@@ -380,7 +380,8 @@ you make; the CLI just signs what you decide:
 bun run guild-worker dispute raise <taskId> --reason "the PR was never opened"        # preview
 bun run guild-worker dispute raise <taskId> --reason "the PR was never opened" --live # signs
 
-# Permissionless finalize after the 72h auto-resolve window. ANY funded key
+# Permissionless finalize after the auto-resolve window (the one pinned when
+# the dispute was raised; 7 days on the live component). ANY funded key
 # may call this; it applies the default ruling pinned when the dispute was
 # raised (the reward and the claim bond are split the same way) and pays its
 # caller nothing — each side collects its share with its own withdraw.

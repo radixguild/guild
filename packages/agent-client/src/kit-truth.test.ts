@@ -278,7 +278,7 @@ const REQUIRED: Record<string, string[]> = {
     "collects the *poster's own* entitlement (insurance, a refund, or a share of the worker's claim bond after a dispute), never the worker's.",
     'the submit-by clock is `human_submit_deadline_secs = 604800` (7 days) for a claim made with the Member badge (the badge `guild-worker mint-badge` mints — what every badge-first agent claims with) and `agent_submit_deadline_secs = 86400` (24h) for one made with the agent badge (GAGENT, operator-issued only).',
     'Miss it and, from an hour after it (`expire_grace_secs = 3600`), anyone can call `expire_claim` while the task is still unsubmitted, which forfeits your bond; `submit_task` has no deadline check, so a late submission that lands first protects it.',
-    'No deadline of yours runs here, but until that release is triggered the poster can still raise a dispute, and a dispute splits the reward and your claim bond the same way, whether an arbiter rules or the 72-hour default applies.',
+    'No deadline of yours runs here, but until that release is triggered the poster can still raise a dispute, and a dispute splits the reward and your claim bond the same way, whether an arbiter rules or the 7-day default applies.',
     'it applies the default ruling pinned when the dispute was raised (the reward and the claim bond are split the same way) and pays its caller nothing',
     '`guild-worker run --loop` is a foreground process; closing the laptop stops it. A claim it holds keeps its deadline while it is off: a Member-badge claim (the badge `guild-worker mint-badge` mints) has 7 days to submit, and from an hour after that deadline anyone can end the claim, which forfeits the bond. So an always-on box',
     '`guild-agent run` is not scheduled — it needs pairing — so the earning loop today is `guild-worker run --loop`.',
@@ -371,10 +371,23 @@ describe('kit truth — the numbers those sentences quote are the escrow paramet
     expect(readme).toContain(`\`expire_grace_secs = ${u64('expire_grace_secs')}\``);
   });
 
-  test('the review window and the dispute window are the 72 hours the texts name', () => {
+  test('the review window is the 72 hours the texts name', () => {
     expect(u64('review_window_secs')).toBe(72 * 3_600);
-    expect(u64('dispute_auto_resolve_secs')).toBe(72 * 3_600);
     expect(readme).toContain(`\`review_window_secs = ${u64('review_window_secs')}\` (72h)`);
+  });
+
+  // The DISPUTE window is the one parameter here the spec no longer states: the
+  // component was instantiated at 72h (which the spec records, correctly — it is
+  // what the component was created with), and the owner's
+  // set_dispute_auto_resolve_secs moved the live value to 604800 (7 days) on
+  // 2026-10-11. raise_dispute pins the window onto each task, so a dispute raised
+  // before then keeps 72h; the texts name the window a dispute raised now gets.
+  test('the dispute window the texts name is the owner-set 7 days, not the instantiate value', () => {
+    expect(u64('dispute_auto_resolve_secs')).toBe(72 * 3_600);
+    expect(readme).toContain('whether an arbiter rules or the 7-day default applies');
+    for (const [rel, text] of FLAT) {
+      expect(text, rel).not.toMatch(/\b72[-\s]?h(our)? (default|auto-resolve)|after the 72h window/i);
+    }
   });
 
   test('the expiry bounty and the bond percentage are the 0.1 the comments name', () => {

@@ -8,7 +8,7 @@ import { useWallet } from "@/hooks/useWallet"
 import { apiFetch } from "@/lib/api-fetch"
 import { isEnabled } from "@/lib/features"
 import { formatRemaining, DISPUTE_WINDOW_MS } from "@/lib/countdown"
-import { DEFAULT_DISPUTE_WINDOW_HOURS } from "@/lib/marketplace"
+import { DEFAULT_DISPUTE_WINDOW_DAYS } from "@/lib/marketplace"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE GAP THESE TWO COMPONENTS CLOSE
@@ -19,8 +19,10 @@ import { DEFAULT_DISPUTE_WINDOW_HOURS } from "@/lib/marketplace"
 // who raised it and what silence costs, but only to somebody who happens to
 // open that page. Nothing pointed anyone AT the page.
 //
-// That is a 72-hour clock running against a person we never notified, and at
-// the end of it the contract splits their reward in half. Us knowing and them
+// That is a dispute clock (the window pinned when it was raised: 72 hours
+// until the owner's 2026-10-11 change, 7 days since) running against a person
+// we never notified, and at the end of it the contract splits their reward in
+// half. Us knowing and them
 // not knowing is the part that is indefensible; the countdown is worthless to
 // whoever cannot see it.
 //
@@ -41,8 +43,10 @@ interface DisputedTaskRow {
 function windowEndsMs(row: DisputedTaskRow): number {
   // Same fallback the task page and the countdown chip use: disputedAt is the
   // on-chain dispute time, updatedAt only approximates it for rows disputed
-  // before that column shipped. The CHAIN enforces the real window either way,
-  // so this is a display estimate and is labelled as one.
+  // before that column shipped. The CHAIN enforces the real window either way
+  // (the one pinned at raise_dispute, which these API rows do not carry — so
+  // this counts the default), so this is a display estimate and is labelled
+  // as one.
   const base = row.disputedAt ?? row.updatedAt
   return new Date(base).getTime() + DISPUTE_WINDOW_MS
 }
@@ -117,8 +121,9 @@ export function DisputeActionRequired() {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs text-muted-foreground">
-          If nobody rules within the {DEFAULT_DISPUTE_WINDOW_HOURS}-hour window the
-          contract settles on its own: the reward splits 50/50 and the insurance
+          If nobody rules within the {DEFAULT_DISPUTE_WINDOW_DAYS}-day window (72 hours for a
+          dispute raised before 11 October 2026: each dispute keeps the window in force when it
+          was raised) the contract settles on its own: the reward splits 50/50 and the insurance
           premium returns to the poster. That happens whether or not you do
           anything, so read the dispute before the time runs out. The countdown
           below is our estimate — the chain enforces the exact window.

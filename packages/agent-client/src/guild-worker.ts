@@ -117,7 +117,7 @@ usage: guild-worker <command> [flags]
                    present the Member badge you claimed with; --reason is
                    required and becomes the on-chain evidence commitment
                  dispute resolve <taskId>
-                   permissionless auto-resolve after the 72h window — applies
+                   permissionless auto-resolve after the dispute window — applies
                    the default ruling pinned when the dispute was raised (the
                    reward and the claim bond split the same way). The call
                    pays its caller nothing; each side collects its share with

@@ -135,6 +135,11 @@ const BANNED = [
   // escrow lib.rs credit_split_for_parties, called by both resolve_dispute and the default
   // auto_resolve_dispute applies after the window (live default: an even split).
   [/dispute ruling splits|if a dispute is ruled/i, "an unruled dispute splits the bond too: the default applied after the window splits it like the reward"],
+  // 2026-10-11: the owner raised dispute_auto_resolve_secs 259200 → 604800, so the DISPUTE
+  // window is 7 days for every dispute raised from then on. Scoped to dispute phrasing on
+  // purpose: the poster's 72-hour REVIEW window (review_window_secs) is a different setting
+  // and did not change — "You have 72 hours to approve it" stays true.
+  [/72[-\s]hour default|dispute (not ruled|unruled) within 72|72[-\s]?h(our)? (dispute|auto[-\s]?resolve)/i, "the dispute window is 7 days since 2026-10-11 (the review window is the one that stays 72 hours)"],
 ];
 
 test("reads every message (vacuous-pass guard)", () => {
@@ -191,6 +196,9 @@ test("the gate itself fires on the sentences that shipped (control)", () => {
     "*Source: [GitHub](https://github.com/bigdevxrd/guild-public)*",
     // BOND_HELD as it shipped 2026-09-24 → 2026-10-02: no word of the unruled default.
     "and in full if the poster cancels after your claim. A dispute ruling splits it the same way as the reward.",
+    // The dispute window as it read until 2026-10-11, in both places the bot stated it.
+    "If a dispute is raised, it is split the same way as the reward instead, whether an arbiter rules or the 72-hour default applies.",
+    "A dispute not ruled within 72 hours splits the reward and bond evenly.",
   ];
   for (const s of shipped) assert.ok(BANNED.some(([re]) => re.test(s)), "not caught: " + s);
 });
@@ -309,7 +317,7 @@ test("the claim bond reads the same everywhere it is described", () => {
   }
   assert.match(ALL.faq, /90% to a vault only the operator can withdraw, 10% to whoever closed it/);
   for (const k of ["tasksNotice", "faq"]) {
-    assert.match(ALL[k], /If a dispute is raised, it is split the same way as the reward instead, whether an arbiter rules or the 72-hour default applies/, k);
+    assert.match(ALL[k], /If a dispute is raised, it is split the same way as the reward instead, whether an arbiter rules or the 7-day default applies/, k);
   }
   assert.equal(copy.CLAIM_BOND_FLOOR_XRD, "76.45");
 });
@@ -410,7 +418,7 @@ test("the retired commands' pointers say where the thing is, and nothing more", 
   assert.equal(ALL.diceGameClosed, "The dice game is closed. Its bonus XP was never applied and does not count anywhere.");
   assert.equal(ALL.noGuildDao, "There is no Guild DAO. @bigdev_xrd runs the Guild and holds its admin badge; the aim is to hand it to the Radix DAO once that DAO is formed. No date is set.");
   assert.match(ALL.disputesOnTheWeb, /^Disputes are raised on the task's page at radixguild\.com, from your Radix Wallet — not in Telegram\./);
-  assert.match(ALL.disputesOnTheWeb, /A dispute not ruled within 72 hours splits the reward and bond evenly\. The arbiter today is the operator, @bigdev_xrd\./);
+  assert.match(ALL.disputesOnTheWeb, /A dispute not ruled within 7 days splits the reward and bond evenly\. The arbiter today is the operator, @bigdev_xrd\./);
   assert.match(ALL.groupsOnTheWeb, /https:\/\/radixguild\.com\/groups\n\nThey route tasks; they have no leads, budgets or votes\.$/);
   assert.match(ALL.cv2Parked, /It is parked and has never recorded a vote\.$/);
   assert.match(ALL.workSubmittedDm, /You have 72 hours to approve it or raise a dispute on radixguild\.com; after that anyone can release the payment to the worker\.$/);

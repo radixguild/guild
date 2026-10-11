@@ -431,7 +431,7 @@ describe("the governance-era claim family fires on what shipped and clears what 
     // The default IS SplitEvenly and it IS a 50/50 — of the reward. Saying so
     // must stay legal, or the rule would ban the correction it exists to force.
     expect(violation("The default ruling is SplitEvenly (a 50/50 split), re-verified against the live component via the Gateway.", rule)).toBeNull();
-    expect(violation("After the 72h window, this settles the task with the default ruling pinned when the dispute was raised — SplitEvenly (50/50) on the live component — and takes no arbiter fee.", rule)).toBeNull();
+    expect(violation("After the 7-day dispute window, this settles the task with the default ruling pinned when the dispute was raised — SplitEvenly (50/50) on the live component — and takes no arbiter fee.", rule)).toBeNull();
     expect(violation("the default ruling is a fixed 50/50 SplitEvenly with no arbiter fee", rule)).toBeNull();
     // The replacement copy on every site this PR touches.
     expect(violation("the escrow splits the reward evenly between both parties and returns the insurance whole to the poster", rule)).toBeNull();
@@ -1458,7 +1458,7 @@ describe("no-review-window-release — the deployed escrow HAS a public review-w
     expect(violation("it is a promise recorded in the committed brief, not a timer tied to that number.", rule)).toBeNull();
     expect(
       violation(
-        "We promise no turnaround time for a human ruling — there is no public SLA, only that 72-hour backstop",
+        "We promise no turnaround time for a human ruling — there is no public SLA, only that 7-day backstop",
         rule,
       ),
     ).toBeNull();
@@ -1616,7 +1616,7 @@ describe("bond-dispute-branch — once a dispute is raised the bond splits like 
   const rule = pullRuleFor("bond-dispute-branch");
 
   const BEFORE_YOU_CLAIM =
-    "Before you claim Claiming locks a bond of exactly 76.45 XRD from this account — the escrow accepts only that exact amount. You then have 7 days to submit. An hour after that deadline, anyone can close your claim and the bond is forfeited: 90% to a vault only the operator can withdraw, 10% to whoever closes it. It comes back to you in full when the task is approved or released after the review window, or if the poster cancels. If a dispute is raised, it is split the same way as the reward instead, whether an arbiter rules or the 72-hour default applies.";
+    "Before you claim Claiming locks a bond of exactly 76.45 XRD from this account — the escrow accepts only that exact amount. You then have 7 days to submit. An hour after that deadline, anyone can close your claim and the bond is forfeited: 90% to a vault only the operator can withdraw, 10% to whoever closes it. It comes back to you in full when the task is approved or released after the review window, or if the poster cancels. If a dispute is raised, it is split the same way as the reward instead, whether an arbiter rules or the 7-day default applies.";
 
   it.each([
     // Verbatim pre-fix strings, one per shipped site.
@@ -1657,7 +1657,7 @@ describe("bond-dispute-branch — once a dispute is raised the bond splits like 
     for (const text of [
       // escrow-actions.tsx RaiseDisputeButton — already right: it names the default beside the ruling.
       "Raising takes no stake beyond the network fee — but it puts the worker's claim bond on the table: a ruling, or the default below, splits it with the reward.",
-      "Opens a dispute on this submission. If nobody rules within 72h, anyone can settle it by the default: the reward and the worker's claim bond each split 50/50, and the insurance returns to the poster.",
+      "Opens a dispute on this submission. If nobody rules within 7 days, anyone can settle it by the default: the reward and the worker's claim bond each split 50/50, and the insurance returns to the poster.",
       // cancel_task_by_poster_after_claim credits the bond back whole, and a Claimed task can never be disputed.
       "If they cancel this one after you claim it, your claim bond returns to you in full — there is no payment for time you already spent on the task.",
       "Before you submit, the poster can cancel a task you have claimed. Your claim bond comes back in full, but the time you spent is not paid.",

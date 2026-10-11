@@ -181,10 +181,20 @@ export const XRD_MAX_INT_DIGITS = 20;
 export const REWARD_SHAPE_RE = new RegExp(
   `^\\d{1,${XRD_MAX_INT_DIGITS}}(\\.\\d{1,${REWARD_MAX_DECIMALS}})?$`,
 );
-// Display-only: the deployed escrow auto-resolves disputes after 3 days
-// (dispute_auto_resolve_secs = 259200 = 72h). Not a per-task create_task param —
-// the window is fixed at instantiate.
-export const DEFAULT_DISPUTE_WINDOW_HOURS = 72;
+// Display-only: the dispute auto-resolve window, in hours. Mirrors the live
+// escrow component's `dispute_auto_resolve_secs` = 604800 (7 days) after the
+// owner's 2026-10-11 `set_dispute_auto_resolve_secs` change; the component was
+// instantiated at 259200 (72h), which the generated instantiate spec still
+// records, correctly — that file is what it was created with, not what it reads
+// now. Not a create_task param: the CHAIN pins the window onto each task at
+// raise_dispute (TaskInfo.dispute_auto_resolve_secs), so a dispute raised
+// before the change keeps 72h. Where the task's pinned value is already in hand
+// (OnChainTaskInfo.disputeAutoResolveSecs), prefer it — see disputeWindowMs in
+// lib/countdown — and fall back to this. If the owner changes the window again,
+// this moves with it.
+export const DEFAULT_DISPUTE_WINDOW_HOURS = 168;
+/** The same window in whole days, for copy ("7-day", "7 days"). */
+export const DEFAULT_DISPUTE_WINDOW_DAYS = DEFAULT_DISPUTE_WINDOW_HOURS / 24;
 // ⚠️ TASK_XP_REWARDS was deleted 2026-08-21. It had ZERO importers and its
 // numbers (complete 50, post 25, arbitrate 100) were the same three wrong
 // figures the /docs XP table shipped — a dead constant that read as the source
