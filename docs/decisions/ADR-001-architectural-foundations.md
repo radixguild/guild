@@ -25,13 +25,13 @@
 **Date**: 2026-05-29
 **Authors**: bigdev (decisions), Claude Opus (synthesis)
 **Supersedes**: nothing
-**Companion**: `~/Projects/ARCHON-CHARTER-20260529.md` (binding context)
+**Companion**: the charter of 2026-05-29 that this ADR cites as "charter" (not published here)
 
 ## Context
 
 After research into the unmerged `archon/harvest-2026-05-19` design docs and a full map of the current built state on `main`, the next architectural work depends on five decisions. This ADR locks four of them now; the fifth (milestone escrow) is deferred until a real >500 XRD task forces the choice.
 
-The decisions are binding for all subsequent PRs. Archon, sub-agents, and future Claude sessions must align work to these — see ARCHON-CHARTER §8 "alignment test" (the four-question check every PR body must answer).
+The decisions are binding for all subsequent PRs.
 
 ## Decision 1 — GuildRegistry: Hybrid (tier on badge, Registry as thin index)
 
@@ -159,11 +159,11 @@ Per bigdev: *"I don't want to decide the whole platform — I want the core to w
 
 ## Acceptance test for every Sprint-1+ PR
 
-Per ARCHON-CHARTER §8, every PR body answers:
+Per the charter's §8 (not published here), every PR body answers:
 
 1. Which charter maxim does this serve?
 2. Which missing primitive from charter §6 does this build, or which built thing does it harden?
-3. Which Phase 1 outcome (post first task / first dev claims / Foxie's vote) does it move closer?
+3. Which Phase 1 outcome (post first task / first dev claims / first governance vote) does it move closer?
 4. What does it break? Which tests, interfaces, doc claims?
 
 A PR that can't answer all four is scope creep — close it.

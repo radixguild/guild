@@ -73,7 +73,7 @@ claims were last checked, not the date it was last edited.
 | Doc | Status | Verified | What it is |
 |---|---|---|---|
 | [`custom-contracts.md`](architecture/custom-contracts.md) | 🟡 proposal | 2026-05-19 | A custom-contract template system |
-| [`dispute-resolution.md`](architecture/dispute-resolution.md) | 🟢 live | 2026-09-17 | Dispute resolution: §0 is how a dispute is resolved today, §1–§3 the original design |
+| [`dispute-resolution.md`](architecture/dispute-resolution.md) | 🟢 live | 2026-09-17 | Dispute resolution: §0 (the operator runbook) is kept privately, §1–§3 are the original design, §4 is the implementation status |
 | [`insurance-model.md`](architecture/insurance-model.md) | 🟡 proposal | 2026-05-19 | An insurance model |
 | [`system-map.md`](architecture/system-map.md) | ⚪️ historical | 2026-05-19 | The system architecture map, as first drawn |
 | [`ui-shells.md`](architecture/ui-shells.md) | 🟡 proposal | 2026-08-15 | UI shells |

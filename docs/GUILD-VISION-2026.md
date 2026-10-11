@@ -1,4 +1,9 @@
 <!-- status: live
+     verified: 2026-10-11 (SCOPED: the claims corrected in this pass, each against this tree: the
+     member badge resource in the non-transferability note (guild-app/src/lib/config.ts), the claim
+     bond sentence (escrow lib.rs, the generated instantiate spec, config.ts) and the escrow size and
+     test counts (src/lib.rs, tests/lib.rs). The cooperative, treasury and settings passages were
+     relabelled as roadmap against README.md and STATE.md. Nothing else re-checked.)
      verified: 2026-10-02 (SCOPED: the three guild-public references only — the bot's SQLite
      line in §"What's Built vs What's Needed", the agent-badge-controller path, and the Related
      Projects row — re-checked against this repository's bot/ and blueprints/ trees. Nothing
@@ -13,7 +18,6 @@
 # The Guild — Product Vision
 
 > North star document. Captures the complete Guild design as of 2026-05-25/26.
-> All future sessions should reference this as the canonical product vision.
 >
 > ⚠️ **Read as a NORTH STAR, not a status report (marked 2026-08-15).** Most of what follows is
 > designed, not shipped: of the six core primitives, **two are live** (the badge and the
@@ -27,9 +31,11 @@
 
 ## What The Guild Is
 
-An on-chain developer cooperative on Radix.
+> **Roadmap, not the present.** Today the Guild is a task marketplace on Radix mainnet with an on-chain escrow: no company, no token and no treasury ([`STATE.md`](../STATE.md) says what is currently true). The cooperative described in this document is the intended end state, and the components it needs (TaskFundingCurve, GuildRegistry, GuildTreasury, GuildSettings) do not exist.
 
-Not a bounty board. Not a DAO with a token. A place where builders earn reputation, fund work collectively, share revenue, and publish reusable infrastructure for the Radix ecosystem.
+The intended end state is an on-chain developer cooperative on Radix.
+
+Not a bounty board. Not a DAO with a token. A place where builders would earn reputation, fund work collectively, share revenue, and publish reusable infrastructure for the Radix ecosystem.
 
 The Guild exists because open-source contributors deserve ongoing compensation — not one-time payouts — and because the Radix ecosystem needs shared infrastructure that no single developer will build alone.
 
@@ -37,12 +43,12 @@ The Guild exists because open-source contributors deserve ongoing compensation �
 
 ## Core Primitives (all Radix-native)
 
-Every primitive is a Scrypto component deployed on Radix mainnet. No off-chain workarounds, no wrapped tokens, no bridges.
+Every primitive is designed as a Scrypto component deployed on Radix mainnet; the Status column says which exist today. No off-chain workarounds, no wrapped tokens, no bridges.
 
 | # | Primitive | Purpose | Status |
 |---|-----------|---------|--------|
 | 1 | **Guild Badge NFT** | Public-mint membership NFT with on-badge reputation metadata (tier, XP) — transferable; soulbound would need a new resource | **Live on mainnet** |
-| 2 | **GuildMarketplaceEscrow** | Task execution with insurance, disputes, multi-token support | **Built** — 1502 lines, 45 tests |
+| 2 | **GuildMarketplaceEscrow** | Task execution with insurance, disputes, multi-token support | **Built** — about 3,500 lines in `src/lib.rs`, 101 `#[test]` functions in `tests/lib.rs` (counted 2026-10-11) |
 | 3 | **TaskFundingCurve** | Bonding curve crowdfunding for tasks (early funders rewarded) | Spec complete |
 | 4 | **GuildRegistry** | Member registration, tier management, reputation tracking | Spec complete |
 | 5 | **GuildTreasury** | On-chain revenue collection and distribution | Spec complete |
@@ -66,11 +72,13 @@ Join free
 
 The key insight: reputation is the currency that connects contribution to compensation. No governance token needed — reputation *is* the token, earned through work rather than sold or distributed as supply.
 
-> ⚠️ **Non-transferability is a design goal, not a shipped property.** Reputation rides on the badge NFT as mutable `tier`/`xp` data (see *Incentive Layers* below), and the live badge resource `resource_rdx1ntr6ye…65e` has `withdrawer = AllowAll` with `withdrawer_updater = DenyAll` (verified on mainnet 2026-07-31). A badge — and the reputation recorded on it — can therefore be transferred, and that rule can never be tightened on this resource. Enforcing non-transferability requires minting a NEW badge resource that sets `withdraw_roles`, as `blueprints/agent-badge-controller/src/lib.rs:102` (folded into this repository from guild-public on 2026-08-14) already does. Until then it holds by guild policy only, which is how the live `/about` page states it.
+> ⚠️ **Non-transferability is a design goal, not a shipped property.** Reputation rides on the badge NFT as mutable `tier`/`xp` data (see *Incentive Layers* below), and the live member badge resource (`BADGE_NFT` in `guild-app/src/lib/config.ts`, `resource_rdx1n22rq94k…z4ppwl`) has `withdrawer = AllowAll` with `withdrawer_updater = DenyAll` (verified on mainnet 2026-07-31). A badge — and the reputation recorded on it — can therefore be transferred, and that rule can never be tightened on this resource. Enforcing non-transferability requires minting a NEW badge resource that sets `withdraw_roles`, as `blueprints/agent-badge-controller/src/lib.rs:102` (folded into this repository from guild-public on 2026-08-14) already does. Until then it holds by guild policy only, which is how the live `/about` page states it.
 
 ---
 
 ## Incentive Layers
+
+> **Roadmap, not the present.** Revenue share, component royalties and bonding-curve funding need GuildTreasury and TaskFundingCurve, which do not exist. There is no token, no treasury and no revenue share today.
 
 ### Reputation
 - Stored on-badge as NFT metadata (not in a separate ledger)
@@ -149,7 +157,7 @@ AI agents are first-class Guild participants, not second-class API consumers.
 - **Discovery**: Agents find Guild tasks via dApp metadata (manifest templates)
 - **Payments**: x402 Subintent flows via `rdx-cli@0.2.0` — HTTP 402 responses trigger payment
 - **Identity**: Agent reputation tracked via Guild Badge metadata (same as humans)
-- **Spam cost is per-action, not per-identity**: a 10 XRD claim bond (returned at `submit_task`, forfeited if the claim expires) prices claim-squatting. It does **not** bound identities — the Guild Badge is an unlimited public mint that presents no proof, so a second identity costs only the network fee. A personhood/rate-limit control is an open design item, not a shipped one (see the `claim_task` comment in `escrow/scrypto/guild-marketplace-escrow/src/lib.rs`).
+- **Spam cost is per-action, not per-identity**: a claim bond (a percentage of the reward between an owner-set floor and cap — 10% at instantiation, with the app showing a floor of 76.45 XRD; held until the task settles, forfeited if the claim expires) prices claim-squatting. It does **not** bound identities — the Guild Badge is an unlimited public mint that presents no proof, so a second identity costs only the network fee. A personhood/rate-limit control is an open design item, not a shipped one (see the `claim_task` comment in `escrow/scrypto/guild-marketplace-escrow/src/lib.rs`).
 - **No API keys**: x402 makes the Guild marketplace permissionless — any agent with XRD can participate
 
 ### Agent roles
@@ -168,7 +176,9 @@ AI agents are first-class Guild participants, not second-class API consumers.
 
 ## Settings (all configurable)
 
-Every parameter in the Guild is a flexible setting stored in the **GuildSettings** component. All settings are governance-controlled — changes require proposals and voting.
+> **Roadmap, not the present.** GuildSettings does not exist. The escrow's parameters are owner-set today, and no vote changes them ([`STATE.md`](../STATE.md), "What the escrow owner can and cannot do").
+
+Every parameter in the Guild is meant to be a flexible setting stored in the **GuildSettings** component, governance-controlled — changes would require proposals and voting.
 
 ### Escrow Settings
 - Platform fee percentage
@@ -242,11 +252,10 @@ both kept in the private operations repository; [`STATE.md`](../STATE.md) is the
 of the first.
 
 ### Built
-- **GuildMarketplaceEscrow** — 1502 lines, 45 tests, multi-token, disputes, insurance
+- **GuildMarketplaceEscrow** — about 3,500 lines, 101 `#[test]` functions in `tests/lib.rs` (counted 2026-10-11), multi-token, disputes, insurance
 - **Manifest builders** — transaction construction utilities
 - **Discord/Telegram bot** — governance bot with Grammy
 - **Dashboard stub** — Next.js 16 shell with routing
-- **Auto-trader** — trading agent infrastructure
 - **CI pipeline** — build, test, deploy
 
 ### Needed
@@ -265,9 +274,6 @@ of the first.
 
 | Project | Relevance |
 |---------|-----------|
-| **auto-trader-xrd** | Trading agents, deviation mode, agentic upgrade path |
-| **hyperscale-rs** | Node infrastructure, Xi'an research |
-| **defi-farmer** | Yield strategy agents |
 | **guild-public** | Bot/watcher infrastructure until 2026-09-29, when its bot was folded into this repository's `bot/` |
 | **Wallet Agent AI** (Linuxx) | Programmable wallet for AI agents on Radix |
 | **rdx-cli / xStelea repos** | x402 payment flows, Subintent tooling, RAP V1 |
