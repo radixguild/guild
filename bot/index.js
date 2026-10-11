@@ -364,7 +364,7 @@ bot.command("temp", async (ctx) => {
     question + "\n\n" +
     "By: @" + (ctx.from.username || ctx.from.first_name) + "\n" +
     "Ends: " + new Date(Date.now() + 86400000).toISOString().slice(0, 16).replace("T", " ") + " UTC (24h)\n" +
-    "Non-binding — just gauging interest\n\n" +
+    "Non-binding\n\n" +
     "Or tap the buttons below. Badge required.",
     { reply_markup: buildPollKeyboard(id, options, counts) }
   );
