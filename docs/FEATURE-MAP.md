@@ -1,4 +1,8 @@
-<!-- status: live
+<!-- status: historical
+     edited: 2026-10-11 (status changed from live to historical, and the banner under the title
+     added. Nothing in the body was re-checked: it is the 2026-06-11 compilation, corrected in
+     place where later passes found it false, and its planned and shelved rows are not
+     commitments. STATE.md is what is true.)
      verified: 2026-10-08 (SCOPED: §F's admin-gate, finding-8, P4, multi-replica, xUSDC/xUSDT,
      attachments-stub, CV2 and owner-badge entries, §B's "P1 leftovers" route-gate half, §C's
      paid-arbiter note, and the cross-doc contradictions block ONLY, against guild-app/src, bot/,
@@ -42,6 +46,10 @@
      header block backfilled 2026-07-31 with the governance edit) -->
 
 # Feature Map — everything flagged, planned, shipped, or shelved
+
+> **Historical.** This is a June 2026 index of every feature the docs mentioned. Its statuses have
+> aged; [`STATE.md`](../STATE.md) says what is live, and the planned and shelved rows below are
+> not commitments.
 
 _2026-06-11. One place for every feature across all docs (root docs/, design/, decisions/,
 architecture/, research/) plus the guild-public heritage. Compiled by a full-doc sweep the

@@ -1,34 +1,28 @@
-# Tasks Marketplace UI
+# Tasks pages
 
-Tasks marketplace UI: list, detail, submit-work, create. Mounts under the (dashboard) route group, so URLs are /tasks, /tasks/[id], /tasks/[id]/submit, /tasks/create.
+The task marketplace UI: board, detail, submit-work and create. The routes mount under the
+dashboard shell, so the URLs are `/tasks`, `/tasks/[id]`, `/tasks/[id]/submit` and `/tasks/create`.
 
 ## Pages
 
-| Path | URL | Auth | Description |
-|------|-----|------|-------------|
-| `page.tsx` | `/tasks` | None | Projects-first board: project cards (from `/api/v1/projects`) with tasks grouped under them, plus an "All tasks" flat-grid view with client-side filters — both fetched from `/api/v1/tasks` |
-| `[id]/page.tsx` | `/tasks/[id]` | None | Task detail, fetched from `/api/v1/tasks/[id]` |
-| `[id]/submit/page.tsx` | `/tasks/[id]/submit` | Yes | Submission form (POST not wired — needs auth header) |
-| `create/page.tsx` | `/tasks/create` | Yes | Create form (POST not wired — needs auth header) |
+| Path | URL | Auth | What it does |
+|------|-----|------|--------------|
+| `page.tsx` | `/tasks` | None | The board: project cards (from `/api/v1/projects`) with their tasks grouped underneath, plus an "All tasks" flat grid with client-side filters. Both read `/api/v1/tasks` |
+| `[id]/page.tsx` | `/tasks/[id]` | None to read | Task detail from `/api/v1/tasks/[id]`, with the escrow actions (claim, submit, approve, dispute, withdraw) for a connected wallet |
+| `[id]/submit/page.tsx` | `/tasks/[id]/submit` | Signed in | The submission form; posts to `/api/v1/tasks/[id]/submissions` |
+| `create/page.tsx` | `/tasks/create` | Signed in | The create wizard: deliverable type, terms, reward and insurance, then the on-chain funding transaction. Posts to `/api/v1/tasks` first, then funds, so the row and the escrow task stay linked |
 
-## Components Used (`components/tasks/`)
+## Components (`src/components/tasks/`)
 
-- `TaskCard` — list row; optionally shows and links the task's project
-- `TaskFilters` — search, status, project and funded-only filters (project/funded are optional props — omitted when a caller has no use for them)
-- `ProjectGroupSection` / `UnassignedTaskGroup` (`project-group.tsx`) — the /tasks board's per-project card + collapsed task grid, and the trailing group for tasks with no project
-- `SubmissionCard` — submission display (dormant; re-mounted when auth lands)
+- `TaskCard` and `TaskFilters` for the board's rows and filters (project and funded-only filters
+  are optional props).
+- `ProjectGroupSection` and `UnassignedTaskGroup` (`project-group.tsx`) for the board's per-project
+  cards and the trailing group of tasks with no project.
+- `escrow-actions.tsx` for the claim, submit, approve, dispute and withdraw legs; `submission-card`,
+  `submissions-section` and `review-form` for the delivery and review surface.
 
-## Data Layer
+## Data layer
 
-`Task` / `User` / `Submission` types are derived from the Drizzle schema via `lib/marketplace-types.ts`. Pure formatting utilities live in `lib/marketplace-utils.ts`.
-
-## Public marker
-
-Public since the open-source flip (`radixguild/guild`, Apache-2.0), like the rest of the app. Components could be extracted as primitives later (the TaskCard shape is generic).
-
-## Known Gaps for Follow-up
-
-- Wire `POST /api/v1/tasks` (create) and `POST /api/v1/tasks/[id]/submissions` (submit) — both require JWT auth header
-- Add a `/api/v1/users/[id]` endpoint or denormalize creator/assignee display name in task responses (current UI shows formatted address only)
-- Show submission list on detail page (requires auth context: only creator + submitters can view per `GET /api/v1/tasks/[id]/submissions`)
-- Sidebar nav "Profile" link removed in 3a — restore when Block 5 lands the profile page
+`Task`, `User` and `Submission` types derive from the Drizzle schema through
+`lib/marketplace-types.ts`; pure formatting helpers live in `lib/marketplace-utils.ts`. The API
+behind these pages is described in [`../api/v1/README.md`](../api/v1/README.md).

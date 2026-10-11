@@ -104,7 +104,7 @@ export const LIVE_TASK_RECEIPT =
   "resource_rdx1n2gxh84q62taekne4d5mys5yk23du7yyvma6zjuh0vvhn4w2vrtkju"
 export const MEMBER_BADGE =
   "resource_rdx1n22rq94kh6ugwnrvc65m2pwhle3s6ez6j7702vkn2ctkaxemz4ppwl"
-// BadgeManager (public_mint) — the guild Member badge component (global CLAUDE.md).
+// BadgeManager (public_mint) — the guild Member badge component (see docs/PROJECT-COMPONENTS.md).
 export const MANAGER =
   "component_rdx1czexylvvm0q4uhwpjaqmlznj9sd3y2jnmmah6qug9lm9sfm3tyrtva"
 // Sourced from the one canonical definition (src/lib/radix.ts), not a local
@@ -116,7 +116,7 @@ const XRD = XRD_ADDRESS
 // Valid-format placeholder account for --dry-run manifest previews when
 // POSTER_ACCOUNT_ADDRESS is unset (validateAddress requires a real bech32m form).
 // Derived from a fixed dummy Ed25519 public key (32 bytes of 0x01): no private key
-// exists. Replaced RX-10 (the old dApp definition on the compromised seed) 2026-09-29.
+// exists. Replaced the previous placeholder (a retired dApp-definition account) 2026-09-29.
 const DRYRUN_ACCOUNT = "account_rdx128uxu4mkjgen9wxcl5a7lpyu4kcec6vkhsnj4u0kfrv4v6jvk9u5mw"
 const FEE_HEADROOM = 2 // XRD left behind for the lock_fee on a sweep (unused part refunds)
 

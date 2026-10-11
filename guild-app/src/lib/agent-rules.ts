@@ -26,8 +26,8 @@ export const FEE_RESERVE_XRD = 20
 
 /**
  * The Guild's own poster accounts — what a fresh agent may claim from until its
- * owner widens the list. Public on-chain addresses (registry rows MW-02 · Poster 2
- * and AG-01 · Guild poster agent).
+ * owner widens the list. Public on-chain addresses: the wallet-held standing poster
+ * ("Poster 2") and the headless poster agent.
  */
 export const GUILD_POSTERS: readonly string[] = [
   "account_rdx12y5senkxfxg38swfv4tg88lx73jqnkdvcnzv8kwwdmg0efl40r2p7u",

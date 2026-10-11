@@ -1,8 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Read the Contributing Guide first
+  - name: Read the contributing guide first
     url: https://github.com/radixguild/guild/blob/main/CONTRIBUTING.md
-    about: Setup, code style, and how proposals become issues in this repo.
-  - name: Feature proposal (governance vote)
+    about: How a change lands here, what CI checks, and how to run the code.
+  - name: Report a security vulnerability
+    url: https://github.com/radixguild/guild/security/advisories/new
+    about: Private reporting only. Never open a public issue for a way to move funds that should not move.
+  - name: Questions and discussion
     url: https://t.me/radix_guild
-    about: Propose a feature via the TG bot's /propose command — badge holders vote before an issue is opened for it.
+    about: The Guild's Telegram group. A thread there is a conversation, not a vote or a ruling; changes are made by pull request here.

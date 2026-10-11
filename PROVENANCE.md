@@ -55,32 +55,16 @@ There is no ambiguity to soften here: **one person, `bigdev`, holds it all.**
   **On 2026-09-29 the owner role of every Guild-published Scrypto package was moved from a fully
   open (`AllowAll`) rule to one requiring this same admin badge** — independently checkable by
   reading any Guild package's role assignments from the Radix Gateway.
-- **The separate arbiter badge that rules disputes** is also held by `bigdev` today, and has a
-  supply of one. That count is a choice, not a limit the contract enforces: `bigdev` holds the
-  badge that mints arbiter badges and can issue more, each assigned to one account. See
-  `STATE.md`'s "Disputes" section for the limits that follow from that.
+- **The separate arbiter badge that rules disputes** is also held by `bigdev` today. See
+  `STATE.md`'s "Disputes" section for what that means and the limits that follow.
 - **There is no other legal entity.** No company, no foundation, no DAO, no token. See
   `GOVERNANCE.md` §1–2 for what is, and is not, governed by anything other than this one
   person's decision, today.
 
-This is a plain statement of present fact, not an endorsement of it staying this way — see the
-next section.
-
-## Who this is intended for, eventually
-
-**The stated aim is to hand the admin badge to the Radix DAO once that DAO is formed.** Two
-things are true about that sentence and both matter:
-
-- **It is a stated intention, not a commitment, and it has no date attached.** Naming an
-  intended recipient here does not transfer anything, does not bind the operator to a timeline,
-  and is not a representation that any transfer has been arranged, discussed with that DAO, or
-  agreed by anyone but the operator.
-- **It cannot happen yet, mechanically.** The Radix DAO's own governance is still forming, and
-  this project has no arrangement with it of any kind. Until the DAO exists in a form that could
-  receive something like this, there is nowhere for an offer to land, and none has been made.
-
-When that changes, this file changes, in the same commit as whatever made it true — the same
-rule `GOVERNANCE.md` §7 states for governance changes generally.
+This is a plain statement of present fact. The operator's stated aim for the admin badge, and
+its limits, are stated once, in [`STATE.md`](./STATE.md#disclosures); this file does not repeat
+them. When who holds authority changes, this file changes, in the same commit as whatever made
+it true — the same rule `GOVERNANCE.md` §7 states for governance changes generally.
 
 ## What is provisional in this file
 
@@ -89,8 +73,3 @@ rule `GOVERNANCE.md` §7 states for governance changes generally.
   for operational-security reasons and is not something this document verifies against a live
   chain read. Treat any specific address claim about it as provisional until independently
   confirmed against the Radix Gateway.
-- **Whatever the Radix DAO's own governance framework eventually specifies about receiving a
-  project like this one** is stated above only as this project's current understanding of a
-  framework still forming outside this project's control — not as a fact this repository's own
-  history can verify. Check that framework's own materials for the current, authoritative
-  version of it.

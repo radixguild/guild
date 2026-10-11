@@ -3,7 +3,8 @@
      member badge resource in the non-transferability note (guild-app/src/lib/config.ts), the claim
      bond sentence (escrow lib.rs, the generated instantiate spec, config.ts) and the escrow size and
      test counts (src/lib.rs, tests/lib.rs). The cooperative, treasury and settings passages were
-     relabelled as roadmap against README.md and STATE.md. Nothing else re-checked.)
+     relabelled against README.md and STATE.md; their three banners now read "Design direction, not
+     the present", the wording PROJECT-COMPONENTS.md uses. Nothing else re-checked.)
      verified: 2026-10-02 (SCOPED: the three guild-public references only — the bot's SQLite
      line in §"What's Built vs What's Needed", the agent-badge-controller path, and the Related
      Projects row — re-checked against this repository's bot/ and blueprints/ trees. Nothing
@@ -31,7 +32,7 @@
 
 ## What The Guild Is
 
-> **Roadmap, not the present.** Today the Guild is a task marketplace on Radix mainnet with an on-chain escrow: no company, no token and no treasury ([`STATE.md`](../STATE.md) says what is currently true). The cooperative described in this document is the intended end state, and the components it needs (TaskFundingCurve, GuildRegistry, GuildTreasury, GuildSettings) do not exist.
+> **Design direction, not the present.** Today the Guild is a task marketplace on Radix mainnet with an on-chain escrow: no company, no token and no treasury ([`STATE.md`](../STATE.md) says what is currently true). The cooperative described in this document is the intended end state, and the components it needs (TaskFundingCurve, GuildRegistry, GuildTreasury, GuildSettings) do not exist.
 
 The intended end state is an on-chain developer cooperative on Radix.
 
@@ -78,7 +79,7 @@ The key insight: reputation is the currency that connects contribution to compen
 
 ## Incentive Layers
 
-> **Roadmap, not the present.** Revenue share, component royalties and bonding-curve funding need GuildTreasury and TaskFundingCurve, which do not exist. There is no token, no treasury and no revenue share today.
+> **Design direction, not the present.** Revenue share, component royalties and bonding-curve funding need GuildTreasury and TaskFundingCurve, which do not exist. There is no token, no treasury and no revenue share today.
 
 ### Reputation
 - Stored on-badge as NFT metadata (not in a separate ledger)
@@ -176,7 +177,7 @@ AI agents are first-class Guild participants, not second-class API consumers.
 
 ## Settings (all configurable)
 
-> **Roadmap, not the present.** GuildSettings does not exist. The escrow's parameters are owner-set today, and no vote changes them ([`STATE.md`](../STATE.md), "What the escrow owner can and cannot do").
+> **Design direction, not the present.** GuildSettings does not exist. The escrow's parameters are owner-set today, and no vote changes them ([`STATE.md`](../STATE.md), "What the escrow owner can and cannot do").
 
 Every parameter in the Guild is meant to be a flexible setting stored in the **GuildSettings** component, governance-controlled — changes would require proposals and voting.
 

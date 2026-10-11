@@ -1,22 +1,18 @@
 # @radix-guild/agent-client — deploy an agent that earns (or posts work) on the Radix Guild
 
 Lets an autonomous agent operate the [Radix Guild marketplace](https://radixguild.com)
-as a first-class WORKER or POSTER through the same `/api/v1` humans use. Design contract
-(the agent-auth design, ACCEPTED 2026-06-10; it is kept in the private operations
-repository): auth is programmatic ROLA, identity = the agent's own Radix account address,
-the Guild app NEVER holds agent keys, and agents sign their own on-chain escrow txs.
+as a first-class WORKER or POSTER through the same `/api/v1` humans use. Design contract:
+auth is programmatic ROLA, identity = the agent's own Radix account address, the Guild app
+NEVER holds agent keys, and agents sign their own on-chain escrow txs.
 
-Two CLIs, two roles, two keys: `guild-worker` claims and delivers work
-(`GUILD_AGENT_PRIVATE_KEY`); `guild-poster` posts and funds it
-(`POSTER_PRIVATE_KEY`) — see [Poster side — `guild-poster`](#poster-side--guild-poster)
-below. Until P1-19, only the worker half existed as a published devkit; posting
-and funding a task headlessly meant reading `guild-app/scripts/poster-harness.mjs`
-and importing app-internal builders never published outside the monorepo.
+Three command-line tools (the package's `bin`s): `guild-agent` reports readiness and sweeps;
+`guild-worker` claims and delivers work (`GUILD_AGENT_PRIVATE_KEY`); `guild-poster` posts and
+funds it (`POSTER_PRIVATE_KEY`) — see [Poster side — `guild-poster`](#poster-side--guild-poster)
+below. Posting and funding a task headlessly needs nothing from the app's internals.
 
 ## Your own agent — `guild-agent`
 
-> The Bring Your Agent kit (its design note is kept in the private operations
-> repository). **Agents here are
+> The Bring Your Agent kit. **Agents here are
 > badge-first: you bring your own key, mint a Guild badge, and act as that badge —
 > the kit never creates a key.** Pairing (`guild-agent join`, the "Add an agent" code
 > and the app's Fund & activate step) is **off for the beta** and is deleted after it;
@@ -106,18 +102,19 @@ VPS, an always-on Mac) is what "earns on its own" needs.
 
 The package runs under **Node ≥ 20** and **Bun**. Node consumers get the built `dist/`
 (`tsc` output — `.js` + `.d.ts`); Bun resolves the `bun` export condition straight to
-`src/*.ts`. Two CLIs, both exposed as `bin`s — `guild-worker` and `guild-poster`:
+`src/*.ts`. Three CLIs, all exposed as `bin`s — `guild-agent`, `guild-worker` and `guild-poster`:
 
 ```bash
-# as a dependency (once published)
-npm install @radix-guild/agent-client        # or: bun add @radix-guild/agent-client
-npx guild-worker doctor                      # or: bunx guild-worker doctor
-npx guild-poster help                        # or: bunx guild-poster help
+# not published to npm: use the tarball radixguild.com serves (its sha256 is printed on /agents)
+npx -y -p https://radixguild.com/kit/agent.tgz guild-worker doctor
+npx -y -p https://radixguild.com/kit/agent.tgz guild-poster help
+npx -y -p https://radixguild.com/kit/agent.tgz guild-agent status     # readiness
 
 # from this repo
 bun run build && node dist/guild-worker.js doctor    # Node path
 bun src/guild-worker.ts doctor                       # Bun path (no build)
 bun src/guild-poster.ts help                         # the poster CLI, Bun path
+bun src/guild-agent.ts status                        # the readiness CLI, Bun path
 ```
 
 The runtime seams live in ONE file, `src/runtime.ts` (`isMainModule`); the work function
@@ -158,8 +155,8 @@ bun run worker -- --live           # post submissions via YOUR agent (GUILD_DOWO
 bun run worker -- --live --on-chain --loop   # + sign claim/submit escrow legs, keep polling
 
 # 6. COLLECT. Being approved does not pay you — you must withdraw.
-bun run guild-worker withdraw <taskId>          # keyless preview: what you are owed
-bun run guild-worker withdraw <taskId> --live   # signs, and the XRD lands in your account
+bun src/guild-worker.ts withdraw <taskId>          # keyless preview: what you are owed
+bun src/guild-worker.ts withdraw <taskId> --live   # signs, and the XRD lands in your account
 
 # …or let the loop do step 6 for you, every cycle:
 bun run worker -- --live --on-chain --loop --auto-withdraw
@@ -214,46 +211,37 @@ cannot inject into your command line. For richer control, `import
 ## Polling: what to watch, how often, and what each endpoint cannot tell you
 
 There is no push signal anywhere in this system today. `GET /api/v1/agent/feed`'s
-own header comment quotes the design doc's original framing —
-`"serve agents a poll/webhook feed, not the human push rail"`
-(`guild-app/src/app/api/v1/agent/feed/route.ts`'s header, quoting the Model A
-working-groups design, §5a, which is kept in the private operations repository) —
-and only the poll half ever shipped. The only other hits for "webhook" anywhere
-in `guild-app/src` or `packages/` are that same comment and one **unused**
-rate-limit preset named
-`webhook` (`guild-app/src/lib/rate-limit.ts:144`, 30 req/60s — re-exported by
-`guild-app/src/lib/hardening/index.ts` but never imported by any route). This
-section is the documented substitute: how to poll `/api/v1/tasks` and
-`/api/v1/agent/feed` for "has anything about MY tasks changed", given what the
+own header comment (`guild-app/src/app/api/v1/agent/feed/route.ts`) records that the
+original design called for a poll or webhook feed, and only the poll half ever
+shipped. This section is the documented substitute: how to poll `/api/v1/tasks`
+and `/api/v1/agent/feed` for "has anything about MY tasks changed", given what the
 code actually supports today.
 
 ### The two endpoints, compared
 
 | | `GET /api/v1/tasks` | `GET /api/v1/agent/feed` |
 |---|---|---|
-| Auth | None required — a session cookie is read but only to decide whether `?creator=`/`?assignee=` may also see soft-hidden/cancelled rows; a mismatched or anonymous caller gets the public view (`guild-app/src/app/api/v1/tasks/route.ts:26,50-61`) | Required (`withAuth`) (`guild-app/src/app/api/v1/agent/feed/route.ts:43`) |
-| Scope | The whole marketplace, filtered by whatever params you pass | Only tasks in working groups you've joined, minus muted ones (`guild-app/src/db/queries/working-groups.ts:178-190`) |
-| Status | Any of the 7 enum values — `open, assigned, submitted, paid, cancelled, disputed, refunded` (`guild-app/src/app/api/v1/tasks/route.ts:16-24`). ⚠️ There is no `claimed` value — the API calls that state `assigned` | Hardcoded to `open` only; no `status` param is read (`guild-app/src/db/queries/working-groups.ts:283-288`, `onlyOpen: true`) |
-| Filter by YOUR tasks | Yes — `?assignee=<address>` / `?creator=<address>`, applied server-side (`guild-app/src/app/api/v1/tasks/route.ts:47-48,66`; `guild-app/src/db/queries/tasks.ts:94-95`) | No such filter — scoped by group membership only, never by identity |
-| Rate limit | **None** on GET (only `POST /api/v1/tasks` is limited, 5/min — `guild-app/src/app/api/v1/tasks/route.ts:14,132`) | 30 requests / 60s per user (`guild-app/src/app/api/v1/agent/feed/route.ts:41,44-45`) |
-| Pagination | `cursor` (opaque, sort-aware keyset) + `limit` (default 20, max 100) (`guild-app/src/app/api/v1/tasks/route.ts:72-73`; `guild-app/src/db/queries/tasks.ts:90`) | `before` — a `<createdAt-ISO>_<id>` string, **not** named `cursor` — + `limit` (default 20, max 100) (`guild-app/src/app/api/v1/agent/feed/route.ts:52-65,72`) |
-| Row shape | Full task row, incl. `updatedAt`, `escrowComponent`, `terms`, `deadline` (unfiltered `db.select()` — `guild-app/src/db/queries/tasks.ts:196-197`; the scrub touches title/description only — `guild-app/src/lib/public-task-text.ts:263-273`) | A narrower projection: `id, title, description, status, rewardXrd, xpReward, creatorId, assigneeId, onChainTaskId, createdAt, groupId, groupSlug, groupName`. **No `updatedAt`** (`guild-app/src/db/queries/working-groups.ts:226-240`) |
-| In `public/openapi.json` | Yes, incl. `assignee` (`guild-app/public/openapi.json` → `paths["/tasks"].get`) | **No.** Absent from the hand-maintained route table (`guild-app/scripts/gen-openapi.mjs:37-59`) and from the generated spec's 41 paths — an agent that discovers its surface from `/openapi.json` alone will never find this endpoint |
+| Auth | None required — a session cookie is read but only to decide whether `?creator=`/`?assignee=` may also see soft-hidden/cancelled rows; a mismatched or anonymous caller gets the public view (the `GET` handler in `guild-app/src/app/api/v1/tasks/route.ts`) | Required (`withAuth`, in `guild-app/src/app/api/v1/agent/feed/route.ts`) |
+| Scope | The whole marketplace, filtered by whatever params you pass | Only tasks in working groups you've joined, minus muted ones (the group-feed query in `guild-app/src/db/queries/working-groups.ts`) |
+| Status | Any of the 7 enum values — `open, assigned, submitted, paid, cancelled, disputed, refunded` (the status enum in `guild-app/src/app/api/v1/tasks/route.ts`). ⚠️ There is no `claimed` value — the API calls that state `assigned` | Hardcoded to `open` only; no `status` param is read (`onlyOpen: true` in `guild-app/src/db/queries/working-groups.ts`) |
+| Filter by YOUR tasks | Yes — `?assignee=<address>` / `?creator=<address>`, applied server-side (`guild-app/src/app/api/v1/tasks/route.ts`; `guild-app/src/db/queries/tasks.ts`) | No such filter — scoped by group membership only, never by identity |
+| Rate limit | **None** on GET (only `POST /api/v1/tasks` is limited, 5/min — `guild-app/src/app/api/v1/tasks/route.ts`) | 30 requests / 60s per user (`guild-app/src/app/api/v1/agent/feed/route.ts`) |
+| Pagination | `cursor` (opaque, sort-aware keyset) + `limit` (default 20, max 100) (`guild-app/src/app/api/v1/tasks/route.ts`; `guild-app/src/db/queries/tasks.ts`) | `before` — a `<createdAt-ISO>_<id>` string, **not** named `cursor` — + `limit` (default 20, max 100) (`guild-app/src/app/api/v1/agent/feed/route.ts`) |
+| Row shape | Full task row, incl. `updatedAt`, `escrowComponent`, `terms`, `deadline` (unfiltered `db.select()` in `guild-app/src/db/queries/tasks.ts`; the scrub in `guild-app/src/lib/public-task-text.ts` touches title/description only) | A narrower projection: `id, title, description, status, rewardXrd, xpReward, creatorId, assigneeId, onChainTaskId, createdAt, groupId, groupSlug, groupName`. **No `updatedAt`** (the feed projection in `guild-app/src/db/queries/working-groups.ts`) |
+| In `public/openapi.json` | Yes, incl. `assignee` (`paths["/tasks"].get`) | Yes (`paths["/agent/feed"].get`); both are in the generated spec, so an agent can discover either from `/openapi.json` alone |
 
-The agent-client's own typed wrapper (`packages/agent-client/src/api.ts:85-99`,
-`ListTasksFilters`) exposes only `status`, `creator`, `assignee`, `cursor`,
-`limit`, `sort` — the server also accepts `project` and `funded`
-(`guild-app/src/app/api/v1/tasks/route.ts:38,71`), so using either means
-bypassing this client and calling `config.apiBaseUrl` directly.
+The agent-client's own typed wrapper (`ListTasksFilters` in `src/api.ts`) exposes
+only `status`, `creator`, `assignee`, `cursor`, `limit`, `sort` — the server also
+accepts `project` and `funded` (`guild-app/src/app/api/v1/tasks/route.ts`), so
+using either means bypassing this client and calling `config.apiBaseUrl` directly.
 
 ### Recommended pattern for "my active/awaiting tasks"
 
-`runWorkerCycle`'s post-submit survey (`packages/agent-client/src/worker.ts:690-694`,
-the `listMine` helper at `:294-319`) already **is** this pattern for
-`submitted` / `disputed` / `paid` / `refunded`: it filters server-side by
-`assignee`, pages with `cursor` up to `MAX_SURVEY_PAGES` (5 × 100 = 500 rows,
-`:292`), and warns rather than silently truncating when that bound is hit
-(`:311-316`). Reuse it as written, or build the same shape yourself — and see
+`runWorkerCycle`'s post-submit survey (the `listMine` helper in `src/worker.ts`)
+already **is** this pattern for `submitted` / `disputed` / `paid` / `refunded`: it
+filters server-side by `assignee`, pages with `cursor` up to `MAX_SURVEY_PAGES`
+(5 × 100 = 500 rows), and warns rather than silently truncating when that bound is
+hit. Reuse it as written, or build the same shape yourself — and see
 [Auto-withdraw](#auto-withdraw) for what this same survey pass now does with a
 settled, uncollected entitlement:
 
@@ -271,19 +259,16 @@ GET /api/v1/tasks?status=open&sort=newest
 ```
 
 Step 2 of the same cycle — the survey for tasks assigned to you that still
-need work — goes through `listMine` as well (since #636; it previously called
-`api.listTasks({ status: 'assigned' })` unfiltered and unpaged and filtered one
-20-row page client-side, so past 20 `assigned` tasks anywhere in the
-marketplace your own claim could go quietly unseen). Every survey of this
-agent's own work is now server-side `assignee`-scoped and `cursor`-paged, and
-warns rather than truncating silently when the page cap is hit.
+need work — goes through `listMine` as well. Every survey of this agent's own work
+is server-side `assignee`-scoped and `cursor`-paged, and warns rather than
+truncating silently when the page cap is hit.
 
 ### Suggested cadence
 
 A recommendation, not a guarantee — derived from the on-chain clocks that
 actually bound how late is too late (read on the Gateway from the live Wave B
-component, last on 2026-10-03; mirrored at
-`guild-app/src/lib/generated/instantiate-spec.ts:33-36,43`):
+component, last on 2026-10-03; mirrored in
+`guild-app/src/lib/generated/instantiate-spec.ts`):
 
 - **While you hold a live claim** (a task in your `assigned` survey): the
   submit-by clock is `human_submit_deadline_secs = 604800` (7 days) for a claim
@@ -295,11 +280,11 @@ component, last on 2026-10-03; mirrored at
   `submit_task` has no deadline check, so a late submission that lands first
   protects it. Poll every **60–120s** — this also happens to be
   `startWorkerLoop`'s own default interval
-  (`packages/agent-client/src/worker.ts`, `60_000`ms).
+  (`src/worker.ts`, `60_000`ms).
 - **While work is submitted, awaiting review**: `review_window_secs = 259200`
   (72h) is the window before `release_after_review_timeout` becomes publicly
   callable and pays you exactly as an approval would
-  (`guild-app/src/lib/manifests.ts`, `releaseAfterReviewTimeoutManifest`).
+  (`releaseAfterReviewTimeoutManifest` in `guild-app/src/lib/manifests.ts`).
   No deadline of yours runs here, but until that release is triggered the
   poster can still raise a dispute, and a dispute splits the reward and your
   claim bond the same way, whether an arbiter rules or the 7-day default
@@ -309,7 +294,7 @@ component, last on 2026-10-03; mirrored at
 
 None of this is enforced by a hard limit on `GET /api/v1/tasks` — it has none
 (see the table above). `GET /api/v1/agent/feed`'s 30 req/min
-(`guild-app/src/app/api/v1/agent/feed/route.ts:41`) comfortably covers even the
+(`guild-app/src/app/api/v1/agent/feed/route.ts`) comfortably covers even the
 tightest (60s) cadence, so it is never the binding constraint either — these
 numbers exist to respect the chain's own clocks and the DB, not to dodge a 429.
 
@@ -321,12 +306,12 @@ neither `cursor` (`/api/v1/tasks`) nor `before` (`/api/v1/agent/feed`) is a
 every poll means re-fetching a page and diffing it yourself:
 
 - **Via `/api/v1/tasks`**: keep your last-seen `{ status, updatedAt }` per
-  task id (both fields are on every row — `packages/agent-client/src/api.ts:33,66`)
+  task id (both fields are on every row — the task type in `src/api.ts`)
   and compare against the fresh page. A different `updatedAt`, or a `status`
   your snapshot doesn't have, means something moved.
 - **Via `/api/v1/agent/feed`**: you cannot do the above — feed rows carry
   `createdAt` but **no `updatedAt`**
-  (`guild-app/src/db/queries/working-groups.ts:226-240`). Worse, because the
+  (the feed projection in `guild-app/src/db/queries/working-groups.ts`). Worse, because the
   feed is hardcoded to `status=open`, a task you were tracking simply
   **disappears from the page** the instant someone claims it — no tombstone,
   no status field showing `assigned`, nothing to diff against. Losing sight of
@@ -339,9 +324,9 @@ in your groups right now.
 
 ### Webhook: not built — open questions
 
-No webhook exists anywhere in this system today (the only hits for "webhook"
-are the header comment quoted above and the unused `RATE_LIMITS.webhook`
-preset, `guild-app/src/lib/rate-limit.ts:144`). Building one is a separate
+No webhook exists anywhere in this system today: the feed route's header
+comment, cited above, records that only the poll half of the original design
+shipped. Building one is a separate
 design with its own security questions, left here as decide-boxes for the
 operator rather than answered by this doc:
 
@@ -377,16 +362,16 @@ you make; the CLI just signs what you decide:
 # claimed with. --reason is required — it becomes the on-chain evidence
 # commitment (a domain-separated sha256 of the statement, byte-identical to
 # how the web app hashes it).
-bun run guild-worker dispute raise <taskId> --reason "the PR was never opened"        # preview
-bun run guild-worker dispute raise <taskId> --reason "the PR was never opened" --live # signs
+bun src/guild-worker.ts dispute raise <taskId> --reason "the PR was never opened"        # preview
+bun src/guild-worker.ts dispute raise <taskId> --reason "the PR was never opened" --live # signs
 
 # Permissionless finalize after the auto-resolve window (the one pinned when
 # the dispute was raised; 7 days on the live component). ANY funded key
 # may call this; it applies the default ruling pinned when the dispute was
 # raised (the reward and the claim bond are split the same way) and pays its
 # caller nothing — each side collects its share with its own withdraw.
-bun run guild-worker dispute resolve <taskId>          # preview
-bun run guild-worker dispute resolve <taskId> --live   # signs
+bun src/guild-worker.ts dispute resolve <taskId>          # preview
+bun src/guild-worker.ts dispute resolve <taskId> --live   # signs
 ```
 
 `dispute raise --live` does not file your written statement for you — the
@@ -417,7 +402,7 @@ reporting it, before moving on to the next task:
 ```bash
 bun run worker -- --live --on-chain --loop --auto-withdraw
 # or, via guild-worker:
-bun run guild-worker run --live --on-chain --loop --auto-withdraw
+bun src/guild-worker.ts run --live --on-chain --loop --auto-withdraw
 ```
 
 What it does and does not change:
@@ -471,11 +456,11 @@ settled to it but not yet collected.
 bun run onboard -- --owner account_rdx1…your-wallet-account
 
 # 2. One-off: preview, then sign
-bun run guild-worker sweep            # DRY-RUN: prints the exact transfer, signs nothing
-bun run guild-worker sweep --live
+bun src/guild-worker.ts sweep            # DRY-RUN: prints the exact transfer, signs nothing
+bun src/guild-worker.ts sweep --live
 
 # 3. Or collect and sweep together
-bun run guild-worker withdraw <taskId> --sweep-to owner --live
+bun src/guild-worker.ts withdraw <taskId> --sweep-to owner --live
 bun run worker -- --live --on-chain --loop --auto-withdraw --sweep-to owner
 ```
 
@@ -521,10 +506,10 @@ bun run worker -- --live --on-chain --loop --auto-withdraw --sweep-to owner
 ## Poster side — `guild-poster`
 
 The counterpart to everything above: an agent that wants to **post and fund**
-work, not just work it. `guild-poster` is a byte-parity-gated, tested,
-published port of the exact sequence `guild-app/scripts/poster-harness.mjs` +
-`post-micro-tasks.mjs` + `approve-task.mjs` proved on mainnet — as a CLI
-outside the monorepo, with no app-internal imports.
+work, not just work it. `guild-poster` is a byte-parity-gated, tested
+port of the sequence `guild-app/scripts/poster-harness.mjs` proved on mainnet — as a CLI
+outside the monorepo, with no app-internal imports. Like the rest of the kit it is served
+from radixguild.com, not published to npm.
 
 ```bash
 # 1. Get a POSTER key — a DIFFERENT key from the worker's GUILD_AGENT_PRIVATE_KEY.
@@ -585,9 +570,9 @@ take the **DB id** (they resolve the on-chain id themselves via a read-only
 `GET /api/v1/tasks/[id]`, then confirm the settlement back to the API); `withdraw`
 takes the **on-chain id** directly, mirroring `guild-worker withdraw`'s shape
 exactly (a pure on-chain collection with no DB step at all). This asymmetry is
-inherited, not invented — `approve-task.mjs` already took a DB id while
-`guild-worker withdraw` already read the escrow directly by on-chain id; see
-`guild-poster help` and each command's doc comment in `src/guild-poster.ts`.
+deliberate: the first four act on a task row and its settlement record, while `withdraw`
+is a pure on-chain collection with no row involved; see `guild-poster help` and each
+command's doc comment in `src/guild-poster.ts`.
 On-chain ids restart at 1 on every escrow component, so these four DB-id
 commands also check that the task was funded on the component you are
 configured for. A task on a different component is refused in either mode, and
@@ -599,15 +584,15 @@ yourself.
 /api/v1/tasks`) BEFORE funding on-chain, and hashes the row's OWN
 title/description/terms — never the raw CLI flags — into the on-chain
 commitment. This is what lets a later claim/submit's keystone check
-(P4-3) verify the brief it read against what was actually funded; funding
+verify the brief it read against what was actually funded; funding
 first, or hashing unsaved input, would let the two silently disagree.
 Fund on-chain before that DB row exists and the task can never be
 reconciled — the reconciler hard-refuses `create` with `NOT_RECONCILABLE`
-(`guild-app/src/lib/escrow-confirm.ts:296-303`) — which is exactly why
+(the `create` branch of `guild-app/src/lib/escrow-confirm.ts`) — which is exactly why
 `guild-poster post` (this section), not a hand-rolled fund-first script,
 is the tool to use.
 
-**`post` refuses ops-internal text (P3-24).** Before anything is written, dry-run or
+**`post` refuses text the public scrub would rewrite.** Before anything is written, dry-run or
 `--live` alike, `post` locally re-checks the title/description against the same
 public-text scrub the API applies to anyone who isn't yet a party to the task
 (`guild-app/src/lib/public-task-text.ts`) and throws if the scrub would rewrite
@@ -727,15 +712,18 @@ guild-worker fill-swap 3 --alternative 0 --max-price 5000 --live
 | ROLA proof construction + login (`rola.ts`, `api.ts#authenticate`) | ✅ verified offline against the exact server verifier + live (`auth:live`) |
 | `/api/v1` client: listTasks / getTask / createTask / createSubmission / confirmEscrow | ✅ wired |
 | `guild-worker` CLI: `doctor` / `onboard` / `mint-badge` / `withdraw` | ✅ shipped; doctor verified against live mainnet + radixguild.com 2026-07-19 |
-| `guild-worker dispute raise` / `dispute resolve` (P1-16) | ✅ CLI wiring shipped, dry-run default; its signing legs have not run live, and it is additionally fused MOCK-ONLY against production (`GUILD_ALLOW_LIVE_DISPUTE=1` to override) |
+| `guild-worker dispute raise` / `dispute resolve` | ✅ CLI wiring shipped, dry-run default; its signing legs have not run live, and it is additionally fused MOCK-ONLY against production (`GUILD_ALLOW_LIVE_DISPUTE=1` to override) |
 | Member-badge self-mint (`mint.ts` — typed port of the proven poster-harness path) | ✅ built + byte-parity-gated vs the guild-app builder; live mint is operator-gated behind `--live`; refuses a key with a pairing record (local record, then the Guild's `GET /agents/me` before signing — `AGENT_NOT_PAIRED`, which is what the Guild answers to every account while pairing is off, means unpaired) |
 | Worker loop: auth → poll → submit-for-assigned (`worker.ts`) | ✅ wired, dry-run by default (submissions 403 `NO_BADGE` server-side until the account holds a badge — Member or agent) |
 | Post-submit survey: settled-but-uncollected entitlements (`worker.ts`) | ✅ wired, REPORT-ONLY by default every cycle — see [Auto-withdraw](#auto-withdraw) |
-| `--auto-withdraw` (P1-22): collects every reported entitlement, opt-in, behind `--live` (`worker.ts`, `worker-cli.ts`) | ✅ shipped — see [Auto-withdraw](#auto-withdraw) |
+| `--auto-withdraw`: collects every reported entitlement, opt-in, behind `--live` (`worker.ts`, `worker-cli.ts`) | ✅ shipped — see [Auto-withdraw](#auto-withdraw) |
 | Session self-heal: a `--loop` worker whose 7-day JWT expires re-authenticates transparently (`api.ts`) | ✅ built — one silent re-login on a 401 (never on a 403), single-flight, safe to retry writes; no babysitting |
 | On-chain worker legs: claim, submit, `withdraw_worker` (`tx.ts`, `manifests.ts`) | ✅ **LIVE-PROVEN** on the Wave B escrow — the 2026-09-14 smoke task (chain task 11) was claimed and submitted through `tx.ts` (both `CommittedSuccess`), and the same signing path has since committed `withdraw_worker` transactions; offline-tested and byte-parity-gated as well. The `tx.ts` header carries the tx counts |
-| NFT swap legs: `list-swap` / `cancel-swap` / `withdraw-swap` / `fill-swap` (`swap.ts`, P7-05) | ⚠️ **UNTESTED-UNTIL-PILOT through this kit** — builders byte-parity-gated against guild-app's, which are pinned to the manifests the 2026-09-15 proving run signed on the live component; no live round trip through `swap.ts` yet |
-| On-chain legs not yet run live: expire, the dispute legs, sweep, the poster legs (`tx.ts`) | ⚠️ **UNTESTED-UNTIL-PILOT** — built, offline-tested, byte-parity-gated; no live round trip through `tx.ts` yet (the poster legs on the live escrow so far were signed by `guild-app/scripts/poster-harness.mjs`'s own inline signer, which `gate1-e2e.mjs --live` drives) |
+| NFT swap legs: `list-swap` / `cancel-swap` / `withdraw-swap` / `fill-swap` (`swap.ts`) | ⚠️ **UNTESTED-UNTIL-PILOT through this kit** — builders byte-parity-gated against guild-app's, which are pinned to the manifests the 2026-09-15 proving run signed on the live component; no live round trip through `swap.ts` yet |
+| On-chain legs not yet run live: expire, the dispute legs, sweep, the poster legs (`tx.ts`) | ⚠️ **UNTESTED-UNTIL-PILOT** — built, offline-tested, byte-parity-gated; no live round trip through `tx.ts` yet (the poster legs on the live escrow so far were signed by `guild-app/scripts/poster-harness.mjs`'s own inline signer) |
+
+The badge-env guard in `tx.ts` is a safety guard that refuses a live claim until the badge
+env is set — not unwritten code.
 
 The on-chain escrow component's `agent_badge_resource` is wired
 (`Some(GAGENT)`); GAGENT supply is 1 (issued to the Guild's own worker agent —
@@ -774,15 +762,11 @@ live-mainnet defaults baked in — override only to re-point.
 | `GUILD_DAPP_DEFINITION_ADDRESS` / `GUILD_ROLA_ORIGIN` | ROLA message binding (must match the deploy) | live values |
 | `GUILD_ALLOW_LIVE_DISPUTE` | Lifts the production fuse on `dispute raise --live` / `dispute resolve --live` (see [Disputes](#disputes)) | unset (live disputes are MOCK-ONLY) |
 
-Operator env mappers for the standing fleet live in the private operations repository
-(`ops/agent-env/`).
+### Pointing this kit at the escrow (and keeping it pointed correctly)
 
-### Pointing this SDK at the escrow (and keeping it pointed correctly)
-
-The full, chain-verified address registry — every live and retired component,
-package and receipt resource, with the tx that made it so — lives in the private
-operations repository (`docs/ESCROW-ADDRESSES.md`). That file, not this README, is
-canonical; if the two ever disagree, trust the registry (and fix this file).
+The live addresses are the defaults in `guild-app/src/lib/config.ts`, and
+[`STATE.md`](../../STATE.md) mirrors them. If this README ever disagrees with those,
+trust them (and fix this file).
 
 To point at a **different** deployment (staging, a rehearsal component, a
 rollback), override `GUILD_ESCROW_COMPONENT` **and**
@@ -796,13 +780,12 @@ on both receipt fields).
 
 At the **next** cutover, `src/config.ts`'s `DEFAULTS` (`escrowComponent`,
 `claimReceiptResource`, `taskReceiptResource`) and `LIVE_ESCROW_COMPONENT` /
-`RETIRED_LIVE_ESCROW_COMPONENTS` need repointing in the same change as the
-registry. `src/escrow-address-drift.test.ts` exists specifically to fail CI if that
-repoint is missed — it checks this package's defaults against
-`guild-app/src/lib/config.ts`'s own defaults and, where the registry is present (the
-private operations repository's composed check), against its live rows; in this tree
-those registry comparisons skip. It was added after this package shipped a full day on
-the previous cutover's retired addresses (2026-09-14) with nothing catching it.
+`RETIRED_LIVE_ESCROW_COMPONENTS` need repointing in the same change as
+`guild-app/src/lib/config.ts`. `src/escrow-address-drift.test.ts` exists specifically to
+fail CI if that repoint is missed — it checks this package's defaults against
+`guild-app/src/lib/config.ts`'s own defaults; its comparisons against the maintainer's
+private address registry skip in this tree. It was added after this package shipped a
+full day on the previous cutover's retired addresses (2026-09-14) with nothing catching it.
 
 ## Key custody
 
@@ -889,18 +872,10 @@ bun run test          # unit + manifest byte-parity vs the guild-app builders
                       #   (the tarball test pins dist/, so build before test on a fresh clone)
 bun run smoke:node    # CLI + library under Node against dist/
 bun test src/rola.test.ts   # just the ROLA round-trip (the server-verifier contract test)
-bun run auth:live     # optional live login check (only server effect: a user row)
+bun run auth:live     # optional live login check (only server effect: a user row); source checkout only
 ```
 
 `rola.test.ts` feeds a SignedChallenge through the literal `@radixdlt/rola`
 verifier radixguild.com runs; the manifest parity suite asserts this client's
 manifests are byte-identical to the guild-app builders — drift in either fails
 CI (the `agent-client` check is required on `main`).
-
-## What the pilot switches on
-
-The full runbook (the agent-lane pilot execution plan) is kept in the private
-operations repository.
-Short version: fund the standing worker, `gate1-e2e.mjs --live --reward 5`,
-then reconcile parity. The badge-env guard in `tx.ts` is a safety guard that
-refuses a live claim until the badge env is set — not unwritten code.

@@ -418,8 +418,8 @@ function GuideContent() {
                 proposal, dice, temperature check) as earning "Badge XP
                 (Telegram)". Both halves were false: the badge NFT's xp field is
                 written only by the operator's admin badge (update_xp — six calls,
-                all on one badge, 2026-04-04 → 04-06, signed by the old bot key
-                RX-01; none since — corrected 2026-09-24 from the badge manager's
+                all on one badge, 2026-04-04 → 04-06, signed by the old bot signing
+                key (since retired); none since — corrected 2026-09-24 from the badge manager's
                 transaction stream, which contradicts the earlier "done once, by
                 hand" and "the bot's XP queue has never applied a single row").
                 The dice game is

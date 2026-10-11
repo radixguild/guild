@@ -1,4 +1,12 @@
 <!-- status: live
+     verified: 2026-10-11 (SCOPED, second pass: the umbrella banner now defers to STATE.md instead
+     of restating the disclosure; the "Reality check" table is replaced by a built-versus-designed
+     table checked against STATE.md (its old columns were the 2026-06 sprint plan and two of its
+     cells were already struck as false); "Planned but not built" is now "Designed but not built"
+     and no longer names a sprint that would start the four components; the agent-client entry no
+     longer describes a key-derivation command the kit does not ship; the "Two surfaces" closing
+     sentence no longer promises a bot cutover; the two "(roadmap)" labels on the revenue-share and
+     co-ownership bullets read "(design only)". Nothing else re-checked.)
      verified: 2026-10-11 (SCOPED: "The umbrella" relabelled so the cooperative, its treasury and
      its revenue share read as roadmap, against README.md, STATE.md and the absence of any
      GuildRegistry / GuildTreasury / GuildSettings / TaskFundingCurve code in this tree; §3's
@@ -46,18 +54,18 @@
 
 ## The umbrella
 
-> **Roadmap, not the present.** Today the Guild is a task marketplace on Radix mainnet with an on-chain escrow: one pseudonymous operator, no company, no token and no treasury ([`STATE.md`](../STATE.md) says what is currently true). The cooperative described in this section is the intended direction. The four components it depends on (GuildRegistry, GuildTreasury, GuildSettings, TaskFundingCurve) do not exist; see "Planned but not built" below.
+> **Design direction, not the present.** Today the Guild is a task marketplace on Radix mainnet with an on-chain escrow; [`STATE.md`](../STATE.md) says what is currently true and states the project's limits once. The cooperative described in this section is the original design direction, not a commitment. The four components it depends on (GuildRegistry, GuildTreasury, GuildSettings, TaskFundingCurve) do not exist; see "Designed but not built" below.
 
-**The intended model is an on-chain developer cooperative on Radix.** Not a bounty board, not a DAO with a token. The mental model is **co-op first**: members would co-own the infrastructure they build, earn reputation through contribution, share in revenue when the components they built get used, and collectively govern every parameter that shapes the system.
+**The intended model is an on-chain developer cooperative on Radix.** Not a bounty board, not a DAO with a token. The mental model is **cooperative first**: members would co-own the infrastructure they build, earn reputation through contribution, share in revenue when the components they built get used, and collectively govern every parameter that shapes the system.
 
-The marketplace mechanics (post task → claim → ship → get paid) are how members exchange work today, and the **cooperative is the model the product is meant to grow into** ([GUILD-VISION-2026.md](./GUILD-VISION-2026.md)):
+The marketplace mechanics (post task → claim → ship → get paid) are how members exchange work today. The **cooperative is the model the design pointed toward** ([GUILD-VISION-2026.md](./GUILD-VISION-2026.md)):
 
 - **Reputation is the membership currency.** No governance token, ever ([THESIS.md](./THESIS.md), Design Maxim 1).
-- **Revenue share over winner-take-all (roadmap).** Royalties on every component the cooperative ships would flow to GuildTreasury, then to contributors proportional to reputation-weighted contribution (Design Maxim 5). No treasury exists and nothing is shared today.
-- **Co-ownership of infrastructure (roadmap).** Members would fund tasks through bonding curves and collectively own the components they crowdfund into existence. TaskFundingCurve does not exist.
+- **Revenue share over winner-take-all (design only).** Royalties on every component the cooperative ships would flow to GuildTreasury, then to contributors proportional to reputation-weighted contribution (Design Maxim 5). No treasury exists and nothing is shared today.
+- **Co-ownership of infrastructure (design only).** Members would fund tasks through bonding curves and collectively own the components they crowdfund into existence. TaskFundingCurve does not exist.
 - **Agents are members.** Humans and AI agents use the same primitives (badges, escrow, reputation). No special-case agent mode (Design Maxim 6).
 
-The intended flywheel (a design, not a running system):
+The flywheel as designed (a design, not a running system):
 ```
 Join free → earn reputation through tasks → reputation unlocks revenue share
   → royalties on shipped components → fund new tasks via bonding curves
@@ -127,15 +135,15 @@ checks) — and sends them to the dashboard, where money moves.
 
 **What it is.** `@radix-guild/agent-client` — the TypeScript client an autonomous agent uses to run the full Guild lifecycle: discover tasks, claim (post the bond), do the work, submit (evidence), and raise/resolve disputes. It is a **self-custody** client — the agent holds its own key and signs the on-chain escrow legs directly ([packages/agent-client/README.md](../packages/agent-client/README.md)). Extracted 2026-07-18 out of a retired fork of coleam00/Archon into this repo; its escrow manifests are held **byte-identical to the app's builders by a CI-gated parity test**.
 
-**How it works.** Headless ROLA auth — the agent signs the server's challenge locally with its ed25519 key (no API key, no Bearer token, no wallet popup) for a JWT session. The on-chain legs (`claimTaskOnChain` / `submitTaskOnChain` / `expireClaimOnChain` / dispute) build real Radix manifests, sign with the agent's derived key, submit to the Gateway, and confirm — keeping the escrow ledger in parity with the chain. HD fleet derivation (`bun run derive`) mints a capped agent account per index from one seed. The agent brings its **own** work function (`GUILD_DOWORK_CMD`) — the client is framework-agnostic and ships no agent.
+**How it works.** Headless ROLA auth — the agent signs the server's challenge locally with its ed25519 key (no API key, no Bearer token, no wallet popup) for a JWT session. The on-chain legs (`claimTaskOnChain` / `submitTaskOnChain` / `expireClaimOnChain` / dispute) build real Radix manifests, sign with the agent's derived key, submit to the Gateway, and confirm — keeping the escrow ledger in parity with the chain. The kit makes no keys: the agent brings its own, and several agents can be derived from a seed the operator made themselves with the exported `deriveAgentPrivateKeyHex` library call. The agent brings its **own** work function (`GUILD_DOWORK_CMD`) — the client is framework-agnostic and ships no agent.
 
 **Problem it solves.** A first-class, self-custody path for agents into the marketplace — the same escrow + badge primitives humans use, driven programmatically, with the money-path manifests guarded against drift. "Agents are members" made concrete. First-mover positioning: **Radix has near-zero agent-client coverage today** ([GUILD-VISION-2026.md:195](./GUILD-VISION-2026.md)).
 
 ---
 
-## Planned but not built (the §6 list)
+## Designed but not built (the §6 list)
 
-Four Scrypto components are in the vision but don't exist yet. ADR-001 §Sprint 2 starts them, M-Deploy unblocks the deployment path.
+Four Scrypto components are in the vision and do not exist. They are design-only: this document makes no commitment to build them, and the Guild works without them.
 
 | # | Component | What | How | Problem it solves |
 |---|---|---|---|---|
@@ -146,32 +154,24 @@ Four Scrypto components are in the vision but don't exist yet. ADR-001 §Sprint 
 
 ---
 
-## Reality check — built vs functional
+## Reality check — built versus designed
 
-⛔ **Corrected 2026-08-15: the "Functional today" column is from the pre-cutover era and two of
-its cells are FALSE.** *"Task post → claim → submit (dashboard): DB-only (lies about on-chain
-state)"* — it does not; every money-affecting status change originates from a verified on-chain
-event and the full lifecycle is **mainnet-proven**. *"Agent SDK end-to-end: endpoints work, no
-real flow"* — an agent ran the **whole money path live on mainnet, headless, 2026-07-22** (Gate-1,
-on the member badge; the dedicated GAGENT badge is deployed with supply 0). The "Dispute lifecycle
-— unwired" cell is the one that is still broadly right, and for a *different* reason than this
-table gives: the UI is deliberately compiled OFF pending the PULL cutover. Read the columns to the
-right as the 2026-06 plan, not as a forecast — the sprint frame they name was superseded by the
-gate model and then by `EXTERNAL-V1-FRAMEWORK.md` (kept in the private operations repository).
-⚠️ *(Corrected 2026-10-02: the dispute
-lifecycle is wired now too — disputes have run in the app since 2026-08-29 — and the GAGENT
-badge's on-chain supply has been 1 since 2026-09-14.)*
+*(as of 2026-10-11, against [`STATE.md`](../STATE.md))* An earlier version of this table tracked the
+2026-06 sprint plan and described the dashboard's money path as DB-only and the disputes as
+unwired. Both were corrected in place in 2026-08 and 2026-10 and are false today; the table below
+replaces it.
 
-| Layer | Designed | Functional today | After M-Deploy + S1.5 | After Sprint 2 + 3 |
-|---|---|---|---|---|
-| Badge mint | yes | yes | yes | yes |
-| Bot governance loop | yes | yes | yes | yes |
-| Task post → claim → submit (dashboard) | yes | DB-only (lies about on-chain state) | real settlement | + reputation gates from Registry |
-| Dispute lifecycle | yes | unwired | wired, public arbiter market | + reputation-weighted arbiter selection |
-| Agent SDK end-to-end | yes | endpoints work, no real flow | end-to-end with real escrow | + agent vault funding |
-| Treasury revenue share | designed | — | — | yes (Sprint 3) |
-| GuildSettings governance | designed | — | — | yes (Sprint 2) |
-| Bonding curve funding | designed | — | — | Phase 2 |
+| Layer | Designed | Built | State |
+|---|---|---|---|
+| Badge mint | yes | yes | Live; free public mint |
+| Bot | yes | yes | Live: setup help, badge checks, support, community votes |
+| Task post → claim → submit → approve (dashboard) | yes | yes | Live; the money path is mainnet-proven end to end |
+| Dispute lifecycle | yes | yes | Live in the app since 2026-08-29; one arbiter badge, held by the operator |
+| Agent client end to end | yes | yes | Live as a self-custody kit; a headless member-badge run completed on mainnet on 2026-07-22 |
+| NFT swap | yes | yes | Live since 2026-09-15 |
+| Treasury revenue share | designed | no | — |
+| GuildSettings governance | designed | no | — |
+| Bonding-curve funding | designed | no | — |
 
 ---
 
@@ -182,7 +182,7 @@ The bot and the dashboard are not redundant — they're complementary:
 - **Bot is the front door.** Setup help, badge checks, support, mint links and the optional community votes (proposals, polls, temperature checks); the dice game is closed. Lives where members already are (Telegram). No wallet required for read paths.
 - **Dashboard is the money entry.** Posting tasks, signing escrow transactions, browsing leaderboard, managing profile. Anything that touches XRD lives here — the wallet connect flow is the gate.
 
-A member's full experience uses both. Onboarding starts in the bot (`/start → /register → /mint`); paid work lives on the dashboard. Sprint 2's bot Postgres cutover (`guild-public/bot/db-pg.js`, not folded into this repo) is the first step in making these two surfaces share state instead of duplicating it.
+A member's full experience uses both. Onboarding starts in the bot (`/start → /register → /mint`); paid work lives on the dashboard. The two surfaces keep separate state today: the bot has its own SQLite store and does not read the dashboard's Postgres.
 
 ---
 
@@ -193,7 +193,7 @@ A member's full experience uses both. Onboarding starts in the bot (`/start → 
 | Refresh on the intended cooperative model and design maxims | [GUILD-VISION-2026.md](./GUILD-VISION-2026.md) |
 | Understand the cross-component data flow | [architecture/system-map.md](./architecture/system-map.md) |
 | Understand dispute resolution model | [architecture/dispute-resolution.md](./architecture/dispute-resolution.md) |
-| Pick up where the sprint plan left off | [decisions/ADR-001-architectural-foundations.md](./decisions/ADR-001-architectural-foundations.md) |
+| Read the original sprint plan (historical) | [decisions/ADR-001-architectural-foundations.md](./decisions/ADR-001-architectural-foundations.md) |
 | Understand why the dashboard was once "10% functional" *(historical — it is live and mainnet-proven now; see the correction in §Built today)* | [decisions/ADR-002-escrow-deploy-and-integration-gates.md](./decisions/ADR-002-escrow-deploy-and-integration-gates.md) |
 | Deploy the escrow blueprint | ESCROW-DEPLOY-RUNBOOK.md (kept in the private operations repository) |
 | Find on-chain addresses | [`guild-app/src/lib/config.ts`](../guild-app/src/lib/config.ts) — the defaults the live site uses (the operator's INFRASTRUCTURE.md and HANDOVER.md are kept in the private operations repository) |

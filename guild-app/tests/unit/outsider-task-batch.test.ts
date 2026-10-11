@@ -433,7 +433,7 @@ const locksOf = (r: Row) => Number(r.reward_xrd) + insuranceOf(r)
 
 /**
  * The README's top-up rule: locks + 2 XRD per post for the network fee (a create_task
- * from AG-01 costs 1.10 XRD), rounded up to the next 50, so funding a wave never draws
+ * from the poster agent costs 1.10 XRD), rounded up to the next 50, so funding a wave never draws
  * on the poster's standing reserve.
  */
 const TOP_UP_FEE_PER_POST = 2
