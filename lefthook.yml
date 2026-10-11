@@ -22,29 +22,16 @@ pre-commit:
         and scrub it. If it's a confirmed placeholder: add it to .gitleaks.toml's
         allowlist (target the value, not the whole path).
     identity:
-      # The author/committer this commit is about to carry must be on the identity
-      # allowlist in scripts/pii-scan.mjs (GitHub noreply shapes + the project handle).
-      # The same rule runs again over every commit a PR introduces (the pii-scan.yml
-      # workflow where it exists, the maintainers' pre-merge gate where it does not), but
-      # by then the commit exists: identity is part of the commit object, a follow-up commit
-      # cannot repair it, and force-push is denied here. This is the only point at which
-      # the mistake is free. 2026-09: a stray repo-local `test <test@test.com>` override
-      # went unnoticed for days and reached 18 squash commits on main as trailers.
+      # The author/committer this commit is about to carry is checked against an identity
+      # allowlist (GitHub noreply shapes plus the project handle). Identity is part of the
+      # commit object: a follow-up commit cannot repair it, so this is the one point at which
+      # a mistake is free to fix.
       #
-      # Structural only — no blocklist, no network, two `git var` reads (~0.2s, node startup). Inside
-      # the hook git has already exported GIT_AUTHOR_*, so `--author=` and `-c user.email=`
-      # overrides are judged too. Missing node is a SKIP, never a block: a hook must not
-      # be what wedges a clone, and the pre-merge check is the backstop.
-      #
-      # A missing scanner is a SKIP for the same reason, and it says so on every commit.
-      # scripts/pii-scan.mjs is not in the public repo (it stays with the maintainers), so a
-      # contributor's clone has nothing to run here. Only the file's absence skips: wherever
-      # it exists, its exit code decides.
-      #
-      # MAINTAINERS: this is a maintainer hook. Your scanner lives outside this tree, so
-      # export GUILD_PII_SCAN=<path to pii-scan.mjs> (shell profile) and run
-      # `lefthook install` once per clone. With GUILD_PII_SCAN set the hook never skips:
-      # a missing file or a missing node FAILS the commit, so a moved scanner is loud.
+      # The scanner it calls, scripts/pii-scan.mjs, is not part of this repository. A clone
+      # without it skips the check and says so on every commit, and so does a machine without
+      # node on PATH: a hook must not be what wedges a clone. Where the scanner exists, its
+      # exit code decides. Setting GUILD_PII_SCAN to a scanner path makes the hook strict: it
+      # runs that scanner, and a missing file or a missing node fails the commit.
       # tests/unit/lefthook-identity-hook.test.ts (guild-app) runs this block every way.
       run: |
         if [ -n "${GUILD_PII_SCAN:-}" ]; then

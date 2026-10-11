@@ -1,6 +1,5 @@
 # Label definitions for the dev board. Apply with:
 #   gh label create <name> --color <hex> --description "<desc>" --force
-# (or use github-label-sync — see .github/BOARD-SETUP.md)
 
 # ── type ──────────────────────────────────────────────
 - name: "type:task"
@@ -19,10 +18,10 @@
   description: "Not started"
 - name: "status:in-progress"
   color: "fbca04"
-  description: "Claude actively drafting"
+  description: "Work in progress"
 - name: "status:draft-ready"
   color: "0e8a16"
-  description: "Draft written, awaiting bigdev desktop review"
+  description: "Draft written, awaiting maintainer review"
 - name: "status:shipped"
   color: "5319e7"
   description: "Reviewed + tested + deployed by bigdev"
@@ -50,13 +49,13 @@
   color: "ededed"
   description: "Not scheduled"
 
-# ── who executes (one instance owns code per repo) ────
+# ── who executes ─────────────────────────────────────
 - name: "exec:mac"
   color: "0052cc"
-  description: "Mac Claude — code + build + deploy"
+  description: "Code, build and deploy work (maintainer-assigned)"
 - name: "exec:vps"
   color: "006b75"
-  description: "VPS Claude — research + design + draft only"
+  description: "Research, design and draft work only (maintainer-assigned)"
 - name: "exec:bigdev"
   color: "5319e7"
   description: "bigdev — decision / sign / deploy action"
