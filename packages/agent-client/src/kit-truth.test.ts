@@ -233,6 +233,27 @@ const RULES: Rule[] = [
       '// lost or stolen worker key costs at most the float plus one live bond.',
     ],
   },
+  {
+    // Not about money: kit 0.8.3 took internal bookkeeping out of the kit's comments — the
+    // dry-run placeholder accounts in guild-poster.ts and mint.ts, an audit-finding label in
+    // config.ts and the README, and two config.ts comments that pointed at the operator's private
+    // notes and an archived private repository. The kit is served to strangers verbatim, so an
+    // internal row or finding id, an account-history aside or a pointer into the operator's
+    // private files does not belong in it; a placeholder account is explained by how it was
+    // derived, nothing more. The teeth below are invented lines of the same shape, not the originals.
+    id: 'registry-narrative',
+    re: /\b(?:AG|RX|MW|DD|EV)-\d+\b|\bcompromised\s+seed\b|\bSEED-MIGRATION\b|\bCLAUDE\.md\b|\bguild-saas\b/i,
+    why: 'the kit carries no internal registry or finding ids (AG-/RX-/MW-/DD-/EV-n), no account-history asides and no pointers into the operator\'s private notes or archived private repositories; a dry-run placeholder is explained by its derivation alone',
+    teeth: [
+      '// public key (32 bytes of 0x01): no private key exists. Replaced RX-0 (the old\n// placeholder) on 2026-01-01.',
+      '// sends there. The previous placeholder sat on a compromised seed.',
+      '// see SEED-MIGRATION-2026-01-01 for why this literal changed',
+      ' * AG-0 (2026-01-01): this constant itself was the thing that drifted at the next cutover.',
+      '// the previous cutover\'s retired addresses (MW-0, 2026-01-01) with nothing catching it',
+      '  // (the operator\'s global CLAUDE.md "Example component"; == the app\'s EXAMPLE constant).',
+      '  // Example badge = deployed example_resource (guild-saas\n  // docs/EXAMPLE.md; the app\'s EXAMPLE constant).',
+    ],
+  },
 ];
 
 describe('kit truth — every pre-fix sentence trips its rule (the rules have teeth)', () => {

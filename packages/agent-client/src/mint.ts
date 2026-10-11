@@ -17,7 +17,7 @@
 //     its badge comes with the owner's Fund & activate transaction, which
 //     mints under the pairing's name and aborts whole if that name is taken —
 //     so a self-mint under the same name would leave the pairing unfundable.
-//     Pairing is off for the beta (ruling 2026-10-03): the Guild answers
+//     Pairing is off for the beta: the Guild answers
 //     AGENT_NOT_PAIRED to every account, so a badge-first agent — a key that
 //     was never paired — passes this check and mints for itself.
 //     Refused on the local record (offline, dry-run too) and, before signing,
@@ -66,8 +66,7 @@ const RESOLVE_INTERVAL_MS = 5_000;
 // poster-harness DRYRUN_ACCOUNT — validateAddress needs a real bech32m form).
 // Derived from a fixed dummy Ed25519 public key (32 bytes of 0x01): no private
 // key exists, so nobody can sign for it or take anything a mis-submitted preview
-// sends there. Replaced RX-10 (the old dApp definition on the compromised seed)
-// on 2026-09-29.
+// sends there.
 const DRYRUN_ACCOUNT = 'account_rdx128uxu4mkjgen9wxcl5a7lpyu4kcec6vkhsnj4u0kfrv4v6jvk9u5mw';
 
 /** What the Guild says about this key's account, for the paired-agent refusal. */

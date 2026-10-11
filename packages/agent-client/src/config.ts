@@ -31,13 +31,12 @@ export const NETWORK_ID = 1;
  * One constant, imported by both, is what makes that divergence impossible.
  * Repoint HERE at a cutover and the fuse moves with it.
  *
- * 🔴 AG-13 (2026-09-14): this constant itself was the thing that drifted at
- * the NEXT cutover — it still pointed at the retired PULL component (P2,
- * 2026-08-17) the day after Wave B went live 2026-09-13. The one-constant
- * design above stopped the fuse from silently disarming a second time (it
- * WAS still comparing against the constant, correctly — the constant was just
- * wrong), but nothing before this fix would have caught a wrong-but-consistent
- * address on its own. That is what `escrow-address-drift.test.ts` is for.
+ * 🔴 This constant itself drifted at the NEXT cutover (2026-09-14) — it still
+ * pointed at the retired PULL component (P2, 2026-08-17) the day after Wave B
+ * went live 2026-09-13. The one-constant design above stopped the fuse from
+ * silently disarming a second time (it WAS still comparing against the
+ * constant, correctly — the constant was just wrong), but nothing before this
+ * fix would have caught a wrong-but-consistent address on its own. That is what `escrow-address-drift.test.ts` is for.
  */
 export const LIVE_ESCROW_COMPONENT =
   'component_rdx1czka54tdxyva098x7djgdsqplt63n9qdglep47atkzpml45hp88yly';
@@ -173,7 +172,7 @@ export interface GuildClientConfig {
    * create time). Added for P1-19 (poster SDK) — no builder in this package
    * dereferenced a poster-side receipt before it, which is why
    * `GuildClientConfig` had no field for it (see
-   * escrow-address-drift.test.ts's AG-13 comment on `taskReceiptResource`).
+   * the `taskReceiptResource` note in escrow-address-drift.test.ts).
    */
   taskReceiptResource: string;
   /**
@@ -207,7 +206,7 @@ const DEFAULTS: GuildClientConfig = {
   // .env.example ships the override COMMENTED OUT — so a fresh agent inherited a
   // dead address, built valid PULL manifests, and every call reverted with
   // "task must be Open to claim". It lost no money; it simply could not work.
-  // ⚠️ AG-13 (2026-09-14): exactly this happened again at the NEXT cutover — this
+  // ⚠️ Exactly this happened again at the NEXT cutover (2026-09-14) — this
   // default still read the retired PULL component the day after Wave B shipped.
   // escrow-address-drift.test.ts now pins both this and claimReceiptResource
   // against docs/ESCROW-ADDRESSES.md and guild-app/src/lib/config.ts so a
@@ -228,11 +227,10 @@ const DEFAULTS: GuildClientConfig = {
   // here and fails at submit/withdraw rather than at claim. Move both together.
   claimReceiptResource: 'resource_rdx1n2z2rpjuwg2fu54qmcga862q7kl0qkp4rl9pvfh20z55utku84u9al',
   // BadgeManager (public_mint) — the live Member-badge manager component
-  // (global CLAUDE.md "Badge component"; == guild-app poster-harness MANAGER).
+  // (== guild-app/src/lib/config.ts BADGE_MANAGER and the poster-harness MANAGER).
   badgeManagerComponent: 'component_rdx1czexylvvm0q4uhwpjaqmlznj9sd3y2jnmmah6qug9lm9sfm3tyrtva',
-  // Guild Member badge = deployed worker_badge_resource (guild-saas
-  // docs/ESCROW-ADDRESSES.md; guild-app src/lib/config.ts BADGE_NFT). The
-  // non-agent worker claims + raises disputes with this badge.
+  // Guild Member badge = deployed worker_badge_resource (guild-app/src/lib/config.ts
+  // BADGE_NFT). The non-agent worker claims + raises disputes with this badge.
   workerBadgeResource: 'resource_rdx1n22rq94kh6ugwnrvc65m2pwhle3s6ez6j7702vkn2ctkaxemz4ppwl',
   // Wave B Task Receipt resource (minted by the Wave B component's
   // create_task; guild-app's ESCROW_RECEIPT_RESOURCE / docs/ESCROW-ADDRESSES.md
