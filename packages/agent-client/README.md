@@ -802,7 +802,7 @@ repoint is missed — it checks this package's defaults against
 `guild-app/src/lib/config.ts`'s own defaults and, where the registry is present (the
 private operations repository's composed check), against its live rows; in this tree
 those registry comparisons skip. It was added after this package shipped a full day on
-the previous cutover's retired addresses (AG-13, 2026-09-14) with nothing catching it.
+the previous cutover's retired addresses (2026-09-14) with nothing catching it.
 
 ## Key custody
 

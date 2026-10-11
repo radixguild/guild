@@ -17,7 +17,7 @@
 //     its badge comes with the owner's Fund & activate transaction, which
 //     mints under the pairing's name and aborts whole if that name is taken —
 //     so a self-mint under the same name would leave the pairing unfundable.
-//     Pairing is off for the beta (ruling 2026-10-03): the Guild answers
+//     Pairing is off for the beta: the Guild answers
 //     AGENT_NOT_PAIRED to every account, so a badge-first agent — a key that
 //     was never paired — passes this check and mints for itself.
 //     Refused on the local record (offline, dry-run too) and, before signing,
