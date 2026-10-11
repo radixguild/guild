@@ -463,7 +463,5 @@ Note: PR 2.4 dispute lifecycle is the largest. May be worth splitting into 2.4a 
 - [`docs/SCRYPTO-AUTH-CONVENTION.md`](SCRYPTO-AUTH-CONVENTION.md) — auth patterns applied throughout
 - `docs/architecture-2026-05/OPTIONS.md` Q4, Q5 — auth + custody recommendations
 - `docs/architecture-2026-05/ARCHITECTURE.md` §5 — blueprint topology + capability badges
-- Audit reports: `~/Projects/scrypto-audit-kit/audit-reports/*-2026-05-23.md` (guild-escrow, task-escrow-v3, radix-badge-manager, agent-badge-controller)
-- Ignition role-hierarchy patterns: `~/Projects/scrypto-audit-kit/references/ignition-patterns.md` §Pattern 1 (auth), §Pattern 5 (state machines), §Pattern 8 (pre/post invariants)
 - CaviarNine HyperStake patterns: per-task vault patterns + lazy NAV (KV-store keyed vault use is the relevant template)
 - Existing blueprints (cherry-pick sources): `guild-public/blueprints/escrow/`, `guild-public/badge-manager/scrypto/task-escrow-v3/`, `guild-public/badge-manager/scrypto/task-escrow/`

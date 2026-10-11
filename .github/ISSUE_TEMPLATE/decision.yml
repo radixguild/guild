@@ -1,5 +1,5 @@
 name: Decision
-description: A choice only bigdev can make. Blocks tasks until answered.
+description: A choice only the maintainer can make. Blocks the tasks that depend on it until answered.
 title: "[DECISION] "
 labels: ["type:decision", "status:needs-bigdev"]
 body:
@@ -15,7 +15,7 @@ body:
     id: question
     attributes:
       label: The question
-      description: State it so it's answerable from mobile in one line. No "see the file".
+      description: State it so it can be answered in one line, without opening a file.
     validations:
       required: true
   - type: textarea

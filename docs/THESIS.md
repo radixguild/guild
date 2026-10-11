@@ -1,4 +1,6 @@
 <!-- status: proposal
+     edited: 2026-10-11 (removal only, nothing re-checked: the operator-asserted rung-3 "correction"
+     and the notes built on it were unverified and have been removed.)
      verified: 2026-10-06 (the banner's first bullet ONLY: it said BUG-7 was still open. The PULL
      cutover of 2026-08-17 closed it; the bullet now says so, and says why "trustless" stays
      banned regardless. Nothing else re-checked.)
@@ -7,9 +9,7 @@
      primary roadmap page; Radix TVL ~$1.1-1.2M via a live DefiLlama query (matches this repo's
      figure); radixdlt-scrypto and babylon-node last-push dates read directly from the GitHub API
      (which FALSIFIED an agent claim that the node repo had been quiet over a year); and the
-     honest-copy rule set, which has no rule capable of catching an engine-scope claim. The rung-3
-     correction (Radix DAO engine custody, Foxie's Xi'an engine) is OPERATOR-ASSERTED and was NOT
-     publicly verifiable — flagged inline as needing a citation before it becomes copy. Nothing
+     honest-copy rule set, which has no rule capable of catching an engine-scope claim. Nothing
      else in this doc was re-derived; the 2026-08-15 corrections below still stand.
      Prior: 2026-08-15 (checked against origin/main, the live app copy rules and
      PROJECT-STATE.md. Reclassified live → proposal on this date, deliberately: the strategic
@@ -105,39 +105,9 @@ nobody's permission.
 |---|---|---|
 | 1 | **The Guild builds itself** | Already the decided plan — `THESIS.md` Phase 1 (*"Post Guild development tasks ON the Guild"*) and **P5-1** (bigdev 2026-08-04: *"the first 50 tasks we plan are building the Guild"*). The ladder gives it a reason, not a new plan. |
 | 2 | **The Guild dApp** | Live — radixguild.com. |
-| 3 | **Radix Engine / Scrypto layer** | ⚠️ See the correction below — this rung changed on 2026-08-23. |
+| 3 | **Radix Engine / Scrypto layer** | Unverified. Not for use as copy until a public source supports it. |
 | 4 | **Grows with the network** | Deliberately NOT "Xi'an by date" — see the dependency note. |
 | 5 | **Community + business projects** | Taxonomy already fixed (§9 task+project; `HOW-IT-WORKS.md` big engagements). |
-
-### 🔄 Rung 3 — corrected by the operator, 2026-08-23
-
-An earlier pass argued rung 3 was wrong on two grounds: that Radix Engine is core protocol built by
-RDX Works and not a community surface, and that `THESIS.md:44` calls Xi'an *"bringing a new Radix
-Engine"* — so engine-then-Xi'an double-counts one event as two rungs.
-
-**The operator corrected this with ecosystem knowledge not present in this repo:**
-- **The new Radix DAO will be the custodians of the engine, soon.**
-- **Xi'an has a whole new engine, being built by Foxie** (already referenced in this doc's Phase 1
-  as *"Foxie's proposal"*), **also Radix-DAO-managed when it launches.**
-
-If that holds, rung 3 is coherent after all — and for a better reason than originally stated. A
-DAO-custodied engine has a **real community contribution surface**, which is exactly what the Guild
-exists to coordinate. The rung stops being "we help build core protocol" (a claim we cannot back)
-and becomes "we coordinate contribution to an engine the community now custodies".
-
-⚠️ **STATUS: OPERATOR-ASSERTED, NOT PUBLICLY VERIFIED.** A same-day search of primary sources found
-no public statement of Radix DAO engine custodianship. That is not a contradiction — the operator
-tracks this ecosystem closely and the repo does not — but it means **this rung needs a public
-citation before it becomes user-facing copy.** Recorded as asserted, not laundered into fact.
-
-### 🔗 THE CONNECTION NOBODY HAD DRAWN: one external event unlocks two things
-
-**R2 — the publish decision — is already gated on "the RAC DAO goes live"** (sitting, 2026-08-22:
-*"leave this til the RAC DAO goes live — just keep building for now"*). Rung 3 is now gated on the
-Radix DAO taking engine custody. **If those are the same DAO, one external event unlocks both the
-publish decision and the positioning story.** Worth confirming they are the same body, because it
-turns two separate waits into one watch item — and makes "has the DAO gone live?" the single
-highest-value external signal this project tracks.
 
 ### 📉 Rung 4 — why it is "grows with the network" and not "Xi'an"
 
@@ -196,7 +166,7 @@ while the operator decides and funds — which is what the framework already has
 - Post Guild development tasks ON the Guild (dogfooding)
 - Invite 5-10 known community devs
 - Fund initial bounties with real XRD
-- Run first governance vote (Foxie's proposal)
+- Run first governance vote
 
 ### Phase 2: Xi'an Coordination (Month 2-3)
 - Post Xi'an migration tasks as bounties

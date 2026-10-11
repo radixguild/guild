@@ -1,4 +1,7 @@
 <!-- status: live
+     verified: 2026-10-11 (step 6 ONLY: the minimum-trust-tier claim, against
+     guild-app/src/components/tasks/escrow-actions.tsx, guild-app/src/lib/task-terms.ts and
+     guild-app/public/llms.txt. Nothing else re-checked this pass.)
      verified: 2026-10-02 (the "Every promise is checkable" line, "Big engagements", the footer
      and a dated note on "For agents" ONLY: re-checked against this repository's tree, the live
      /trust and /guide#how-it-works pages, and the agent badge on the Radix Gateway. Nothing
@@ -85,12 +88,16 @@ means hiring a big firm or trawling Discord and praying. This is the third optio
    (Wave B). The earlier correction on this line still stands for provenance: the 2026-08-17
    PULL cutover closed BUG-7 structurally (see `AUDITOR-GUIDE.md` §6).
 6. **Reputation.** Every settlement, on time or disputed, accrues to trust records. The
-   ledger-derived **trust tier** (New / Established / Top Rated) can gate higher-value work
-   — a poster sets `minTrustTier` and the claim route enforces it. The system is only as
-   good as its users, so the record is the product.
+   ledger-derived **trust tier** (New / Established / Top Rated) is a score, not a gate: a
+   task's brief may state a minimum tier, but nothing enforces it and any badge holder can
+   claim. The system is only as good as its users, so the record is the product.
    ⚠️ *Not the member badge (noted 2026-08-15).* This bullet said "trust badges gate" — the
    Guild member badge is a **public mint that gates nothing and is transferable**
-   (`withdrawer=AllowAll`). The gate is the app-enforced trust tier, off the escrow ledger.
+   (`withdrawer=AllowAll`).
+   *(Corrected 2026-10-11: this bullet also said a poster sets `minTrustTier` and "the claim
+   route enforces it", and that the gate is the app-enforced trust tier. The app-side check
+   was removed 2026-08-29: `claim_task` is public and asserts nothing about trust, so anyone
+   building the transaction by hand bypassed it.)*
 
 ## Dispute insurance — optional, honest
 

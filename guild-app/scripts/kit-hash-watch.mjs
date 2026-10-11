@@ -8,10 +8,10 @@
 // WHY (docs/design/bring-your-agent.md §2.4 "Integrity — owed before S1"): the
 // one-liner on /agents runs whatever https://radixguild.com/kit/agent.tgz IS at
 // that moment, and a key made by a tampered kit is a stolen key. The deploy
-// (scripts/deploy.sh → scripts/pack-kit.sh) writes /opt/guild-saas/kit/agent.tgz
-// and agent.tgz.sha256 in the same atomic swap as the app build, and the app it
-// builds is meant to print that hash on /agents beside the line (the kit card,
-// src/components/agents/kit-card.tsx — PR #802; a build without it makes the page
+// (the deploy script → scripts/pack-kit.sh) writes agent.tgz and agent.tgz.sha256 into the
+// kit directory (DEFAULT_KIT_DIR in lib/kit-hash.mjs) in the same atomic swap as the app
+// build, and the app it builds is meant to print that hash on /agents beside the line (the
+// kit card, src/components/agents/kit-card.tsx — PR #802; a build without it makes the page
 // check below report "does not print", the honest state). This script is the third
 // leg: every 30 minutes it fetches what the site actually serves and compares.
 //
@@ -62,10 +62,9 @@
 // finding, reported through the same rail, because "could not check" must never
 // look like "checked and fine".
 //
-// Cron (documented in CLAUDE.md "Production / SSH (Guild VPS)" beside the other
-// watchers; install with the S1 deploy — before it, the kit is not served and
-// every run would page "404"):
-//   */30 * * * * cd /opt/guild-saas/guild-app && /root/.bun/bin/bun scripts/kit-hash-watch.mjs >> /var/log/guild-kit-hash.log 2>&1
+// Cron (install with the S1 deploy — before it, the kit is not served and every run
+// would page "404"), every 30 minutes from the app directory, appending to a log:
+//   */30 * * * * cd <app dir> && bun scripts/kit-hash-watch.mjs >> <log file> 2>&1
 //
 // Runbook for a 🔴 from this script: docs/INCIDENTS.md 4.8 "The kit tarball may
 // have been swapped".

@@ -49,11 +49,11 @@ body:
   - type: dropdown
     id: instance
     attributes:
-      label: Who executes
-      description: One instance owns code per repo (workflow rule).
+      label: Who will do the work
+      description: Say whether you plan to send a pull request for this or are asking the maintainer to take it.
       options:
-        - Mac Claude (code + build + deploy)
-        - VPS Claude (research + design + draft only)
-        - bigdev (decision / sign / deploy action)
+        - I plan to open a pull request
+        - The maintainer (bigdev)
+        - Not decided yet
     validations:
       required: true

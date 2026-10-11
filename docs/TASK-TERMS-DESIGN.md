@@ -1,4 +1,8 @@
 <!-- status: live
+     verified: 2026-10-11 (the minimum-trust-tier claim ONLY (top note, setting 18, §4.1 item 5, §6
+     row C), against guild-app/src/components/tasks/escrow-actions.tsx,
+     guild-app/src/lib/task-terms.ts, guild-app/src/app/tasks/create/page.tsx and
+     guild-app/public/llms.txt. Nothing else re-checked.)
      verified: 2026-10-02 (the "Operational notes from the live test" bullet ONLY, against
      guild-app/src/lib/pr-verify.ts and the lint job's state on main. Nothing else re-checked.)
      verified: 2026-08-15 (§2 landmine, §4 tiers and §6 delivery plan re-checked against the
@@ -11,9 +15,12 @@
 > live, and the §8b re-instantiation executed on 2026-06-14. Verified in tree: `lib/trust.ts`
 > exports exactly the `new` / `established` / `top_rated` ladder §4 specifies, with the
 > boundary thresholds as written; `db/queries/trust.ts` derives the stats from the escrow
-> ledger; setting 18 shipped as `terms.minTrustTier`, enforced at claim
-> (`escrow-actions.tsx:358`). §4.1's open verification — "confirm dispute ledger rows let us
-> attribute the raiser" — is **resolved**: attribution is chain-derived from
+> ledger; setting 18 shipped as `terms.minTrustTier`. *(Corrected 2026-10-11: this said
+> "enforced at claim (`escrow-actions.tsx:358`)". That check was removed 2026-08-29, because
+> `claim_task` is public and asserts nothing about trust, so a check in the app alone stopped
+> nobody. `minTrustTier` survives only as a stated preference in the brief that nothing
+> enforces, and the create form no longer offers it.)* §4.1's open verification — "confirm
+> dispute ledger rows let us attribute the raiser" — is **resolved**: attribution is chain-derived from
 > `DisputeRaisedEvent.raised_by`, not from a ledger sender field. What is still LIVE guidance
 > here is **§2's canonical-brief-v2 landmine** and the two-layer enforced/committed model —
 > read those before touching the hash.
@@ -88,7 +95,7 @@ review window was machine-enforced.
 | 15 | License / IP assignment (MIT / assigned-on-payment / …) | Committed | Now |
 | 16 | Communication channel (TG handle / GH issue thread) | Committed | Now |
 | 17 | Who may claim: humans / agents / both | App-gated now | Agent badge enforces at migration |
-| 18 | Min trust tier to claim | App-enforced | After PR C |
+| 18 | Min trust tier to claim | Committed only — the app check was removed 2026-08-29; nothing enforces it | After PR C; the form no longer offers it |
 | 19 | Project assignment | App | With PR B |
 | 20 | Milestone split (generate N linked tasks) | App | Projects v2 — escrow stays one-task-one-payout; the project is the milestone container |
 
@@ -162,7 +169,9 @@ agents — an agent earns the same record. On-chain attestation stays the Tier-3
    enforces it server-side fail-closed (like the badge gate, #123). NOTE: this extends the
    canonical v2 terms block — additive key, absent-key briefs hash identically, but
    `canonicalTermsBlock` + the pinned vector test must be updated together (§2 landmine
-   rules apply).
+   rules apply). *Not built as planned (2026-10-11): no claim route enforces it, server-side
+   or in the app. The only check, in the claim button, was removed 2026-08-29 (see the note at
+   the top); the key remains in the hashed terms block as a stated preference.*
 6. **Out of scope for C:** on-chain attestation (Tier-3 bet), decay, achievement badges.
 
 ## 5. Projects (PR B)
@@ -183,7 +192,7 @@ agents — an agent earns the same record. On-chain attestation stays the Tier-3
 |---|---|---|
 | **A — terms engine** | Remove template gallery; `terms` jsonb on tasks + shared zod schema (client + API); step-2 redesign per §2; contract render + canonical brief v2; terms in task detail + API | Now (app-only) |
 | **B — projects** | Schema + tab + project page kanban + wizard picker | After A |
-| **C — trust tiers** | Ledger-derived stats + chips + leaderboard columns + min-tier gate (18) | After A (parallel to B) |
+| **C — trust tiers** | Ledger-derived stats + chips + leaderboard columns + min-tier gate (18; the gate was removed 2026-08-29) | After A (parallel to B) |
 | **Migration window** | Re-instantiate: arbiter badge + SplitEvenly default, token whitelist (xUSDC/xUSDT), agent badge, self-claim assert, per-task submit deadline | Already planned between pilot and open-up |
 
 Form infra: react-hook-form + zod (Phase A of the ux-simplification doc) lands with PR A.

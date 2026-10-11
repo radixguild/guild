@@ -1,4 +1,8 @@
 <!-- status: live
+     verified: 2026-10-11 (SCOPED: "The umbrella" relabelled so the cooperative, its treasury and
+     its revenue share read as roadmap, against README.md, STATE.md and the absence of any
+     GuildRegistry / GuildTreasury / GuildSettings / TaskFundingCurve code in this tree; §3's
+     pointer to dispute-resolution.md §0 re-pointed. Nothing else re-checked.)
      verified: 2026-10-06 (one phrase: §3's "Problem it solves" no longer opens "Trustless
      payment" — banned copy (honest-copy.mjs), because a single operator-held arbiter rules
      disputes and the owner badge can change settings. Nothing else re-checked.)
@@ -34,7 +38,7 @@
 
 # Guild — Project Components
 
-> Per-component clarity reference. Read this before starting a new engineering session — it explains *what each thing is*, *how it works*, and *what problem it solves* in a single place, so future sessions don't have to re-derive the picture from twelve different docs.
+> Per-component reference: *what each thing is*, *how it works*, and *what problem it solves*, in a single place.
 >
 > Maintained by: bigdevxrd. Canonical product vision: [GUILD-VISION-2026.md](./GUILD-VISION-2026.md). Architectural foundations: [decisions/ADR-001-architectural-foundations.md](./decisions/ADR-001-architectural-foundations.md). Deploy gates: [decisions/ADR-002-escrow-deploy-and-integration-gates.md](./decisions/ADR-002-escrow-deploy-and-integration-gates.md).
 
@@ -42,16 +46,18 @@
 
 ## The umbrella
 
-**Guild is an on-chain developer cooperative on Radix.** Not a bounty board, not a DAO with a token, not a "marketplace" in the gig-economy sense. The mental model is **co-op first**: members co-own the infrastructure they build, earn reputation through contribution, share in revenue when the components they built get used, and collectively govern every parameter that shapes the system.
+> **Roadmap, not the present.** Today the Guild is a task marketplace on Radix mainnet with an on-chain escrow: one pseudonymous operator, no company, no token and no treasury ([`STATE.md`](../STATE.md) says what is currently true). The cooperative described in this section is the intended direction. The four components it depends on (GuildRegistry, GuildTreasury, GuildSettings, TaskFundingCurve) do not exist; see "Planned but not built" below.
 
-The marketplace mechanics (post task → claim → ship → get paid) are how members exchange work — but the **cooperative is the model** ([GUILD-VISION-2026.md](./GUILD-VISION-2026.md)):
+**The intended model is an on-chain developer cooperative on Radix.** Not a bounty board, not a DAO with a token. The mental model is **co-op first**: members would co-own the infrastructure they build, earn reputation through contribution, share in revenue when the components they built get used, and collectively govern every parameter that shapes the system.
+
+The marketplace mechanics (post task → claim → ship → get paid) are how members exchange work today, and the **cooperative is the model the product is meant to grow into** ([GUILD-VISION-2026.md](./GUILD-VISION-2026.md)):
 
 - **Reputation is the membership currency.** No governance token, ever ([THESIS.md](./THESIS.md), Design Maxim 1).
-- **Revenue share over winner-take-all.** Royalties on every component the cooperative ships flow to GuildTreasury, then to contributors proportional to reputation-weighted contribution (Design Maxim 5).
-- **Co-ownership of infrastructure.** Members fund tasks through bonding curves and collectively own the components they crowdfund into existence.
+- **Revenue share over winner-take-all (roadmap).** Royalties on every component the cooperative ships would flow to GuildTreasury, then to contributors proportional to reputation-weighted contribution (Design Maxim 5). No treasury exists and nothing is shared today.
+- **Co-ownership of infrastructure (roadmap).** Members would fund tasks through bonding curves and collectively own the components they crowdfund into existence. TaskFundingCurve does not exist.
 - **Agents are members.** Humans and AI agents use the same primitives (badges, escrow, reputation). No special-case agent mode (Design Maxim 6).
 
-The flywheel:
+The intended flywheel (a design, not a running system):
 ```
 Join free → earn reputation through tasks → reputation unlocks revenue share
   → royalties on shipped components → fund new tasks via bonding curves
@@ -70,7 +76,7 @@ The seven design maxims ([GUILD-VISION-2026.md:238](./GUILD-VISION-2026.md)) —
 
 **How it works.** User connects wallet → API routes at `/api/v1/*` mediate between UI and Postgres → manifest builders in [lib/manifests.ts](../guild-app/src/lib/manifests.ts) construct on-chain transactions that the user signs in their wallet. Per ADR-002, the DB is *downstream* of chain state: every status change that affects funds (claim, submit, approve, dispute) must originate from an on-chain transaction; the DB is a cache, never the source of truth.
 
-**Problem it solves.** A human-friendly surface for the cooperative's day-to-day work. Without it, every interaction is a hand-written transaction manifest. With it, members can browse work, post bounties, and ship without leaving the browser.
+**Problem it solves.** A human-friendly surface for the marketplace's day-to-day work. Without it, every interaction is a hand-written transaction manifest. With it, members can browse work, post bounties, and ship without leaving the browser.
 
 ⛔ **Corrected 2026-08-15 — the status sentence here was FALSE.** It read: *"Current status: ~10% functional — the UI exists but the on-chain wires don't connect yet. DPSK is fixing this as Sprint 1.5; ~85% functional after S1.5 + M-Deploy."* The wires connect. **radixguild.com is live and the human-to-human money path is mainnet-proven end-to-end** — connect (verified dApp, Dev Mode OFF) → mint → post → fund → claim → submit → approve → release, chain-verified with value conserved, DB `paid` matching chain `Released`, drift 0. Sprint 1.5 and M-Deploy are long done. Honest residue, so this doesn't over-correct in the other direction: the **dispute UI is compiled OFF** in production and gated off by `scripts/launch-check.sh` (the deploy gate, kept in the private operations repository). ⚠️ *Corrected 2026-08-23:* this sentence used to also say "BUG-7 is open (settlement returns funds via the caller's manifest…)" and "the PULL redesign has not cut over" — both were true 2026-08-15 and are not now. **The PULL cutover happened 2026-08-17** (`component_rdx1cz468e…`); settlement no longer routes through the caller at all, and BUG-7's mechanism is closed structurally (see `AUDITOR-GUIDE.md` §6). ⚠️ *Corrected again 2026-08-29:* "the dispute UI is compiled OFF in production and gated off by `scripts/launch-check.sh`" is now FALSE in both halves. **Disputes shipped LIVE 2026-08-29** (PR #465) and the gate was **INVERTED** — a disputes-OFF build now fails the deploy. There is no dispute-UI residue left to report.
 
@@ -105,7 +111,7 @@ checks) — and sends them to the dashboard, where money moves.
 
 **What it is.** ~3,500-line Scrypto blueprint ([lib.rs](../escrow/scrypto/guild-marketplace-escrow/src/lib.rs)); since 2026-09-15 the same crate also carries the NftSwap blueprint (`src/nft_swap.rs`). Singleton component (one deploy, all tasks routed through it). Multi-token, dual-vault (reward + insurance), pluggable arbiter, agent-aware timers, `claim_bond` + expire / cancel-after-claim lifecycle, three dispute rulings, time-gated auto-resolve ([escrow/README.md](../escrow/README.md), [ESCROW-DESIGN.md](./ESCROW-DESIGN.md)).
 
-**How it works.** `instantiate` mints an owner badge and a separate royalty-admin badge, returns both to the deployer, and takes 15 positional arguments: the worker-, arbiter- and optional agent-badge resources plus 12 settings ([lib.rs:701](../escrow/scrypto/guild-marketplace-escrow/src/lib.rs#L701)). Posters call `create_task` with reward + insurance; workers `claim_task` proving guild-badge ownership; either party can `raise_dispute`; the arbiter-badge holder can `resolve_dispute` and take up to `arbiter_fee_pct × insurance` ([lib.rs:2273](../escrow/scrypto/guild-marketplace-escrow/src/lib.rs#L2273)). The arbiter role was designed as a *public bounty market* — third-party members picking up disputes for the insurance fee — and that is not what runs: ⚠️ *(corrected 2026-10-02)* the live arbiter badge has a supply of one, cannot be withdrawn from its account, and is held by an account the operator controls, and the arbiter fee is 0 on every task the app funds. See [architecture/dispute-resolution.md](./architecture/dispute-resolution.md): its §0 is how a dispute is resolved today; the rest is the original four-tier model and the qualified-arbitrator pool design.
+**How it works.** `instantiate` mints an owner badge and a separate royalty-admin badge, returns both to the deployer, and takes 15 positional arguments: the worker-, arbiter- and optional agent-badge resources plus 12 settings ([lib.rs:701](../escrow/scrypto/guild-marketplace-escrow/src/lib.rs#L701)). Posters call `create_task` with reward + insurance; workers `claim_task` proving guild-badge ownership; either party can `raise_dispute`; the arbiter-badge holder can `resolve_dispute` and take up to `arbiter_fee_pct × insurance` ([lib.rs:2273](../escrow/scrypto/guild-marketplace-escrow/src/lib.rs#L2273)). The arbiter role was designed as a *public bounty market* — third-party members picking up disputes for the insurance fee — and that is not what runs: ⚠️ *(corrected 2026-10-02)* the live arbiter badge has a supply of one, cannot be withdrawn from its account, and is held by an account the operator controls, and the arbiter fee is 0 on every task the app funds. See [architecture/dispute-resolution.md](./architecture/dispute-resolution.md): its §4 lists what is live today; §1-§3 are the original four-tier model and the qualified-arbitrator pool design, which were never built.
 
 **Problem it solves.** Payment between strangers who can't see each other's deliverables until after the money's locked. Without escrow, every task is "ship and pray it pays" or "pay and pray it ships." The insurance vault was also designed to **fund dispute resolution as a market** rather than as a privileged operator role — anyone with the arbiter badge earning fees by resolving disputes well; today there is one arbiter badge, the operator's, and the fee is 0 on app-funded tasks (above). **Current status (re-checked 2026-10-02): live as Wave B, `component_rdx1czka5…hp88yly`, since 2026-09-13.** It was built from this crate before the NftSwap module was added on 2026-09-15, and the escrow's own code is unchanged since (that change added only `pub mod nft_swap;` to `lib.rs`). Earlier components are retired: v1 `…cz9mh49` (2026-06-03), vNext `…cr690h` (2026-06-14) and the first pull-settlement component `…akd82f` (2026-08-17 → 2026-09-13). The suite is **101 `#[test]`s** in `tests/lib.rs` plus 30 in `tests/nft_swap.rs`, none `#[ignore]`d; "passing" is deliberately not asserted here, because ledger tests run in CI. The live addresses are the defaults in `guild-app/src/lib/config.ts`. ⚠️ *(Corrected 2026-10-02: until today this line said vNext was live and that `main` was a pull-settlement rewrite awaiting its cutover. That cutover happened on 2026-08-17, and Wave B replaced its component on 2026-09-13.)*
 
@@ -115,7 +121,7 @@ checks) — and sends them to the dashboard, where money moves.
 
 **How it works.** User clicks "mint" on the dashboard or types `/mint` in the bot → signs the `public_mint` manifest → badge NFT appears in wallet. Tier and XP update via admin-badge-gated `update_tier` / `update_xp` calls. The marketplace escrow gates `claim_task` on this badge resource ([lib.rs](../escrow/scrypto/guild-marketplace-escrow/src/lib.rs)) — you need a badge to take work, but `public_mint` presents no proof and takes only a username, so anyone can mint one for the network fee and one person can mint many. The badge is **transferable, permanently**. Chain-verified 2026-07-31 on `resource_rdx1n22rq94kh6ugwnrvc65m...`: `withdrawer` and `depositor` are `AllowAll` and `recaller` is `DenyAll`, with **every** `*_updater` role `DenyAll` — so this resource can never be made soulbound, and a badge can never be clawed back either. A steward or elder badge, with its accrued XP, can be sent or sold to any account. Soulbound reputation would need a new resource plus a holder migration.
 
-**Problem it solves.** A portable, on-chain anchor for membership identity. Reputation is the cooperative's currency (per Design Maxim 1); without an on-chain anchor for it, you're back to off-chain follower counts and trust-me-bro. The anchor is weaker than the maxim assumes, though: because the badge is transferable (above), reputation is non-transferable **by guild policy only**, not by the resource's role assignments — the same caveat the dashboard already gives cold users at [about/page.tsx:53](../guild-app/src/app/about/page.tsx). The badge is the same primitive humans and agents use ([THESIS.md](./THESIS.md) "Agents are members").
+**Problem it solves.** A portable, on-chain anchor for membership identity. Reputation is meant to be the cooperative's currency (per Design Maxim 1); without an on-chain anchor for it, you're back to off-chain follower counts and trust-me-bro. The anchor is weaker than the maxim assumes, though: because the badge is transferable (above), reputation is non-transferable **by guild policy only**, not by the resource's role assignments — the same caveat the dashboard already gives cold users at [about/page.tsx:53](../guild-app/src/app/about/page.tsx). The badge is the same primitive humans and agents use ([THESIS.md](./THESIS.md) "Agents are members").
 
 ### 5. Agent client — `packages/agent-client/`
 
@@ -123,7 +129,7 @@ checks) — and sends them to the dashboard, where money moves.
 
 **How it works.** Headless ROLA auth — the agent signs the server's challenge locally with its ed25519 key (no API key, no Bearer token, no wallet popup) for a JWT session. The on-chain legs (`claimTaskOnChain` / `submitTaskOnChain` / `expireClaimOnChain` / dispute) build real Radix manifests, sign with the agent's derived key, submit to the Gateway, and confirm — keeping the escrow ledger in parity with the chain. HD fleet derivation (`bun run derive`) mints a capped agent account per index from one seed. The agent brings its **own** work function (`GUILD_DOWORK_CMD`) — the client is framework-agnostic and ships no agent.
 
-**Problem it solves.** A first-class, self-custody path for agents into the cooperative — the same escrow + badge primitives humans use, driven programmatically, with the money-path manifests guarded against drift. "Agents are members" made concrete. First-mover positioning: **Radix has near-zero agent-client coverage today** ([GUILD-VISION-2026.md:195](./GUILD-VISION-2026.md)).
+**Problem it solves.** A first-class, self-custody path for agents into the marketplace — the same escrow + badge primitives humans use, driven programmatically, with the money-path manifests guarded against drift. "Agents are members" made concrete. First-mover positioning: **Radix has near-zero agent-client coverage today** ([GUILD-VISION-2026.md:195](./GUILD-VISION-2026.md)).
 
 ---
 
@@ -169,14 +175,14 @@ badge's on-chain supply has been 1 since 2026-09-14.)*
 
 ---
 
-## Two surfaces, one cooperative
+## Two surfaces
 
 The bot and the dashboard are not redundant — they're complementary:
 
 - **Bot is the front door.** Setup help, badge checks, support, mint links and the optional community votes (proposals, polls, temperature checks); the dice game is closed. Lives where members already are (Telegram). No wallet required for read paths.
 - **Dashboard is the money entry.** Posting tasks, signing escrow transactions, browsing leaderboard, managing profile. Anything that touches XRD lives here — the wallet connect flow is the gate.
 
-A member's full cooperative experience uses both. Onboarding starts in the bot (`/start → /register → /mint`); paid work lives on the dashboard. Sprint 2's bot Postgres cutover (`guild-public/bot/db-pg.js`, not folded into this repo) is the first step in making these two surfaces share state instead of duplicating it.
+A member's full experience uses both. Onboarding starts in the bot (`/start → /register → /mint`); paid work lives on the dashboard. Sprint 2's bot Postgres cutover (`guild-public/bot/db-pg.js`, not folded into this repo) is the first step in making these two surfaces share state instead of duplicating it.
 
 ---
 
@@ -184,7 +190,7 @@ A member's full cooperative experience uses both. Onboarding starts in the bot (
 
 | If you need to… | Read |
 |---|---|
-| Refresh on the cooperative model and design maxims | [GUILD-VISION-2026.md](./GUILD-VISION-2026.md) |
+| Refresh on the intended cooperative model and design maxims | [GUILD-VISION-2026.md](./GUILD-VISION-2026.md) |
 | Understand the cross-component data flow | [architecture/system-map.md](./architecture/system-map.md) |
 | Understand dispute resolution model | [architecture/dispute-resolution.md](./architecture/dispute-resolution.md) |
 | Pick up where the sprint plan left off | [decisions/ADR-001-architectural-foundations.md](./decisions/ADR-001-architectural-foundations.md) |
@@ -193,4 +199,3 @@ A member's full cooperative experience uses both. Onboarding starts in the bot (
 | Find on-chain addresses | [`guild-app/src/lib/config.ts`](../guild-app/src/lib/config.ts) — the defaults the live site uses (the operator's INFRASTRUCTURE.md and HANDOVER.md are kept in the private operations repository) |
 | Onboard a new contributor | [CONTRIBUTING.md](../CONTRIBUTING.md) (still the canonical onboarding surface) |
 | Build an agent | [packages/agent-client/README.md](../packages/agent-client/README.md) |
-| Resume Archon's contributions | Archon commits via PR labeled `archon`. Workflow rationale lives in the operator's private notes, not in this repo. |
