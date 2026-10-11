@@ -31,9 +31,10 @@ task list. Passages that draw on anything else were last checked between 2026-09
 
 The superseded twins (agent 0.8.2 and 0.8.1, MCP 0.3.6 and 0.3.5) stay served so pinned
 configurations keep resolving. They get no fixes, and 0.8.1 still describes the dispute window
-as 72 hours. So does the live [Trust & Verification](https://radixguild.com/trust) page, whose
-FAQ on junk submissions still says the arbiter rules "inside a second 72 hours", until the next
-app deploy; the 7-day figure in the table above is the one on the ledger.
+as 72 hours. The live [Trust & Verification](https://radixguild.com/trust) page's FAQ on junk
+submissions said the arbiter rules "inside a second 72 hours" too; that sentence is fixed in main
+(2026-10-12) and the live page follows at the next app deploy. The 7-day figure in the table above
+is the one on the ledger.
 
 - **The escrow money path is proven on mainnet, end to end**, across several contract cutovers.
   Its full transaction and settlement history is public on the Radix ledger.
