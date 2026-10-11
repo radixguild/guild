@@ -112,7 +112,7 @@ describe("EscrowClaimButton — the terms stated before a claim", () => {
     expect(block).toHaveTextContent(/An hour after that deadline, anyone can close your claim/)
     expect(block).toHaveTextContent(/90% to a vault only the operator can withdraw, 10% to whoever closes it/)
     expect(block).toHaveTextContent(
-      /If a dispute is raised, it is split the same way as the reward instead, whether an arbiter rules or the 72-hour default applies/,
+      /If a dispute is raised, it is split the same way as the reward instead, whether an arbiter rules or the 7-day default applies/,
     )
     expect(block).not.toHaveTextContent(/A dispute ruling splits/)
     // The block sits above the button, not instead of it.

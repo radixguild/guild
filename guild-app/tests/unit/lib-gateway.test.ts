@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { fetchEntityDetails, fetchNftData, parseBadgeFields, loadUserBadge, loadUserBadgeResult, loadAllBadgesStrict, holdsFungibleBadgeResult, findClaimReceiptId, holdsClaimReceipt, verifyEscrowEvent, readEscrowTaskCreated, readDisputeRaised, readDisputeEvidenceCommitment, readDisputeAutoResolved, readEscrowTaskState, readEscrowTaskInfo, readOnChainClaimInfo, outstandingForParty } from '@/lib/gateway'
+import { fetchEntityDetails, fetchNftData, parseBadgeFields, loadUserBadge, loadUserBadgeResult, loadAllBadgesStrict, holdsFungibleBadgeResult, findClaimReceiptId, holdsClaimReceipt, verifyEscrowEvent, readEscrowTaskCreated, readDisputeRaised, readDisputeEvidenceCommitment, readDisputeAutoResolved, readEscrowTaskState, readEscrowTaskInfo, parseEscrowTaskInfo, readOnChainClaimInfo, outstandingForParty } from '@/lib/gateway'
 import { GATEWAY, SCHEMAS } from '@/lib/constants'
 
 describe('lib/gateway', () => {
@@ -1079,6 +1079,8 @@ describe('lib/gateway', () => {
         reviewDeadline: null,
         disputeRaisedBy: null,
         disputedAt: null,
+        disputeAutoResolveSecs: null,
+        disputeAutoResolveDefault: null,
         ...PRE_PULL,
         ...NO_REWARD,
       })
@@ -1101,6 +1103,8 @@ describe('lib/gateway', () => {
         reviewDeadline: new Date(1783428720 * 1000),
         disputeRaisedBy: null,
         disputedAt: null,
+        disputeAutoResolveSecs: null,
+        disputeAutoResolveDefault: null,
         ...PRE_PULL,
         ...NO_REWARD,
       })
@@ -1146,6 +1150,8 @@ describe('lib/gateway', () => {
         reviewDeadline: null,
         disputeRaisedBy: 'worker',
         disputedAt: null,
+        disputeAutoResolveSecs: null,
+        disputeAutoResolveDefault: null,
         ...PRE_PULL,
         ...NO_REWARD,
       })
@@ -1182,6 +1188,102 @@ describe('lib/gateway', () => {
       expect(info?.disputedAt).toBeNull()
     })
 
+    // ── The dispute terms raise_dispute PINS (lib.rs TaskInfo
+    // dispute_auto_resolve_secs: Option<u64>, dispute_auto_resolve_default:
+    // Option<AutoResolveDefault>). auto_resolve_dispute reads these in
+    // preference to the component's live config, so once the owner raised the
+    // live window 72h → 7 days (2026-10-11) the per-task value is the only
+    // correct deadline for a dispute raised before that. Shapes below are the
+    // Gateway's programmatic_json for an Option<u64> and an Option<enum>,
+    // variant_id included as the Gateway serves it.
+    const pinnedSecsSome = (secs: string) => ({
+      field_name: 'dispute_auto_resolve_secs', kind: 'Enum', type_name: 'Option',
+      variant_id: '1', variant_name: 'Some',
+      fields: [{ kind: 'U64', value: secs }],
+    })
+    const pinnedDefaultSome = (variant: string, variant_id = '1') => ({
+      field_name: 'dispute_auto_resolve_default', kind: 'Enum', type_name: 'Option',
+      variant_id: '1', variant_name: 'Some',
+      fields: [{ kind: 'Enum', type_name: 'AutoResolveDefault', variant_id, variant_name: variant, fields: [] }],
+    })
+    const pinnedNone = (field_name: string) =>
+      ({ field_name, kind: 'Enum', type_name: 'Option', variant_id: '0', variant_name: 'None', fields: [] })
+    const disputedWith = (...pinned: unknown[]) => [
+      { field_name: 'state', kind: 'Enum', type_name: 'TaskState', variant_id: '3', variant_name: 'Disputed', fields: [] },
+      noneOpt('claim_deadline'),
+      disputedAtSome(1791763200),
+      disputeRaisedBySome('Worker'),
+      ...pinned,
+    ]
+
+    it('reads the window and default PINNED at raise (Some, Some) — 72h on a dispute raised before the owner change', async () => {
+      ok(detailsResp(KV))
+      ok(kvInfoResp(disputedWith(pinnedSecsSome('259200'), pinnedDefaultSome('SplitEvenly'))))
+      const info = await readEscrowTaskInfo(21, 'component_rdx1pinnedA')
+      expect(info?.disputeAutoResolveSecs).toBe(259200)
+      expect(info?.disputeAutoResolveDefault).toBe('SplitEvenly')
+      expect(info?.disputedAt).toEqual(new Date(1791763200 * 1000))
+      // The pin costs no extra round-trip: same entry as everything else.
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+    })
+
+    it('reads a 7-day pin and the FavorNonRaiser variant the app type does not list', async () => {
+      ok(detailsResp(KV))
+      ok(kvInfoResp(disputedWith(pinnedSecsSome('604800'), pinnedDefaultSome('FavorNonRaiser', '3'))))
+      const info = await readEscrowTaskInfo(22, 'component_rdx1pinnedB')
+      expect(info?.disputeAutoResolveSecs).toBe(604800)
+      expect(info?.disputeAutoResolveDefault).toBe('FavorNonRaiser')
+    })
+
+    it('reads null for both on a task never disputed (None, None) — never the component value', async () => {
+      ok(detailsResp(KV))
+      ok(kvInfoResp([
+        { field_name: 'state', kind: 'Enum', type_name: 'TaskState', variant_id: '2', variant_name: 'Submitted', fields: [] },
+        noneOpt('claim_deadline'),
+        noneOpt('dispute_raised_by'),
+        pinnedNone('dispute_auto_resolve_secs'),
+        pinnedNone('dispute_auto_resolve_default'),
+      ]))
+      const info = await readEscrowTaskInfo(23, 'component_rdx1pinnedC')
+      expect(info?.state).toBe('Submitted')
+      expect(info?.disputeAutoResolveSecs).toBeNull()
+      expect(info?.disputeAutoResolveDefault).toBeNull()
+    })
+
+    it('reads null for both when the fields are ABSENT (a task disputed before the pin shipped)', async () => {
+      ok(detailsResp(KV))
+      ok(kvInfoResp(disputedWith()))
+      const info = await readEscrowTaskInfo(24, 'component_rdx1pinnedD')
+      expect(info?.state).toBe('Disputed')
+      expect(info?.disputeAutoResolveSecs).toBeNull()
+      expect(info?.disputeAutoResolveDefault).toBeNull()
+    })
+
+    it('fails closed on an unreadable pin: zero, negative, non-integer, unsafe or unknown-variant all read null', async () => {
+      for (const [i, secs] of ['0', '-1', '259200.5', 'abc', '99999999999999999999', ''].entries()) {
+        ok(detailsResp(KV))
+        ok(kvInfoResp(disputedWith(pinnedSecsSome(secs), pinnedDefaultSome('SplitEvenly'))))
+        const info = await readEscrowTaskInfo(30 + i, `component_rdx1pinnedBadSecs${i}`)
+        expect(info?.state, secs).toBe('Disputed')
+        expect(info?.disputeAutoResolveSecs, secs).toBeNull()
+        // A bad window does not poison the other pinned field.
+        expect(info?.disputeAutoResolveDefault, secs).toBe('SplitEvenly')
+      }
+      ok(detailsResp(KV))
+      ok(kvInfoResp(disputedWith(pinnedSecsSome('604800'), pinnedDefaultSome('WinnerTakesAll'))))
+      const info = await readEscrowTaskInfo(40, 'component_rdx1pinnedBadDefault')
+      expect(info?.disputeAutoResolveSecs).toBe(604800)
+      expect(info?.disputeAutoResolveDefault).toBeNull()
+    })
+
+    it('parseEscrowTaskInfo is the same parse, for a batched entry', () => {
+      const info = parseEscrowTaskInfo(disputedWith(pinnedSecsSome('259200'), pinnedDefaultSome('SplitEvenly')))
+      expect(info?.state).toBe('Disputed')
+      expect(info?.disputeAutoResolveSecs).toBe(259200)
+      expect(parseEscrowTaskInfo(undefined)).toBeNull()
+      expect(parseEscrowTaskInfo([{ field_name: 'state', variant_name: 'Bogus' }])).toBeNull()
+    })
+
     it('parses a Disputed task raised by the Poster', async () => {
       ok(detailsResp(KV))
       ok(kvInfoResp([
@@ -1205,6 +1307,8 @@ describe('lib/gateway', () => {
         reviewDeadline: null,
         disputeRaisedBy: null,
         disputedAt: null,
+        disputeAutoResolveSecs: null,
+        disputeAutoResolveDefault: null,
         ...PRE_PULL,
         ...NO_REWARD,
       })
@@ -1246,6 +1350,8 @@ describe('lib/gateway', () => {
         reviewDeadline: null,
         disputeRaisedBy: null,
         disputedAt: null,
+        disputeAutoResolveSecs: null,
+        disputeAutoResolveDefault: null,
         entitlements: {
           workerReward: '100', posterReward: '5', workerBond: '0', posterBond: '0',
         },
@@ -1482,6 +1588,8 @@ describe('lib/gateway', () => {
         reviewDeadline: null,
         disputeRaisedBy: null,
         disputedAt: null,
+        disputeAutoResolveSecs: null,
+        disputeAutoResolveDefault: null,
         ...PRE_PULL,
         ...NO_REWARD,
       })

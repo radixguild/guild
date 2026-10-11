@@ -56,7 +56,7 @@ That doc is a June-2026 overhaul tracker; the governing plan is now
 
 - **On-chain marketplace escrow** — `guild-marketplace-escrow` singleton (multi-token whitelist, dual reward+insurance vaults, claim bond, heartbeat, expire, receipts), mainnet 2026-06-03, money layer smoke-proven with real XRD 2026-06-11 `(ESCROW-DESIGN, ESCROW-ADDRESSES, OVERHAUL-HANDOFF)`
 - **Full escrow lifecycle UI** — create→fund→claim→submit→approve/release, fail-closed event verification, replay/status-regression protection `(OVERHAUL-HANDOFF P0/P3)`
-- **Dispute raise + 72h auto-resolve finalize** — auto-resolve-only model (0% arbiter), terms dialog, two-leg payout `(OVERHAUL-HANDOFF P3)`
+- **Dispute raise + auto-resolve finalize** (window pinned at raise: 7 days since 2026-10-11, 72h before) — auto-resolve-only model (0% arbiter), terms dialog, two-leg payout `(OVERHAUL-HANDOFF P3)`
 - **On-chain cancel/refund** — open + after-claim variants (#137)
 - **Frozen v1 commitments** — sha256 work-brief/submission canonical formats (#139); v2 terms extension specced in TASK-TERMS-DESIGN
 - **Escrow ledger integrity** — confirm route as single writer, real txHash, atomic confirms, unique (task,tx_type) (#122/#132/#134/#138)

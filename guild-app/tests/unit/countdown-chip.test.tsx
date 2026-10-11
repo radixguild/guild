@@ -25,9 +25,9 @@ describe("CountdownChip", () => {
     expect(screen.getByText(/due in 2d 4h/)).toBeInTheDocument()
   })
 
-  it("shows the lapsed state for a disputed task past the 72h window", () => {
+  it("shows the lapsed state for a disputed task past the 7-day default window", () => {
     render(
-      <CountdownChip status="disputed" updatedAt={new Date(Date.now() - 4 * DAY)} />
+      <CountdownChip status="disputed" updatedAt={new Date(Date.now() - 8 * DAY)} />
     )
     expect(screen.getByText("finalize available")).toBeInTheDocument()
   })
@@ -36,7 +36,7 @@ describe("CountdownChip", () => {
     render(
       <CountdownChip status="disputed" updatedAt={new Date(Date.now() - HOUR)} />
     )
-    expect(screen.getByText(/resolves in 2d 23h/)).toBeInTheDocument()
+    expect(screen.getByText(/resolves in 6d 23h/)).toBeInTheDocument()
   })
 
   it("counts from the persisted disputedAt, not the updatedAt approximation", () => {
@@ -46,10 +46,10 @@ describe("CountdownChip", () => {
       <CountdownChip
         status="disputed"
         disputedAt={new Date(Date.now() - HOUR)}
-        updatedAt={new Date(Date.now() - 4 * DAY)}
+        updatedAt={new Date(Date.now() - 8 * DAY)}
       />
     )
-    expect(screen.getByText(/resolves in 2d 23h/)).toBeInTheDocument()
+    expect(screen.getByText(/resolves in 6d 23h/)).toBeInTheDocument()
   })
 
   it("renders nothing when no timing window applies", () => {

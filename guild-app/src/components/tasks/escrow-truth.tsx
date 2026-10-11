@@ -11,8 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertTriangle, Clock, Gavel } from "lucide-react"
 import { useOnChainTaskInfo } from "@/hooks/useOnChainTaskInfo"
 import { useClaimBond } from "@/hooks/useClaimBond"
-import { formatRemaining } from "@/lib/countdown"
-import { DEFAULT_DISPUTE_WINDOW_HOURS } from "@/lib/marketplace"
+import { formatRemaining, disputeWindowMs, windowLengthLabel } from "@/lib/countdown"
 import { ESCROW_EXPIRE_GRACE_SECS } from "@/lib/config"
 
 const TICK_MS = 30_000
@@ -117,6 +116,11 @@ export function DisputeRaiserNotice({ onChainTaskId }: { onChainTaskId: number |
   if (!info || info.state !== "Disputed" || !info.disputeRaisedBy) return null
 
   const raiser = info.disputeRaisedBy // "poster" | "worker"
+  // The window THIS dispute runs on: pinned onto the task at raise_dispute and
+  // already in the info read above (no extra chain read). A dispute raised
+  // before the 2026-10-11 owner change keeps 72h; the default covers a task
+  // whose pin is absent or unreadable.
+  const windowLabel = windowLengthLabel(disputeWindowMs(info.disputeAutoResolveSecs))
 
   return (
     <Alert className="border-orange-500/40 bg-orange-500/10">
@@ -127,11 +131,11 @@ export function DisputeRaiserNotice({ onChainTaskId }: { onChainTaskId: number |
         </p>
         <p>
           A human arbiter can rule this — an operator ceremony with no promised turnaround, not
-          a button. If nobody rules, anyone can settle it after the{" "}
-          {DEFAULT_DISPUTE_WINDOW_HOURS}h window by the default: the{" "}
+          a button. If nobody rules, anyone can settle it after this dispute&apos;s{" "}
+          {windowLabel} window by the default: the{" "}
           <span className="font-medium">reward</span> splits evenly between both parties, the
           worker&apos;s claim bond splits the same way, and the insurance returns whole to the
-          poster, whoever raised it. Under the {DEFAULT_DISPUTE_WINDOW_HOURS}-hour default, a
+          poster, whoever raised it. Under that default, a
           dispute can only lose a worker money: they end up with half the reward instead of all
           of it. For the poster, an unruled dispute recovers half the reward and half the
           worker&apos;s bond. Settle off-chain if you can.

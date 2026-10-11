@@ -281,7 +281,7 @@ const BUTTONS: ButtonCase[] = [
           onChainTaskId={ON_CHAIN_TASK_ID}
           posterId={POSTER}
           workerId={WORKER}
-          disputedAt={past(80)}
+          disputedAt={past(170)}
         />,
       )
     },

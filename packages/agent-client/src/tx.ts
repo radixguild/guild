@@ -713,7 +713,7 @@ export async function raiseDisputeOnChain(
 }
 
 /**
- * Public keeper finalize of a Disputed task after the 72h window — PULL form.
+ * Public keeper finalize of a Disputed task after its dispute window — PULL form.
  * Callable by ANY funded fleet key (auto_resolve_dispute is PUBLIC on chain).
  * The manifest is a bare trigger: the component applies the default ruling
  * pinned on the task when the dispute was raised (the reward and the claim bond

@@ -450,7 +450,7 @@ export async function readEscrowTaskCreated(
  * DisputeParty enum.
  *
  * `confirmedAt` is the tx's consensus timestamp — the on-chain disputed_at the
- * blueprint's 72h auto-resolve window keys off. Best-effort (null tolerated):
+ * blueprint's auto-resolve window keys off. Best-effort (null tolerated):
  * the dispute confirm persists it for display countdowns and falls back to
  * confirm time; only raisedBy/task_id/emitter are fail-closed.
  */
@@ -527,7 +527,7 @@ export async function readDisputeAutoResolved(
 
 /**
  * The ARBITER's ruling — `resolve_dispute` (lib.rs, its `pub fn` declaration),
- * not the 72h timeout.
+ * not the auto-resolve timeout.
  *
  * ⚠️ THIS EXISTS BECAUSE THE ARBITER PATH WAS UNBOOKKEEPABLE. `resolve_dispute`
  * emits DisputeResolvedEvent (lib.rs, right after its Released/Refunded match)
@@ -674,6 +674,20 @@ const ON_CHAIN_TASK_STATES: ReadonlySet<string> = new Set([
   "Refunded",
 ]);
 
+/**
+ * Every AutoResolveDefault variant the escrow blueprint defines (lib.rs
+ * `pub enum AutoResolveDefault`), for the PINNED per-task value. Wider than
+ * the `AutoResolveDefault` type above, which lists the three the app's copy
+ * speaks to: `FavorNonRaiser` (Wave B W1) is selectable by the owner, so a
+ * dispute can be pinned to it, and reading it as null would hide that.
+ */
+const PINNED_AUTO_RESOLVE_DEFAULTS: ReadonlySet<string> = new Set([
+  "FavorDisputeRaiser",
+  "SplitEvenly",
+  "ReturnToPoster",
+  "FavorNonRaiser",
+]);
+
 // Per-component cache of the `tasks` KeyValueStore address. That mapping is a
 // field of the instantiated component state — immutable for a given component —
 // so caching for the process/page lifetime is safe and saves a Gateway
@@ -784,6 +798,30 @@ export interface OnChainTaskInfo {
    */
   disputedAt: Date | null;
   /**
+   * The auto-resolve window, in seconds, that `raise_dispute` PINNED onto this
+   * task (TaskInfo `dispute_auto_resolve_secs: Option<u64>`). It is the window
+   * `auto_resolve_dispute` enforces for THIS dispute: the blueprint reads the
+   * pinned value in preference to the component's live config, so an owner
+   * change to `dispute_auto_resolve_secs` (72h → 7 days on 2026-10-11) moves
+   * only disputes raised after it.
+   *
+   * Null when the task has never been disputed (None), when the field is
+   * absent (a component or a task older than the pin), or when the value is
+   * unreadable. NEVER defaulted to the component's current value here: that
+   * substitution is wrong for exactly the disputes a later setter call did
+   * not move, so each caller chooses (and labels) its own fallback.
+   */
+  disputeAutoResolveSecs: number | null;
+  /**
+   * The default ruling pinned at the same moment (TaskInfo
+   * `dispute_auto_resolve_default: Option<AutoResolveDefault>`), as the enum's
+   * variant name: "FavorDisputeRaiser" | "SplitEvenly" | "ReturnToPoster" |
+   * "FavorNonRaiser". Null on the same terms as `disputeAutoResolveSecs`, and
+   * also for a variant name this reader does not know (fail closed: an
+   * unrecognised ruling must not be reported as a known one).
+   */
+  disputeAutoResolveDefault: string | null;
+  /**
    * PULL entitlements — settled-but-unwithdrawn amounts, per party per lane
    * (redesign §5c). Exact decimal STRINGS: these are money and must never be
    * parsed through a JS number.
@@ -862,6 +900,10 @@ export interface OnChainTaskInfo {
  *     as an I64 string.
  *   • dispute_raised_by → Some.fields[0] is a DisputeParty enum whose
  *     variant_name is "Poster" or "Worker".
+ *   • dispute_auto_resolve_secs / dispute_auto_resolve_default (the terms
+ *     raise_dispute pins) → Some.fields[0] is a U64 string / an
+ *     AutoResolveDefault enum; see OnChainTaskInfo for why neither ever falls
+ *     back to the component's live value here.
  *
  * Returns null when the entry can't be read (Gateway hiccup / unknown key on
  * THIS component / unexpected shape). `null` means "unknown", never a state —
@@ -885,7 +927,21 @@ export async function readEscrowTaskInfo(
     });
     if (!resp.ok) return null;
     const json = await resp.json();
-    const fields = json?.entries?.[0]?.value?.programmatic_json?.fields;
+    return parseEscrowTaskInfo(json?.entries?.[0]?.value?.programmatic_json?.fields);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The parse half of readEscrowTaskInfo, for ONE `tasks` KV entry's
+ * `value.programmatic_json.fields`. Pure, so a caller that reads many entries
+ * in one batched `/state/key-value-store/data` call (the arbiter harness's
+ * `disputes` list) parses each one exactly the way the single read does —
+ * the two must never diverge. Same null contract: unknown, never a state.
+ */
+export function parseEscrowTaskInfo(fields: unknown): OnChainTaskInfo | null {
+  try {
     if (!Array.isArray(fields)) return null;
 
     const stateVariant = fields.find((f: any) => f?.field_name === "state")?.variant_name;
@@ -925,6 +981,27 @@ export async function readEscrowTaskInfo(
       // A garbled value must read null (unknown) rather than 1970 (long overdue),
       // because this feeds an urgency calculation.
       if (Number.isFinite(secs) && secs > 0) disputedAt = new Date(secs * 1000);
+    }
+
+    // The dispute terms pinned at raise_dispute — both Option enums, Some
+    // carrying the value in fields[0], same shape as disputed_at above. A u64
+    // arrives as a decimal STRING; only a positive safe integer becomes a
+    // number, and anything else reads null (unknown) rather than 0, which a
+    // caller would add to disputed_at and read as "already lapsed".
+    let disputeAutoResolveSecs: number | null = null;
+    const dws = fields.find((f: any) => f?.field_name === "dispute_auto_resolve_secs");
+    if (dws?.variant_name === "Some") {
+      const raw = dws?.fields?.[0]?.value;
+      const secs = typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : NaN;
+      if (Number.isSafeInteger(secs) && secs > 0) disputeAutoResolveSecs = secs;
+    }
+    let disputeAutoResolveDefault: string | null = null;
+    const dwd = fields.find((f: any) => f?.field_name === "dispute_auto_resolve_default");
+    if (dwd?.variant_name === "Some") {
+      const variant = dwd?.fields?.[0]?.variant_name;
+      if (typeof variant === "string" && PINNED_AUTO_RESOLVE_DEFAULTS.has(variant)) {
+        disputeAutoResolveDefault = variant;
+      }
     }
 
     // ── PULL entitlements + payee pins, from the SAME entry (redesign §11b D).
@@ -978,6 +1055,8 @@ export async function readEscrowTaskInfo(
       reviewDeadline,
       disputeRaisedBy,
       disputedAt,
+      disputeAutoResolveSecs,
+      disputeAutoResolveDefault,
       entitlements: {
         workerReward: entitlement("worker_entitled"),
         posterReward: entitlement("poster_entitled"),

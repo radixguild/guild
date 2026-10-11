@@ -84,8 +84,8 @@ import { cancelAfterClaimRate, type PosterCancelStats } from "@/lib/poster-cance
 import { formatAddress } from "@/lib/marketplace-utils"
 import { formatUsdAmount, formatXrdAmount, formatXrdUsd } from "@/lib/format-xrd-usd"
 import { useXrdUsd } from "@/lib/use-xrd-usd"
-import { INSURANCE_RATE, DEFAULT_DISPUTE_WINDOW_HOURS, FEE_HEADROOM_XRD } from "@/lib/marketplace"
-import { formatRemaining } from "@/lib/countdown"
+import { INSURANCE_RATE, DEFAULT_DISPUTE_WINDOW_DAYS, FEE_HEADROOM_XRD } from "@/lib/marketplace"
+import { formatRemaining, disputeWindowMs } from "@/lib/countdown"
 import {
   Shield,
   CheckCircle,
@@ -800,7 +800,7 @@ export function EscrowClaimButton({
       <p>
         It comes back to you in full when the task is approved or released after the review
         window, or if the poster cancels. If a dispute is raised, it is split the same way as the
-        reward instead, whether an arbiter rules or the {DEFAULT_DISPUTE_WINDOW_HOURS}-hour default
+        reward instead, whether an arbiter rules or the {DEFAULT_DISPUTE_WINDOW_DAYS}-day default
         applies.
       </p>
     </div>
@@ -1983,8 +1983,9 @@ export function RaiseDisputeButton({
     // accepts a statement against a task the DB already shows as `disputed`.
     //
     // Failure here is a WARNING, not an error, and the distinction is the whole
-    // design. By this line the dispute is on-chain and irreversible; the 72h
-    // clock is running whether or not our database learned what was written.
+    // design. By this line the dispute is on-chain and irreversible; the
+    // auto-resolve clock is running whether or not our database learned what
+    // was written.
     // Reporting this as a failed dispute would be false and would invite the
     // user to retry a transaction that already succeeded.
     if (statement) {
@@ -2028,9 +2029,9 @@ export function RaiseDisputeButton({
       </Button>
       <p className="text-xs text-muted-foreground">
         Opens a dispute on this submission. If nobody rules within{" "}
-        {DEFAULT_DISPUTE_WINDOW_HOURS}h, anyone can settle it by the default: the reward and the
+        {DEFAULT_DISPUTE_WINDOW_DAYS} days, anyone can settle it by the default: the reward and the
         worker&apos;s claim bond each split 50/50, and the insurance returns to the poster. Under
-        the {DEFAULT_DISPUTE_WINDOW_HOURS}-hour default, a dispute can only lose a worker money;
+        the {DEFAULT_DISPUTE_WINDOW_DAYS}-day default, a dispute can only lose a worker money;
         for the poster, an unruled dispute recovers half the reward and half the worker&apos;s
         bond.
       </p>
@@ -2061,7 +2062,7 @@ export function RaiseDisputeButton({
               this leg. On tasks funded through this app the arbiter takes no fee.
             </li>
             <li>
-              If nobody rules first, after the {DEFAULT_DISPUTE_WINDOW_HOURS}h window the
+              If nobody rules first, after the {DEFAULT_DISPUTE_WINDOW_DAYS}-day window the
               contract applies its configured default,{" "}
               <span className="font-mono">{AUTO_RESOLVE_DEFAULT}</span>, and{" "}
               <span className="font-medium">
@@ -2071,7 +2072,7 @@ export function RaiseDisputeButton({
               insurance premium returns whole to the poster.
             </li>
             <li>
-              Under the {DEFAULT_DISPUTE_WINDOW_HOURS}-hour default, a dispute can only lose a
+              Under the {DEFAULT_DISPUTE_WINDOW_DAYS}-day default, a dispute can only lose a
               worker money: they end up with half the reward instead of all of it, and half of
               their claim bond. For the poster, an unruled dispute recovers half the reward and
               half the worker&apos;s bond, and the premium comes back as it always does. An
@@ -2142,7 +2143,12 @@ export function FinalizeDisputeButton({
    * The dispute time: the task's persisted on-chain disputedAt, with the
    * caller falling back to updatedAt for rows disputed before that column
    * shipped (approximation only). Display-only either way: the CHAIN enforces
-   * the real 72h window off its own disputed_at.
+   * the real window off its own disputed_at — the window pinned onto the task
+   * at raise_dispute, which this button does not read (it holds no on-chain
+   * TaskInfo, and adding a read for it is out of scope), so it counts the
+   * DEFAULT_DISPUTE_WINDOW_HOURS default. A dispute pinned shorter (72h,
+   * raised before the 2026-10-11 owner change) therefore unlocks here late,
+   * never early: the safe direction, since a too-early call reverts for a fee.
    */
   disputedAt: Date | null
   onSuccess?: (txId: string) => void
@@ -2184,10 +2190,11 @@ export function FinalizeDisputeButton({
   if (account !== posterId && account !== workerId) return null
   if (sessionMismatch) return <SessionMismatchAlert />
 
-  // Before (disputedAt + 72h) the chain would reject the call anyway, so
-  // disable the button with a countdown.
+  // Before (disputedAt + the window) the chain would reject the call anyway,
+  // so disable the button with a countdown. disputeWindowMs() with no pinned
+  // value is the default — see the disputedAt prop's note.
   const windowEndsMs = disputedAt
-    ? disputedAt.getTime() + DEFAULT_DISPUTE_WINDOW_HOURS * 3600 * 1000
+    ? disputedAt.getTime() + disputeWindowMs()
     : 0
   const remainingHours = Math.max(0, Math.ceil((windowEndsMs - now) / 3600_000))
   const windowOpen = remainingHours === 0
@@ -2274,9 +2281,9 @@ export function FinalizeDisputeButton({
           ? `Settles the dispute with the contract's default ruling. Who raised it
              makes no difference to the money: the reward and the claim bond each
              split 50/50, and the insurance premium returns whole to the poster. The chain enforces the
-             real ${DEFAULT_DISPUTE_WINDOW_HOURS}h window — a too-early transaction
+             real window pinned when the dispute was raised — a too-early transaction
              fails and still costs the network fee.`
-          : `The ${DEFAULT_DISPUTE_WINDOW_HOURS}h dispute window is still open
+          : `The ${DEFAULT_DISPUTE_WINDOW_DAYS}-day dispute window is still open
              (estimated from the dispute time). The chain enforces the exact
              window — a too-early transaction fails and still costs the network
              fee.`}

@@ -73,7 +73,7 @@ to know if we were you:
   badges, each assigned to one account, so one arbiter is a choice today, not a limit the
   contract enforces. Once a dispute is raised, the worker's
   claim bond splits the same way as the reward, whether the arbiter rules (one split for the
-  reward, the insurance and the bond) or nobody does: after 72 hours the contract's fixed
+  reward, the insurance and the bond) or nobody does: after 7 days the contract's fixed
   default splits the reward and the bond evenly between poster and worker and returns the
   poster's insurance in full. `STATE.md` says what has settled so far. Treat dispute
   resolution as immature and size your exposure accordingly.
