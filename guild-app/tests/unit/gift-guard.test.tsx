@@ -147,21 +147,21 @@ describe("gift guard — set but INVALID is treated as unset", () => {
  * A checksum proves "not a typo". It can never prove "the account you meant".
  *
  * Both addresses below are valid, live, 66-character mainnet accounts that
- * appear throughout the ecosystem's repos and docs — which is precisely what
+ * can still turn up in the ecosystem's repos and docs — which is precisely what
  * makes them plausible paste errors into NEXT_PUBLIC_GIFT_XRD_ADDRESS. They
  * would sail through every other check in the guard, so they are denied by
- * name. Canonical list: bigdev-console docs/WALLET-MAP.md.
+ * name.
  */
 describe("gift guard — forbidden destinations", () => {
-  const HOT_SERVER = "account_rdx128lggt503h7m2dhzqnrkkqv4zklxcjmdggr8xxtqy8e47p7fkmd8cx";
+  const RETIRED_ACCOUNT = "account_rdx128lggt503h7m2dhzqnrkkqv4zklxcjmdggr8xxtqy8e47p7fkmd8cx";
   const ORPHANED_DAPP_DEF = "account_rdx128y6j78mt0aqv6372evz28hrxp8mn06ccddkr7xppc88hyvynvjdwr";
 
-  it("rejects the hot server account → rail stays OFF", async () => {
-    const gift = await loadGift({ xrd: HOT_SERVER });
+  it("rejects the retired account → rail stays OFF", async () => {
+    const gift = await loadGift({ xrd: RETIRED_ACCOUNT });
     expect(gift.giftDestination("xrd")).toBeNull();
     expect(gift.isGiftRailLive("xrd")).toBe(false);
     expect(gift.isGiftPageLive()).toBe(false);
-    expect(gift.giftDiagnostics()[0].reason).toContain("hot server account");
+    expect(gift.giftDiagnostics()[0].reason).toContain("retired account");
   });
 
   it("rejects the orphaned old dApp definition — no key exists for it", async () => {
@@ -172,7 +172,7 @@ describe("gift guard — forbidden destinations", () => {
   });
 
   it("warns loudly about a forbidden address rather than going quietly dark", async () => {
-    await loadGift({ xrd: HOT_SERVER });
+    await loadGift({ xrd: RETIRED_ACCOUNT });
     expect(warn).toHaveBeenCalledOnce();
     expect(String(warn.mock.calls[0][0])).toContain(ENV.xrd);
   });
@@ -183,7 +183,7 @@ describe("gift guard — forbidden destinations", () => {
     const { FORBIDDEN_XRD_DESTINATIONS } = await loadGift({});
     const { verifyBech32 } = await import("@/lib/bech32");
     const addrs = Object.keys(FORBIDDEN_XRD_DESTINATIONS);
-    expect(addrs).toContain(HOT_SERVER);
+    expect(addrs).toContain(RETIRED_ACCOUNT);
     expect(addrs).toContain(ORPHANED_DAPP_DEF);
     for (const addr of addrs) {
       expect(addr, `${addr} is not 66 chars`).toHaveLength(66);
