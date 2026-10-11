@@ -140,8 +140,7 @@ const VALUE_OPTIONS = new Set([
 // Valid-format placeholder account for keyless dry-run previews — same literal
 // mint.ts and poster-harness.mjs use (validateAddress needs a real bech32m
 // form; a placeholder never signs anything). Derived from a fixed dummy Ed25519
-// public key (32 bytes of 0x01): no private key exists. Replaced RX-10 (the old
-// dApp definition on the compromised seed) on 2026-09-29.
+// public key (32 bytes of 0x01): no private key exists.
 const DRYRUN_ACCOUNT = 'account_rdx128uxu4mkjgen9wxcl5a7lpyu4kcec6vkhsnj4u0kfrv4v6jvk9u5mw';
 
 const HELP = `guild-poster — Radix Guild headless POSTER CLI

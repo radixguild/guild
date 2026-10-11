@@ -66,8 +66,7 @@ const RESOLVE_INTERVAL_MS = 5_000;
 // poster-harness DRYRUN_ACCOUNT — validateAddress needs a real bech32m form).
 // Derived from a fixed dummy Ed25519 public key (32 bytes of 0x01): no private
 // key exists, so nobody can sign for it or take anything a mis-submitted preview
-// sends there. Replaced RX-10 (the old dApp definition on the compromised seed)
-// on 2026-09-29.
+// sends there.
 const DRYRUN_ACCOUNT = 'account_rdx128uxu4mkjgen9wxcl5a7lpyu4kcec6vkhsnj4u0kfrv4v6jvk9u5mw';
 
 /** What the Guild says about this key's account, for the paired-agent refusal. */

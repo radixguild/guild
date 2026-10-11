@@ -788,7 +788,7 @@ export async function runWorkerCycle(options: WorkerOptions): Promise<WorkerCycl
   // agent that delivered work and got DISPUTED never learned it had been —
   // grep-confirmed zero references to 'disputed' or 'submitted' status in this
   // function before this pass. A standing worker would keep claiming new tasks
-  // while a 72h window ran out on money it had already earned. The whole
+  // while the dispute window ran out on money it had already earned. The whole
   // operator-facing half of this problem got a Telegram alert; the agent-facing
   // half got nothing, which is worse, because there is no human watching a
   // channel on the agent's side at all.

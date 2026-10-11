@@ -233,6 +233,21 @@ const RULES: Rule[] = [
       '// lost or stolen worker key costs at most the float plus one live bond.',
     ],
   },
+  {
+    // Not about money: kit 0.8.3 took internal bookkeeping out of two comments (the dry-run
+    // placeholder accounts in guild-poster.ts and mint.ts). The kit is served to strangers
+    // verbatim, so a registry row id or an account-history aside does not belong in it; a
+    // placeholder account is explained by how it was derived, nothing more. The teeth below are
+    // invented lines of the same shape, not the originals.
+    id: 'registry-narrative',
+    re: /\bRX-\d+\b|\bcompromised\s+seed\b|\bSEED-MIGRATION\b/i,
+    why: 'the kit carries no internal registry row ids and no account-history asides; a dry-run placeholder is explained by its derivation alone',
+    teeth: [
+      '// public key (32 bytes of 0x01): no private key exists. Replaced RX-0 (the old\n// placeholder) on 2026-01-01.',
+      '// sends there. The previous placeholder sat on a compromised seed.',
+      '// see SEED-MIGRATION-2026-01-01 for why this literal changed',
+    ],
+  },
 ];
 
 describe('kit truth — every pre-fix sentence trips its rule (the rules have teeth)', () => {
