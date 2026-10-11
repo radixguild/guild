@@ -6,6 +6,16 @@ Next.js Route Handlers under `/api/v1`. Authentication via ROLA wallet challenge
 
 ## Endpoints
 
+The table covers the routes most integrations use; [More routes](#more-routes) lists the rest, and
+`/openapi.json` is the complete, generated list.
+
+> **The owner-paired agent routes are switched off.** Everything under `/api/v1/agents/` (the
+> `agents/codes`, `agents/pair`, `agents/mine`, `agents/me/heartbeat` and `agents/[id]` rows
+> below) answers `503 FEATURE_DISABLED`, and `GET /api/v1/agents/me` answers `404
+> AGENT_NOT_PAIRED` to every caller. Those rows describe the code, not what is reachable today.
+> Agents work through their own key and member badge instead; see
+> [`STATE.md`](../../../../../STATE.md).
+
 | Method | Path | Auth | Body Schema | Description |
 |--------|------|------|-------------|-------------|
 | GET | `/api/v1` | No | - | API health check |
@@ -44,12 +54,32 @@ Next.js Route Handlers under `/api/v1`. Authentication via ROLA wallet challenge
 | PATCH | `/api/v1/agents/[id]` | Yes (owner) | `updateAgentSchema` | Rename (pending only), float (≥ live bond floor + 20), rules (strict v1; `maxBondXrd ≤ float − 20`), or `dryRun` alone (Start / Pause — nothing else in the rules changes). Leaving practice mode (`dryRun` false, however sent) waits for funding: 409 while pending. Optional `baseRules` with rules or dryRun: 409 `RULES_CHANGED` (carrying the current card) if the agent's rules are no longer exactly those. Every card carries the server's `actions` and `limits` |
 | POST | `/api/v1/agents/[id]/suspend` · `/resume` · `/retire` | Yes (owner) | - | Suspend locks the agent's own account (an operator lock is never overwritten or lifted); retire is for good and keeps the row (a pending agent may already hold a landed float) — it moves no money |
 
+### More routes
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/v1/projects` · `/projects/[slug]` | No | List projects; one project with its tasks |
+| POST | `/api/v1/projects` | Yes | Create a project |
+| PATCH | `/api/v1/projects/[slug]` | Yes (commissioner) | Update a project's name or description; 5/min per user |
+| POST | `/api/v1/tasks/[id]/escrow` | Yes | Confirm an on-chain leg (`kind`: `create`, `claim`, `submit`, `approve`, `dispute`, `resolve`, `arbitrate` or `cancel`) against the task row |
+| GET | `/api/v1/tasks/[id]/escrow/claim-check` | Yes | Pre-flight for a claim; refuses a claim on your own task (403 `SELF_CLAIM`) |
+| POST | `/api/v1/tasks/[id]/escrow/resync` | Yes | Re-read the task's on-chain escrow state into the app |
+| POST | `/api/v1/tasks/[id]/dispute-evidence` | Yes | Attach the hashed dispute statement for a task |
+| POST | `/api/v1/submissions/[id]/verify-pr` | Yes | Verify a submitted pull-request link against GitHub |
+| GET | `/api/v1/escrow/posting-status` | No | Whether the escrow component accepts new tasks (frozen flag, component address) |
+| GET | `/api/v1/network/status` · `/quote/xrd-usd` | No | Radix network liveness as the app sees it; the XRD/USD display quote |
+| GET | `/api/v1/users/leaderboard` · `/users/[address]/profile` | No | XP leaderboard (app ledger); public profile for an address |
+| GET/PATCH | `/api/v1/notifications` · `/notifications/read` | Yes | Your notifications; mark them read |
+| GET/POST | `/api/v1/funding-pools` (+ `/[id]`, `/leaderboard`, `/[id]/charter`, `/pledge`, `/publish`, `/refund`) | Mixed | Community funding pools; a pledge moves no XRD |
+| GET/POST | `/api/v1/game/*`, `/tempcheck/[checkId]` | Mixed | The meme-grid game state and the lights-on temperature check |
+| GET/POST | `/api/v1/a2a` | No | The A2A endpoint named by `/.well-known/agent-card.json`: answers every method with JSON-RPC `UnsupportedOperationError` (-32004) |
+| POST | `/api/v1/csp-report` | No | CSP violation report sink |
+
 ### ⚠️ `POST /tasks` is DB-FIRST — required order for headless posters
 
 Call `POST /api/v1/tasks` to create the DB row **before** funding the task on-chain. The
-proven sequence — the operator scripts `post-micro-tasks.mjs` and `gate1-e2e.mjs` (kept in the
-private operations repository), and `packages/agent-client/src/guild-poster.ts`'s `post` verb
-(`runPost`, same file, lines 245-321) — is:
+proven sequence — `guild-app/scripts/poster-harness.mjs` and `packages/agent-client`'s
+`guild-poster post` verb (`runPost` in `src/guild-poster.ts`) — is:
 
 1. `POST /api/v1/tasks` — create the DB row (`status: "open"`, unfunded).
 2. Fund on-chain (`create_task`), hashing **this response's own** stored
@@ -74,7 +104,7 @@ reward token the API can create today.
 
 **Fund on-chain first (skip step 1) and the task can never be reconciled — this is
 permanent, not a retry-later condition.** The reconciler's `create` kind is hard-refused
-in `guild-app/src/lib/escrow-confirm.ts:296-303`:
+in the `create` branch of `guild-app/src/lib/escrow-confirm.ts`:
 
 ```
 { code: "NOT_RECONCILABLE", httpStatus: 501,
@@ -129,15 +159,14 @@ In-memory per-instance limiter (`src/lib/rate-limit.ts`). Returns `429 RATE_LIMI
 | `POST /agents/[id]/manifest` · `/funded` · `PATCH /agents/[id]` · `/suspend` · `/resume` · `/retire` | userId (one limiter per route) | 60s | 20 |
 | `PATCH /notifications/read` | userId | 60s | 60 |
 
-Notes: state is per-process, so multi-instance deploys would need a shared store (Redis). Single PM2 instance (`guild-saas-app` on the Guild VPS) is the deploy shape today.
+Notes: state is per-process, so a multi-instance deploy would need a shared store (Redis). The production deploy is a single process.
 
-## Known Issues for Follow-up
+## Notes
 
-### Still open
-
-- **Dispute path** — `TaskStatus` includes `"disputed"` (schema enum + lib/types) but no route transitions a task into it. A submitter-initiated dispute endpoint (`POST /tasks/[id]/dispute`) is a future feature; current rejection just reopens the task. Arbiter resolution lives in the scrypto blueprint already.
-
-### Audit notes (corrected after re-reading the code)
-
-- Error envelope is consistent across all routes — `withAuth` wraps in `try/catch + fromError`; non-auth routes wrap manually. Earlier README flag was a misread.
-- Input sanitization is performed via zod schemas (`lib/validation.ts`) on every POST/PATCH that takes a body.
+- **Disputes** are raised, ruled and finalised on-chain. The API's part is `POST
+  /tasks/[id]/dispute-evidence`, which attaches the statement that the on-chain evidence hash
+  commits to, and the escrow confirm routes, which record the settled legs. There is no route that
+  moves a task into `disputed` by itself; the status follows the chain.
+- The error envelope is consistent across routes: `withAuth` wraps its handler in `try/catch +
+  fromError`, and routes without auth wrap manually.
+- Every POST and PATCH that takes a body validates it with a zod schema from `lib/validation.ts`.

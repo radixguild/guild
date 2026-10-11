@@ -322,7 +322,7 @@ function ProfileContent() {
                     on the belief that the bot's XP queue wrote this field for
                     task work. It does not: the only update_xp calls on chain are
                     six, all on one badge, 2026-04-04 → 04-06, signed by the old
-                    bot key RX-01, none since (badge-manager transaction stream,
+                    bot signing key (since retired), none since (badge-manager transaction stream,
                     read 2026-09-24). Only the operator's admin badge can write it. */}
                 <div className="text-[10px] text-muted-foreground uppercase">
                   Badge XP (on-chain)

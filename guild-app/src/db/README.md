@@ -1,12 +1,13 @@
-# Guild Task Marketplace — Database Layer (Block 1)
+# Database layer
 
-This is the canonical database substrate for the Guild Task Marketplace, extracted from Ralph's mega-PR as Block 1 of the re-extraction. Uses Drizzle ORM with PostgreSQL.
+The dashboard's PostgreSQL layer: Drizzle ORM schema, migrations and a query module per domain.
+It is the off-chain cache and index; funds-affecting state originates on-chain, and the database
+follows it (see `docs/decisions/ADR-002-escrow-deploy-and-integration-gates.md`).
 
-## Schema Overview
+## Schema
 
-⚠️ This section used to hand-enumerate 4 "core" tables; the schema has grown to **17** since, and a
-list here will drift again. **`src/db/schema/index.ts` is the source of truth** — it barrel-exports
-every table, grouped by the file it's defined in. As of 2026-09-30:
+`src/db/schema/index.ts` is the source of truth: it barrel-exports every table, grouped by the file
+that defines it. As of 2026-10-11 there are 17 tables in 13 files.
 
 | Schema file | Tables |
 |---|---|
@@ -24,50 +25,33 @@ every table, grouped by the file it's defined in. As of 2026-09-30:
 | `agents.ts` | `pairingCodes`, `agents` |
 | `projects.ts` | `projects` |
 
-The task-marketplace core is still `users` → `tasks` → `submissions` → `escrowTransactions`
-(the original four, described below); the rest support agents/pairing, funding pools, working
-groups, x402 settlements, tempcheck votes, alert state, notifications, game state and projects.
+The task-marketplace core is `users`, `tasks`, `submissions` and `escrowTransactions`:
 
-### `users`
-- Primary key: `id` (text, wallet address)
-- Tracks user profiles, Telegram IDs, reputation stats
-- One-to-many with tasks (as creator), submissions (as submitter)
+- **`users`**: the account address is the primary key; display name, the member badge id and
+  tier, off-chain XP and reputation, and the fields that record a site-side suspension.
+- **`tasks`**: a serial id, the title, description, reward and a status that is a type-only text
+  enum (`open`, `assigned`, `submitted`, `paid`, `cancelled`, `disputed`, `refunded`; no database
+  constraint). The creator references `users.id`, and the on-chain task id and escrow component
+  link the row to the ledger.
+- **`submissions`**: work delivered against a task: the content, its review status, the reviewer
+  and review note, and the decline and approval timestamps.
+- **`escrowTransactions`**: the ledger of confirmed on-chain legs for a task, keyed so the same
+  transaction cannot be recorded twice. The unique indexes in the schema file say exactly what
+  counts as a repeat.
 
-### `tasks` 
-- Primary key: `id` (serial)
-- Core task entity: title, description, reward, status, skill tags
-- Foreign key: `creator_id` → `users.id`
-- Status flow: `open` → `assigned` → `submitted` → `paid`
-- Escrow integration: `escrow_component_address`, `escrow_tx_hash`
+The remaining tables support working groups, funding pools, x402 settlements, tempcheck votes,
+alert state, notifications, the (switched-off) agent pairing path and projects.
 
-### `submissions`
-- Primary key: `id` (serial) 
-- Work submissions against tasks
-- Foreign keys: `task_id` → `tasks.id`, `submitter_id` → `users.id`
-- Status flow: `pending` → `approved`/`rejected`/`revision_requested`
-- Stores deliverable URLs, feedback, approval timestamps
+## Queries
 
-### `escrow_transactions`
-- Primary key: `id` (serial)
-- On-chain escrow transaction log
-- Foreign key: `task_id` → `tasks.id`
-- Transaction types: `fund`, `release`, `refund`
-- Status tracking: `pending` → `confirmed`
+Query functions live in `src/db/queries/`, one module per domain (`users`, `tasks`,
+`submissions`, `escrow`, `projects`, `working-groups`, `funding-pools`, `trust`, `notifications`,
+`agents`, `x402`, `tempcheck`, `game`, `poster-cancel-stats`). Each module wraps the SQL for its
+domain and returns typed results; multi-step writes use `db.transaction()`.
 
-## Query Layer Organization
+## Lazy-init proxy
 
-Query functions are organized by domain in separate modules:
-
-- **`queries/users.ts`**: User CRUD, upsert patterns, profile lookups
-- **`queries/tasks.ts`**: Task lifecycle, filtering, pagination, status transitions  
-- **`queries/submissions.ts`**: Submission state machine, deliverable tracking, review flow
-- **`queries/escrow.ts`**: Escrow transaction logging, fund/release/refund flows
-
-Each module exports focused functions that encapsulate the SQL complexity and provide type-safe interfaces to the application layer.
-
-## Lazy-Init Proxy Pattern
-
-**Important**: `src/db/index.ts` uses a Proxy-based lazy initialization pattern:
+`src/db/index.ts` exports `db` as a Proxy that creates the connection on first use:
 
 ```typescript
 export const db = new Proxy({} as Database, {
@@ -80,44 +64,25 @@ export const db = new Proxy({} as Database, {
 })
 ```
 
-This exists because Drizzle's `postgres()` client throws at import time if `DATABASE_URL` is unset, which broke `next build` before environment variables were available. The Proxy defers database connection until first query execution.
+Drizzle's `postgres()` client throws at import time when `DATABASE_URL` is unset, which broke
+`next build` before environment variables were available. **Do not refactor this pattern**: the
+build depends on it.
 
-**Do not refactor this pattern** — it's load-bearing for the build process.
+## Migrations
 
-## Running Migrations
-
-Migrations are managed by Drizzle Kit:
+Migrations are managed by Drizzle Kit; the generated SQL is in `drizzle/` and the configuration in
+`drizzle.config.ts`.
 
 ```bash
-# Generate migration from schema changes
-bun run db:generate
-
-# Apply pending migrations to database  
-bun run db:migrate
-
-# Compare the schema against the last generated migrations (no `status` subcommand exists —
-# drizzle-kit 0.30.0's actual set is: generate, migrate, introspect, push, studio, up, check, drop)
-bunx drizzle-kit check
-
-# Open Drizzle Studio (database browser)
-bun run db:studio
+bun run db:generate       # generate a migration from schema changes
+bun run db:migrate        # apply pending migrations to the DATABASE_URL database
+bunx drizzle-kit check    # compare the schema against the generated migrations
+bun run db:studio         # open Drizzle Studio
 ```
 
-Configuration is in `drizzle.config.ts`. Schema definitions are in `src/db/schema/index.ts`.
+## Notes
 
-## Development Notes
-
-- **PostgreSQL required**: This layer assumes PostgreSQL. SQLite support was removed in the Ralph extraction.
-- **Type safety**: All queries return properly typed results via Drizzle's TypeScript integration.
-- **Transactions**: Multi-step operations (like escrow fund+release) use `db.transaction()` for atomicity.
-- **Error handling**: Query functions return `null` for not-found cases; let application layer handle validation errors.
-- **Timestamps**: All timestamps are stored as `bigint` milliseconds since epoch for consistency with existing bot layer.
-
-## Block Dependencies
-
-This is Block 1 of the Ralph PRD re-extraction:
-- **Block 0** (Scrypto escrow): Already shipped as guild-saas#38
-- **Block 2** (API routes + auth): Depends on this Block 1
-- **Blocks 3-5** (Frontend, agents, polish): Depend on Blocks 1+2
-
-The original Archon PRD (`.archon/`) was deleted 2026-08-18 as deprecated; the live dependency graph is `docs/PROJECT-STATE.md`, kept in the private operations repository.
+- **PostgreSQL only.** CI runs Postgres 16.
+- **Timestamps** are `timestamp with time zone` columns.
+- **Absent rows** come back as `null` from the query functions; the calling layer decides how to
+  report them.

@@ -1,10 +1,10 @@
-# UI Components
+# UI components
 
-🔓 **Extractable later.** These primitives are generic shadcn — Phase-0.5 sweep can publish them as `@radix-guild/ui` consumed by both guild-public and guild-saas.
+shadcn-style primitives built on `@base-ui/react`, with `cn()` from `@/lib/utils` and
+`class-variance-authority` for variants. Styling is Tailwind, and the design tokens are
+dark-mode first. Most components accept `className` for composition.
 
-These are shadcn-style UI primitives built on `@base-ui/react`, with `cn()` from `@/lib/utils` and `class-variance-authority` for variants. Tailwind classes for styling. Most accept className for composition. Dark-mode-first design tokens.
-
-## Component Inventory
+## Inventory
 
 | Component | File | Base | Notes |
 |-----------|------|------|-------|
@@ -17,16 +17,19 @@ These are shadcn-style UI primitives built on `@base-ui/react`, with `cn()` from
 | EmptyState | empty-state.tsx | Custom | Empty state with icon and action |
 | Input | input.tsx | @base-ui/react/input | Text input field |
 | Label | label.tsx | Custom | Form label element |
+| LoadFailed | load-failed.tsx | Custom | Failure state for a data surface whose fetch failed; distinct from EmptyState on purpose, so an outage never reads as "nothing here" |
 | Progress | progress.tsx | @base-ui/react/progress | Progress bar with track and indicator |
 | Select | select.tsx | Custom | Native select dropdown |
 | Separator | separator.tsx | @base-ui/react/separator | Horizontal or vertical divider |
 | Skeleton | skeleton.tsx | Custom | Loading placeholder animation |
 | Textarea | textarea.tsx | Custom | Multi-line text input |
 
-## Usage Notes
+## Usage
 
-Import components from `@/components/ui/<name>` (not from index). Variants are exported alongside components (e.g. `buttonVariants`). For toasts, import `toast` directly from `sonner`; the `<Toaster>` is mounted in the root layout.
+Import from `@/components/ui/<name>`, not from an index. Variants are exported alongside the
+components (for example `buttonVariants`). For toasts, import `toast` from `sonner`; the
+`<Toaster>` is mounted in the root layout. Composite components such as Card export all their
+sub-components, and the Base UI components carry their own accessibility and keyboard handling.
 
-Most components accept a `className` prop for additional styling. Composite components like Card export all sub-components. Base-UI components include built-in accessibility features and keyboard navigation.
-
-Size variants typically include `xs`, `sm`, `default`, `lg`. Color variants include `default`, `secondary`, `destructive`, `outline`, `ghost`, `link`. Check individual component files for available options.
+Sizes are typically `xs`, `sm`, `default` and `lg`; variants are `default`, `secondary`,
+`destructive`, `outline`, `ghost` and `link`. Check each component file for what it offers.

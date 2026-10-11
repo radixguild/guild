@@ -24,7 +24,7 @@ import { withPageOg } from "@/lib/page-metadata";
 //     stream: it was not one write "by hand". There are exactly six `update_xp`
 //     calls, all on <guild_member_bigdevxrd>, 2026-04-04 → 04-06 (20 → 70, +10
 //     each; the last three at 12:00:03, 18:00:03 and 00:00:04Z, a six-hourly
-//     cadence), all signed by RX-01 (…7fkmd8cx, the old bot hot signer). No
+//     cadence), all signed by the old bot hot signer (…7fkmd8cx, since retired). No
 //     `update_xp` since. The other ten badges are untouched. Chain-read 2026-08-02 on
 //     <guild_member_pilotworker0>: xp = 0, tier = "member", and `last_updated`
 //     still equals `issued_at` — untouched since mint, against ~1000 XP earned

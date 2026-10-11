@@ -16,7 +16,7 @@ import { SCHEMAS } from "@/lib/schemas"
  *   - update_extra_data stripped `"`, writing {"role":"mod"} as {role:mod}.
  */
 
-// MW-04 · Guild admin 2 · …96fgt3fm — holds the admin badge (registry).
+// Guild admin 2 · …96fgt3fm — holds the admin badge.
 const ACCOUNT = "account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm"
 const { manager, adminBadge } = SCHEMAS.guild_member
 

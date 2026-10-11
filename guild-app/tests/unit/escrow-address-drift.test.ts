@@ -12,7 +12,7 @@
 // ESCROW_COMPONENT_HISTORY — which is exactly the list that had not been
 // updated. Two guards, each keyed off the thing that drifted. Found 2026-09-14
 // while building the sibling guard in packages/agent-client
-// (escrow-address-drift.test.ts there, AG-13), which caught the SAME miss in
+// (escrow-address-drift.test.ts there), which caught the SAME miss in
 // that package's defaults.
 //
 // So this file takes its expected values from the registry document, never

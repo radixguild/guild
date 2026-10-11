@@ -9,7 +9,9 @@ Last reviewed: 2026-10-02. §2–§4 and §6 were re-checked against the live es
 from the Radix Gateway), its source and the live site; §1, §5 and §7 were re-read, not
 re-verified. 2026-10-06: §1's protocol row, §3's royalty-bound sentence and §4's arbiter line
 were corrected against the escrow source in this repository, and §6 step 3 now says where a
-ruling is recorded.
+ruling is recorded. 2026-10-11: §4's disputes bullet and §7 point at
+[`STATE.md`](./STATE.md#disclosures) for the disclosure instead of repeating it; the rest was not
+re-read.
 
 ---
 
@@ -67,23 +69,17 @@ These are the parts you do not have to take on trust:
 A governance document that only lists strengths is marketing. These are the things we would want
 to know if we were you:
 
-- **Disputes.** Disputes run in the app (since 2026-08-29) and on-chain. The single arbiter
-  badge (supply 1) is held by an account the operator controls, so the operator rules every
-  dispute: there is no second opinion and no appeal. The operator can also mint more arbiter
-  badges, each assigned to one account, so one arbiter is a choice today, not a limit the
-  contract enforces. Once a dispute is raised, the worker's
-  claim bond splits the same way as the reward, whether the arbiter rules (one split for the
-  reward, the insurance and the bond) or nobody does: after 7 days the contract's fixed
-  default splits the reward and the bond evenly between poster and worker and returns the
-  poster's insurance in full. `STATE.md` says what has settled so far. Treat dispute
-  resolution as immature and size your exposure accordingly.
+- **Disputes.** Disputes run in the app (since 2026-08-29) and on-chain, ruled by a single
+  arbiter badge the operator holds. [`STATE.md`](./STATE.md#disputes) states the limits that
+  follow from that, what the contract does when nobody rules inside the dispute window, and what
+  has settled so far. Treat dispute resolution as immature and size your exposure accordingly.
 - **Reputation is off-chain.** XP and the trust record are Guild database records (the trust
   record is derived from the escrow's on-chain history). The badge carries a tier and an XP
   field on-chain, but only the operator can write them, and the badge is transferable.
-- **The operator can stop.** This is a solo project. There is no organisation behind it, no
-  entity, and no funding round. If it stops, the escrow component keeps executing its published
-  rules — that is precisely why the money path is on-ledger and the app is not load-bearing for
-  settlement — but nobody will be shipping features.
+- **The operator can stop.** There is no organisation behind this project, no entity and no
+  funding round. If it stops, the escrow component keeps executing its published rules — that is
+  precisely why the money path is on-ledger and the app is not load-bearing for settlement — but
+  nobody will be shipping fixes.
 
 ## 5. What is parked, and what "parked" means
 
@@ -119,7 +115,6 @@ not the load-bearing part.
 
 ## 7. When this changes
 
-The intended direction is that the community takes over governance after launch, and that the
-Guild's own working groups are the first step toward it. **That is an intention, not a
-commitment, and no date is attached to it.** When it changes, this file changes, in the same
-commit as whatever made it true.
+Nothing here is scheduled to change. The operator's stated aim for the admin badge, and its
+limits, are stated once, in [`STATE.md`](./STATE.md#disclosures). When governance changes, this
+file changes, in the same commit as whatever made it true.

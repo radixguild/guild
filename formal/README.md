@@ -25,9 +25,9 @@ that bug — and every clean run for that bug class is worthless. A mutation who
 patch no longer applies is also a failure, not a skip: it means the model moved
 and the proof silently stopped testing anything.
 
-> This is not hypothetical. Both of this fleet's first two models passed clean and
+> This is not hypothetical. Both of this harness's first two models passed clean and
 > then **failed their own mutation proof** — in each case on the exact bug class
-> they were written for. See `docs/` for the write-up.
+> they were written for. `REPORT.md` lists every mutation and whether its model caught it.
 
 **2. The model must still describe the code.** `grounds.sources` names the files
 the model was read from, with a content hash. When one changes, the check FAILS.

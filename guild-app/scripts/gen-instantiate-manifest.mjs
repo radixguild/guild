@@ -191,8 +191,8 @@ const CEREMONY_NOTES = `
   DB-2's separation therefore needs a SECOND transaction, once the resource
   addresses exist. ⚠️ RULED 2026-08-16 — this note said "a FRESH DEDICATED SEED"
   and that the ceremony "is not complete when this manifest commits". Both are
-  superseded. ⚠️ RE-RULED 2026-09-10 — the standing poster sits on the
-  COMPROMISED seed (SEED-MIGRATION-2026-09-07), so --account is now the NEW-SEED
+  superseded. ⚠️ RE-RULED 2026-09-10 — the standing poster sat on the
+  wallet seed retired in the 2026-09-07 migration, so --account is now the new-seed
   Guild admin account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm,
   the account M1 moves the existing Escrow Owner set into (RUNBOOK-8B Finding 2).
   DB-2's separation of the royalty-admin badge still happens in a SECOND
