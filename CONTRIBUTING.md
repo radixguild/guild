@@ -19,8 +19,10 @@ else.
   [`PROVENANCE.md`](./PROVENANCE.md) for who holds the on-chain admin badge that backs it.
 - **No review SLA.** This is a solo, self-funded project. A PR may sit for a while. That is not
   a signal about the idea; it is a signal about one person's calendar.
-- **Issue templates** cover bug reports, tasks and decisions. Pick the closest one: blank issues
-  are turned off.
+- **Issue templates.** Use *Bug report* for something broken in the app, the CI or the docs.
+  *Task* describes one unit of work, one task per issue. *Decision* records a choice only the
+  maintainer can make and is not needed for an outside contribution. Blank issues are turned
+  off.
 
 ## The rule that matters most
 
@@ -87,13 +89,11 @@ work when the PR changes its own workflow file. That makes twelve check names.
 calls is not in this repository, so in your clone it prints `identity check skipped` and lets
 the commit through. That is expected; the same identity rule is applied before merge.
 
-One more status comes from outside CI. There is no PII scan in this repository's CI: the
-maintainer runs that gate privately — with the docs check when `docs/` changes, and the tests
-that need files kept outside this repository — against your PR's head commit, and reports the
-result on the PR as `ops/private-gates`. On a PR from outside, it is posted green only after the
-maintainer has read that exact commit, so until then it is missing or pending; that is expected.
-The intent is for all of these to be required on `main`, so a red check blocks a merge; this
-repository's branch rules are the fact.
+One more status comes from outside CI: `ops/private-gates`, a check the maintainer runs and
+reports on the PR. On a PR from outside, it is posted green only after the maintainer has read
+that exact commit, so until then it is missing or pending; that is expected. The intent is for
+all of these to be required on `main`, so a red check blocks a merge; this repository's branch
+rules are the fact.
 
 **Package manager, by directory** — CI installs exactly this, so match it locally: `guild-app/`,
 `packages/agent-client/`, `packages/agent-mcp/` and `packages/alert-policy/` all use **bun**

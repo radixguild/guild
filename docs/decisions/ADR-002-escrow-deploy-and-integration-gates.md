@@ -29,7 +29,7 @@
 **Date**: 2026-05-29
 **Authors**: bigdev (decisions), Claude Opus (synthesis)
 **Supersedes**: parts of ADR-001 §6 priority order + ADR-001 §"Sprint sequence" Sprint 3 milestone
-**Companion**: `~/Projects/ARCHON-CHARTER-20260529.md`
+**Companion**: the charter of 2026-05-29 cited in ADR-001 (not published here)
 
 ## Context
 

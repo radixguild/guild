@@ -1,7 +1,7 @@
 # Badge Manager
 
 Identity layer for Radix community governance. Mint, manage, and track badges across DAOs.
-Folded into guild-saas from `guild-public` on 2026-08-14 (slice A) — this tree is the ONLY
+Folded into this repository from `guild-public` on 2026-08-14 — this tree is the ONLY
 source of the live mainnet BadgeManager.
 
 ## Status: Live on Mainnet
@@ -26,11 +26,10 @@ always re-verify against the Gateway rather than trusting any README table, incl
 
 The build artifacts in [`build-artifacts/`](build-artifacts/) carry both `v3` and `v4` labels,
 and docs across the fleet have used both for the live contract. The last substantive contract
-commit is guild-public `f207722` ("contract v4 — username as NFT ID, duplicate prevention" —
-`26e4c45` in this repo's folded lineage, hashes rewritten by the history cut), so the current
-source corresponds to the **v4-labelled** artifacts — but the labels were never applied
-consistently. When it matters, verify by hash/behavior against the deployed package, not by
-label.
+change was "contract v4 — username as NFT ID, duplicate prevention", made in `guild-public`
+before the fold, so the current source corresponds to the **v4-labelled** artifacts — but the
+labels were never applied consistently. When it matters, verify by hash/behavior against the
+deployed package, not by label.
 
 ## What It Does
 
@@ -53,9 +52,8 @@ scrypto build
 scrypto test
 ```
 
-Requires Scrypto 1.3.1 toolchain. ⚠️ **Build on Linux (CI or VPS)** — Scrypto WASM builds fail
-on this project's Macs (bulk-memory issue; the operator's `CLAUDE.md` §Scrypto, kept in the
-private operations repository, has the details).
+Requires Scrypto 1.3.1 toolchain. ⚠️ **Build on Linux (CI or a Linux container)** — Scrypto
+WASM builds fail on macOS (bulk-memory issue).
 
 ## Architecture
 

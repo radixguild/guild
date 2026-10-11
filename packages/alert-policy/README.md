@@ -1,8 +1,9 @@
 # @radix-guild/alert-policy
 
 Edge-triggered operator alerts with backoff reminders, recovery notices and
-inhibition. Zero dependencies. One policy for every bigdev bot (Guild,
-Sats Helper, trader, console) so an operator's chat carries news, not noise.
+inhibition. Zero dependencies. One policy for the Guild's operator alerts (the Telegram bot
+vendors a build of it and the app carries a copy over a Postgres store), so an operator's chat
+carries news, not noise.
 
 ## The rule
 

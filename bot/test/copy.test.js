@@ -101,7 +101,7 @@ const BANNED = [
   // the stale claim is what is banned, and the one public repo is the only link allowed.
   [/not public yet|code is not public|opens at launch|repo(sitory)? is private|closed[-\s]source/i, "the code is public (github.com/radixguild/guild) since the open-source flip"],
   // `(?![\w-])`, not `\b`: a word boundary also matches before "-", which let
-  // github.com/radixguild/guild-ops and …/guild-saas through as the public repo (F21 review, F11).
+  // hyphenated names of other repositories through as the public repo (F21 review, F11).
   [/github\.com\/(?!radixguild\/guild(?![\w-]))/i, "the only public repo is github.com/radixguild/guild"],
   [/execution layer|DAOs?\s+govern|the guild (ships|executes)/i, "an affiliation with Radix DAOs nobody ruled"],
   [/(governance|guild|your)\s+identity/i, "the badge records membership; it is transferable and anyone can mint one"],
