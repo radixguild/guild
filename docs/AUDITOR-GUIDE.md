@@ -57,7 +57,7 @@ Refunded (terminal)
 | `release_after_review_timeout` | **anyone** | PUBLIC | Submitted only, after `review_deadline` (72h deployed); credits exactly what `approve_and_release` credits; races `raise_dispute` first-to-commit |
 | `raise_dispute` | poster or worker | receipt/badge Proof + evidence hash | — |
 | `resolve_dispute` | arbiter | arbiter badge | ruling: PayWorker / RefundPoster / Split |
-| `auto_resolve_dispute` | **anyone** | PUBLIC | after dispute window (72h deployed) |
+| `auto_resolve_dispute` | **anyone** | PUBLIC | after the dispute window pinned at `raise_dispute` (7 days on the live component since the 2026-10-11 owner change; 72h before) |
 | `withdraw_worker` / `withdraw_poster` | the pinned party | badge / task-receipt Proof | deposit both lanes into the account pinned at claim / create |
 | `push_entitlement` | **anyone** | PUBLIC, no Proof, no destination argument | deposits a party's entitlement into that party's pinned account |
 | `withdraw_forfeited_bonds` | owner | OWNER badge | returns the forfeited-bond vault for one resource; never touches a task's reward or insurance |
@@ -138,7 +138,8 @@ and the owner-only `withdraw_forfeited_bonds`.
 
 Deployed today (ESCROW-ADDRESSES.md is ground truth; Wave B component, re-read 2026-09-16):
 insurance minimum 0 (the app funds 5%); claim bond 10% of the reward, floor 76.45, cap
-152,894, in the reward token; review window 72h; dispute window 72h, default
+152,894, in the reward token; review window 72h; dispute window 7 days (owner-set 2026-10-11 from
+the instantiate value 72h; pinned per dispute at raise), default
 **`SplitEvenly`**; arbiter fee 0 (cap 10%). ⚠️ *(corrected 2026-09-16)* This line read
 "insurance min 5% of reward; claim bond 10 XRD" — the PULL component's values.
 ⚠️ This line read `FavorDisputeRaiser` until 2026-08-09 — that is the **v1/dead**
@@ -220,7 +221,7 @@ disclosure. No trustee is retained.
   the private operations repository) CHECK 1/2 were INVERTED with it — a disputes-OFF build
   now FAILS the deploy.** The app exposes dispute-raising and
   the arbiter path. What an auditor should check instead: the settled terms are SplitEvenly
-  50/50 of the reward only, insurance returns whole to the poster, arbiter fee 0, 72h
+  50/50 of the reward only, insurance returns whole to the poster, arbiter fee 0, 7-day
   auto-resolve, and the poster-stonewall asymmetry (worker loses, poster ends better off than
   approving) is stated in the product copy rather than hidden. ⚠️ *(2026-08-23 note kept for
   provenance)* This line previously said
@@ -230,7 +231,7 @@ disclosure. No trustee is retained.
   `guild-app/src/lib/features.ts`. What the flag actually gates now: `raise_dispute` and
   `auto_resolve_dispute` are **PUBLIC on-chain regardless of this build**, reachable by a
   hand-built manifest with the flag off; the real product gap is that a worker can submit
-  garbage, raise a dispute, and bank a guaranteed 50% of the reward after the 72h
+  garbage, raise a dispute, and bank a guaranteed 50% of the reward after the
   `SplitEvenly` auto-resolve window for zero work, with no operable arbiter escape (the
   arbiter manifest builder exists and is byte-correct but has no UI, no route, and no
   runbook). That is a policy gap, not a fund-drain, and it is not mitigated by this flag

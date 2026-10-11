@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
   DISPUTE_WINDOW_MS,
+  disputeWindowMs,
   formatRemaining,
   getTaskCountdown,
+  windowLengthLabel,
 } from '@/lib/countdown'
+import { DEFAULT_DISPUTE_WINDOW_DAYS, DEFAULT_DISPUTE_WINDOW_HOURS } from '@/lib/marketplace'
 
 const MINUTE = 60_000
 const HOUR = 3_600_000
@@ -11,8 +14,35 @@ const DAY = 86_400_000
 
 describe('lib/countdown', () => {
   describe('DISPUTE_WINDOW_MS', () => {
-    it('matches the deployed component dispute_auto_resolve_secs (259200 = 72h)', () => {
-      expect(DISPUTE_WINDOW_MS).toBe(259_200 * 1000)
+    // The live component's dispute_auto_resolve_secs since the owner's
+    // 2026-10-11 set_dispute_auto_resolve_secs (it was instantiated at 259200 =
+    // 72h). Display default only — a dispute keeps the window pinned at raise.
+    it('matches the live component dispute_auto_resolve_secs (604800 = 7 days)', () => {
+      expect(DISPUTE_WINDOW_MS).toBe(604_800 * 1000)
+      expect(DEFAULT_DISPUTE_WINDOW_HOURS).toBe(168)
+      expect(DEFAULT_DISPUTE_WINDOW_DAYS).toBe(7)
+    })
+  })
+
+  describe('disputeWindowMs — prefer the window pinned on the task', () => {
+    it('uses a readable pinned value (a dispute raised under the old 72h window keeps it)', () => {
+      expect(disputeWindowMs(259_200)).toBe(72 * HOUR)
+      expect(disputeWindowMs(604_800)).toBe(7 * DAY)
+    })
+
+    it('falls back to the default when there is no usable pin', () => {
+      for (const pinned of [undefined, null, 0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 2]) {
+        expect(disputeWindowMs(pinned as number | null | undefined)).toBe(DISPUTE_WINDOW_MS)
+      }
+    })
+  })
+
+  describe('windowLengthLabel', () => {
+    it('reads 72h as hours (how it was always described) and 7 days as days', () => {
+      expect(windowLengthLabel(72 * HOUR)).toBe('72-hour')
+      expect(windowLengthLabel(7 * DAY)).toBe('7-day')
+      expect(windowLengthLabel(DISPUTE_WINDOW_MS)).toBe(`${DEFAULT_DISPUTE_WINDOW_DAYS}-day`)
+      expect(windowLengthLabel(100 * HOUR)).toBe('100-hour')
     })
   })
 
@@ -89,14 +119,34 @@ describe('lib/countdown', () => {
       })
     })
 
-    describe('disputed tasks (72h auto-resolve window)', () => {
+    describe('disputed tasks (7-day default auto-resolve window, pinned window preferred)', () => {
       it('counts down from the persisted on-chain disputedAt when present', () => {
-        const disputedAt = new Date(now - DAY) // disputed 1d ago → 2d left of 72h
+        const disputedAt = new Date(now - DAY) // disputed 1d ago → 6d left of 7 days
         expect(getTaskCountdown({ status: 'disputed', disputedAt }, now)).toEqual({
           kind: 'dispute',
           lapsed: false,
-          label: 'resolves in 2d',
+          label: 'resolves in 6d',
         })
+      })
+
+      it('uses the task\'s PINNED window when the caller has it (72h pin, raised before the change)', () => {
+        const disputedAt = new Date(now - DAY)
+        expect(
+          getTaskCountdown({ status: 'disputed', disputedAt, disputeAutoResolveSecs: 259_200 }, now)
+        ).toEqual({ kind: 'dispute', lapsed: false, label: 'resolves in 2d' })
+        // Four days in: lapsed on a 72h pin, three days left on the default.
+        const fourDaysIn = new Date(now - 4 * DAY)
+        expect(
+          getTaskCountdown({ status: 'disputed', disputedAt: fourDaysIn, disputeAutoResolveSecs: 259_200 }, now)
+        ).toEqual({ kind: 'dispute', lapsed: true, label: 'finalize available' })
+        expect(getTaskCountdown({ status: 'disputed', disputedAt: fourDaysIn }, now)?.label).toBe('resolves in 3d')
+      })
+
+      it('falls back to the default when the pinned window is null', () => {
+        const disputedAt = new Date(now - DAY)
+        expect(
+          getTaskCountdown({ status: 'disputed', disputedAt, disputeAutoResolveSecs: null }, now)?.label
+        ).toBe('resolves in 6d')
       })
 
       it('prefers the persisted disputedAt over the updatedAt approximation', () => {
@@ -120,7 +170,7 @@ describe('lib/countdown', () => {
         ).toEqual({
           kind: 'dispute',
           lapsed: false,
-          label: 'resolves in 2d',
+          label: 'resolves in 6d',
         })
       })
 
@@ -129,11 +179,11 @@ describe('lib/countdown', () => {
         expect(getTaskCountdown({ status: 'disputed', updatedAt }, now)).toEqual({
           kind: 'dispute',
           lapsed: false,
-          label: 'resolves in 3d',
+          label: 'resolves in 7d',
         })
       })
 
-      it('flips to "finalize available" once the 72h window lapses', () => {
+      it('flips to "finalize available" once the window lapses', () => {
         const updatedAt = new Date(now - DISPUTE_WINDOW_MS - 1)
         expect(getTaskCountdown({ status: 'disputed', updatedAt }, now)).toEqual({
           kind: 'dispute',

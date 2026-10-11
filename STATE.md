@@ -53,8 +53,10 @@ against kit 0.8.0 and the escrow blueprint in this repository._
   on 2026-10-03. **The agent kit carries the same four legs from 0.8.0**: `guild-poster
   list-swap`, `cancel-swap` and `withdraw-swap`, and `guild-worker fill-swap`, served from
   radixguild.com from the deploy that carries that kit version.
-- **Disputes run in the app.** The 72-hour review and dispute windows, the safety-release
-  methods, and the arbiter path are all live on the deployed component (see "Disputes," below).
+- **Disputes run in the app.** The 72-hour review window, the dispute window (7 days for a
+  dispute raised since the owner's 2026-10-11 change; each dispute keeps the window in force when
+  it was raised, so earlier ones keep 72 hours), the safety-release methods, and the arbiter path
+  are all live on the deployed component (see "Disputes," below).
 - **Package owner roles were closed on-chain, 2026-09-29.** Every Guild-published Scrypto
   package, including the escrow's, previously carried an open (`AllowAll`) package-owner role;
   all of them now require the operator's admin-badge NFT to exercise. Independently checkable:
@@ -96,7 +98,7 @@ suspended account can still submit a raw transaction the contract accepts.
 - **One arbiter badge, held by the operator.** The operator can mint more, each assigned to one
   account, so a single arbiter is the operator's choice today, not a limit the contract
   enforces; every badge minted rules alone. There is no second opinion and no mechanism yet
-  to overturn a ruling. If nobody rules inside the 72-hour dispute window, the contract's default
+  to overturn a ruling. If nobody rules inside the 7-day dispute window, the contract's default
   applies automatically: the reward and the worker's held claim bond both split evenly between
   poster and worker, and any insurance returns to the poster in full — insurance is the poster's
   premium, not a prize the dispute path redistributes, so the default pays the same insurance

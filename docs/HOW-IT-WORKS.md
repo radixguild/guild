@@ -26,7 +26,7 @@
 > the twin being maintained was the wrong file.
 >
 > **Honesty marker:** this page describes the **target flow**. Live on mainnet today:
-> fund/claim/submit/approve escrow, claim bonds, dispute + 72h public auto-resolve, and the
+> fund/claim/submit/approve escrow, claim bonds, dispute + 7-day public auto-resolve, and the
 > review-window release (if the poster never approves, anyone may trigger it 72h after
 > submission; it credits exactly what an approval credits).
 > Landing with the next blueprint (vNext2): optional dispute insurance ("no insurance, no

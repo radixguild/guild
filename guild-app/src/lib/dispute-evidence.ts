@@ -6,7 +6,7 @@
  * not a message. Until 2026-09-01 the app hashed the literal
  * `dispute:task:<id>` and put THAT on-chain — a commitment to a value anyone
  * could derive from the task id, which commits to nothing. Meanwhile the party
- * on the other side of a 72-hour auto-resolve clock was given no statement of
+ * on the other side of the auto-resolve clock was given no statement of
  * what they were accused of, because there was nowhere to put one.
  *
  * THE RULE. The on-chain hash is SHA-256 over a domain-separated preimage. The

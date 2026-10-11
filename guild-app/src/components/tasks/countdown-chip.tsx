@@ -31,7 +31,7 @@ function useNowMs(): number | null {
 }
 
 // Tones: muted while an open task's deadline ticks (and after it passes),
-// orange while the 72h dispute window runs (matches the disputed status
+// orange while the dispute window runs (matches the disputed status
 // badge), green once anyone may finalize.
 const CHIP_TONE: Record<string, string> = {
   "deadline": "bg-muted text-muted-foreground",
@@ -49,7 +49,7 @@ export function CountdownChip({
 }: {
   status: string
   deadline?: Date | null
-  /** Persisted on-chain dispute time — what the chain's 72h window keys off. */
+  /** Persisted on-chain dispute time — what the chain's dispute window keys off. */
   disputedAt?: Date | null
   /** Legacy fallback when disputedAt was never persisted (approximation only). */
   updatedAt?: Date | null

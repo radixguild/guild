@@ -30,7 +30,7 @@ const TRANSITIONS = [
   { method: "release_after_review_timeout", caller: "anyone", auth: "PUBLIC", gate: "Submitted only, once review_deadline (submitted_at + review_window_secs, pinned at submit; 72h deployed) has passed; credits exactly what approve_and_release credits. Races raise_dispute first-to-commit" },
   { method: "raise_dispute", caller: "poster or worker", auth: "receipt/badge Proof + evidence hash", gate: "—" },
   { method: "resolve_dispute", caller: "arbiter", auth: "arbiter badge", gate: "ruling: PayWorker / RefundPoster / Split" },
-  { method: "auto_resolve_dispute", caller: "anyone", auth: "PUBLIC", gate: "after dispute window (72h deployed)" },
+  { method: "auto_resolve_dispute", caller: "anyone", auth: "PUBLIC", gate: "after the dispute window pinned at raise_dispute (7 days on the live component since the 2026-10-11 owner change; 72h before it)" },
   { method: "withdraw_worker", caller: "worker", auth: "worker (or agent) badge Proof — asserts the badge is the SAME non-fungible local id that claimed the task", gate: "deposits BOTH lanes (reward + bond) into task.worker_account, PINNED AT CLAIM — the caller cannot name the destination" },
   { method: "withdraw_poster", caller: "poster", auth: "task-receipt Proof (persistent, not one-shot)", gate: "deposits BOTH lanes into task.poster, PINNED AT create_task — the caller cannot name the destination" },
   { method: "push_entitlement", caller: "anyone", auth: "PUBLIC — no Proof, no destination argument", gate: "deposits a party's settled entitlement into the account PINNED for that party, through the same deposit path as withdraw_*; the caller pays the fee and receives nothing" },
@@ -197,7 +197,8 @@ Refunded (terminal)`}</pre>
             <Badge variant="secondary" className="text-[10px] mb-2">Deployed today</Badge>
             <p className="text-xs text-muted-foreground leading-relaxed">
               Claim bond 10% of reward (floor{" "}
-              {ESCROW_CLAIM_BOND_XRD} XRD; the percentage, floor and cap are all owner settings); dispute window 72h, default
+              {ESCROW_CLAIM_BOND_XRD} XRD; the percentage, floor and cap are all owner settings); dispute window 7 days (an
+              owner setting, raised from 72h on 2026-10-11; each dispute keeps the window in force when it was raised), default
               SplitEvenly; arbiter fee 0 (cap 10%). Ground truth per component address —
               see <Link href="/trust" className="text-primary hover:underline">trust &amp; verification</Link>.
               Insurance is not in that list: the component&apos;s{" "}

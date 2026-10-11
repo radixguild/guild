@@ -274,8 +274,8 @@ export interface ResolveDisputeOptions {
 }
 
 /**
- * Permissionless finalize of a Disputed task after the 72h auto-resolve
- * window. ANY funded key may call this (auto_resolve_dispute is PUBLIC on
+ * Permissionless finalize of a Disputed task after its auto-resolve window
+ * (pinned when the dispute was raised; 7 days on the live component). ANY funded key may call this (auto_resolve_dispute is PUBLIC on
  * chain) and the caller receives nothing — see autoResolveDisputeManifest's
  * doc comment. Dry-run by default, same shape as every other signing verb.
  */

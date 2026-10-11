@@ -7,6 +7,8 @@
      edited: 2026-10-11 (no re-verification: §0, the operator runbook for ruling a live dispute,
      moved out of this public file; operator procedures are kept privately. The cross-references to
      §0 below were re-pointed.)
+     edited: 2026-10-11 (§4: the arbiter row names the harness's `--print-manifest` wallet path,
+     and the resolver row its read-only `disputes` list.)
      supersedes: none (edited in place; nothing else in docs/ covers this) -->
 
 > ⚠️ **STATUS + SCOPE — corrected 2026-08-23, re-cut 2026-09-17 for Wave B; read this before
@@ -560,9 +562,9 @@ Operator scripts and records named in this table (the deploy gate, the drift wat
 | `resolve_dispute()` — arbiter-ruled finalize, **Proof-form**, L6(c) worker-side guard | `.../src/lib.rs`, `pub fn resolve_dispute` | ✅ on-chain, PUBLIC (badge-gated) — ruled once for real (task 5) |
 | `auto_resolve_dispute()` — permissionless default finalize after the task's pinned window | `.../src/lib.rs`, `pub fn auto_resolve_dispute` | ✅ on-chain, PUBLIC — never called on the live component |
 | `raiseDisputeManifest`, `resolveDisputeManifest`, `autoResolveDisputeManifest` builders | `guild-app/src/lib/manifests.ts` | ✅ shape-verified (`manifest-abi-gate.test.ts`) |
-| Operator resolver — the caller `resolveDisputeManifest` had none of, until now | `guild-app/scripts/arbiter-harness.mjs` | ✅ (P3-3a); the procedure for using it is kept privately |
+| Operator resolver — the caller `resolveDisputeManifest` had none of, until now | `guild-app/scripts/arbiter-harness.mjs` | ✅ (P3-3a): `badge`, `disputes` (read-only: every Disputed task with the window and default pinned on it, and the time left), keyless `resolve` preview, `--print-manifest`, `--live`; the procedure for using it is kept privately |
 | Dispute UI (submit/raise from the dashboard) | `guild-app/src/app/disputes/page.tsx` + task detail | ✅ compiled ON since 2026-08-29 (`NEXT_PUBLIC_FEATURE_DISPUTES=true`; `scripts/launch-check.sh` fails a build with it OFF) — `/disputes` served 200 on 2026-09-17 |
-| Arbiter resolution UI / route | — | ⛔ does not exist — the operator harness listed above is the only caller (`DESIGN-REVIEW-2027.md` §23 AR5 is the decide-box) |
+| Arbiter resolution UI / route | `arbiter-harness.mjs resolve … --print-manifest` | Operator harness `--print-manifest` for wallet signing; no web UI. It prints the `resolve_dispute` manifest for the badge holder's Radix Wallet (Send Raw Transaction, no `lock_fee`), only after a keyless preview of that exact text Succeeded. The harness is still the only caller (`DESIGN-REVIEW-2027.md` §23 AR5 is the decide-box) |
 | Dispute-raised alert | `scripts/escrow-drift-watch.mjs` PASS 3 (chain-first, four stages raised → half → closing → lapsed); `scripts/keeper.mjs` (lapsed backstop); in-app `dispute_raised` (counterparty only, `escrow-confirm.ts`) | ✅ live since 2026-08-23 and seen running on the box 2026-09-17 — ≤30 min latency, ≥100 XRD to page, and it goes to the OPERATOR chat, not yet the arbiter channel. ⚠️ This row said "partial — only nagged after the window lapses" for a few hours on 2026-09-17; wrong, corrected the same day. |
 
 ### Never built (§1-§3's design, superseded by what actually shipped)

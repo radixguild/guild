@@ -43,7 +43,7 @@ import { withPageOg } from "@/lib/page-metadata";
 //      poster. An ARBITER's ruling is different: one split, applied to the
 //      reward, the insurance and the bond alike, so a ruling for the worker
 //      pays more than an approval would;
-//   2. an arbiter can overrule before the 72h window closes — an operator
+//   2. an arbiter can overrule before the dispute window closes — an operator
 //      ceremony (docs/architecture/dispute-resolution.md §0), never dressed
 //      up as self-service, with no committed turnaround;
 //   3. watchers read the escrow every 30 minutes. The task pager
@@ -140,7 +140,7 @@ const STATUS_LABELS = [
   {
     label: "LIVE",
     variant: "secondary" as const,
-    body: "On the ledger: the arbiter badge (supply 1), the three dispute methods, the 72h window, and the SplitEvenly default. Live and verifiable — and reachable by anyone who builds the manifest themselves, not just by us. We have exercised it ourselves end to end: on-chain task 3 was moved into Disputed on 2026-08-23 as a deliberate internal probe, and its 72h auto-resolve settled on 2026-08-26 exactly as predicted. All of it is readable on the ledger.",
+    body: "On the ledger: the arbiter badge (supply 1), the three dispute methods, the auto-resolve window, and the SplitEvenly default. Live and verifiable — and reachable by anyone who builds the manifest themselves, not just by us. We have exercised it ourselves end to end: on-chain task 3 was moved into Disputed on 2026-08-23 as a deliberate internal probe, and its 72h auto-resolve settled on 2026-08-26 exactly as predicted. All of it is readable on the ledger.",
   },
 ];
 
@@ -215,7 +215,9 @@ function DisputesContent() {
             <span className="font-semibold text-foreground">The default ruling is SplitEvenly</span>{" "}
             (a 50/50 split of the reward; the poster&rsquo;s insurance returns to them in full
             either way), re-verified against the live component via the Gateway. The auto-resolve{" "}
-            <span className="font-semibold">window is 72 hours</span>.
+            <span className="font-semibold">window is 7 days</span> for a dispute raised now. Each
+            dispute keeps the window and default in force when it was raised, so one raised before
+            the 11 October 2026 change still closes at 72 hours.
           </p>
         </CardContent>
       </Card>
@@ -280,7 +282,7 @@ function DisputesContent() {
             , retired on 2026-09-13 — not the live one named above, whose own task 3 is a different,
             undisputed task.
             The dispute code is the same crate; this remains the only run of the timeout path,
-            where nobody rules and the 72h fallback fires.
+            where nobody rules and the fallback fires.
           </p>
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             All three <span className="font-mono">CommittedSuccess</span>, 2026-08-26 13:53:43Z →
