@@ -52,10 +52,8 @@ type Validation = { ok: true; value: string } | { ok: false; reason: string };
  *
  * A checksum proves an address is not a typo. It cannot prove it is the
  * account you MEANT — and both of these are valid, live, 66-character mainnet
- * accounts that appear all over the ecosystem's repos, console and docs, which
- * is exactly what makes them plausible copy-paste mistakes into a gift env var.
- * Canonical list: bigdev-console `docs/WALLET-MAP.md`, "Two addresses that
- * must never be used as a gift destination". Keep them in sync.
+ * accounts that can still turn up in the ecosystem's repos and docs, which is
+ * exactly what makes them plausible copy-paste mistakes into a gift env var.
  *
  * Denying at validation, not in review, is deliberate: the guard already
  * treats invalid as unset, so a mistake here goes dark and loud instead of
@@ -64,18 +62,19 @@ type Validation = { ok: true; value: string } | { ok: false; reason: string };
  * a send manifest from the resolved destination, so a bad address is not just
  * displayed, it is pre-filled into the donor's wallet.
  *
- * This file is UPSTREAM: defi-farmer `frontend/lib/gift/index.ts`,
- * meme-grid-game `src/lib/gift/index.ts` and bigdev-console
- * `lib/gift-address/index.ts` carry the same map. Add an entry in all four or
- * the apps disagree about what is a valid destination.
+ * This file is UPSTREAM: the sibling apps that ported it carry the same list.
+ * Add an entry in all of them or the apps disagree about what is a valid
+ * destination.
  */
 export const FORBIDDEN_XRD_DESTINATIONS: Record<string, string> = {
+  // Retired; holds no authority (verified on-chain 2026-10-11). Never use.
   "account_rdx128lggt503h7m2dhzqnrkkqv4zklxcjmdggr8xxtqy8e47p7fkmd8cx":
-    "is a retired hot server account: its key was exposed in 2026 and the account was " +
-    "emptied on 2026-09-29, so a gift sent there would be unrecoverable",
+    "is a retired account that holds no authority and must never be used, " +
+    "so a gift sent there would be unrecoverable",
+  // Orphaned old dApp definition: no key exists for it.
   "account_rdx128y6j78mt0aqv6372evz28hrxp8mn06ccddkr7xppc88hyvynvjdwr":
-    "is the orphaned old dApp definition — NO key exists anywhere, so anything sent " +
-    "to it is permanently unrecoverable",
+    "is an orphaned old dApp definition with no key, so anything sent to it " +
+    "is unrecoverable",
 };
 
 /**
