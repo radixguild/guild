@@ -18,7 +18,7 @@
 **Status.** Design doc. Wave 2 implementation reference. To be reviewed against `docs/SCRYPTO-AUTH-CONVENTION.md` (PR #50) before code.
 > ⚠️ **Deployed-config drift (noted 2026-06-12):** this doc predates deployment. Where it
 > disagrees with `ESCROW-ADDRESSES.md` (e.g. dispute auto-resolve window: 14d here, **72h
-> deployed**; arbiter fee: 10% here is the *cap*, per-task fee is 0 at launch), the
+> at instantiate, 7 days live since the owner's 2026-10-11 change**; arbiter fee: 10% here is the *cap*, per-task fee is 0 at launch), the
 > ADDRESSES file is ground truth. Parameters + vNext2 plans: `ESCROW-PARAMETER-SHEET.md`.
 
 **Replaces.** The "deprecate guild-escrow + delete task-escrow legacy" plan from `docs/architecture-2026-05/PLAN.md` Wave 2. New plan: build THIS escrow as the canonical, retire others as it absorbs their capability.

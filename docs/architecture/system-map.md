@@ -63,7 +63,7 @@ Poster ──[XRD + Insurance]──→ GuildEscrow Component
 ```
 
 **Status:** Scrypto blueprint deployed (`escrow/scrypto/guild-escrow/src/lib.rs`)
-**Constants:** `INSURANCE_RATE = 0.02`, `DEFAULT_DISPUTE_WINDOW_HOURS = 72`
+**Constants:** `INSURANCE_RATE = 0.02`, `DEFAULT_DISPUTE_WINDOW_HOURS = 168` (7 days; display default — a task's pinned window wins)
 
 ### 2.2 Milestone Escrow (Designed — Not Yet Implemented)
 
