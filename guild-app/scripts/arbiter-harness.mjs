@@ -488,7 +488,9 @@ export async function listDisputes({ component = ESCROW_COMPONENT, nowMs = Date.
   }
 }
 
-const secsLabel = (s) => (s == null ? "?" : s % 86400 === 0 ? `${s}s = ${s / 86400}d` : `${s}s = ${s / 3600}h`)
+// Up to 72h reads in hours (how the original window was always named), longer whole days in days.
+const secsLabel = (s) =>
+  s == null ? "?" : s > 259_200 && s % 86_400 === 0 ? `${s}s = ${s / 86_400}d` : `${s}s = ${s / 3600}h`
 
 // ── Live signing (ARBITER_PRIVATE_KEY / ARBITER_ACCOUNT_ADDRESS ONLY) ────────
 export async function loadArbiterKey() {
