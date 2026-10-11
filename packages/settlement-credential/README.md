@@ -117,15 +117,17 @@ Two fields are **not** real:
   "details":{"type":"NotSyncedUpError", ...}}
   ```
 
-  That's the ongoing mainnet halt (since 2026-08-31), not a bug in this package —
+  That was the mainnet halt (2026-08-31 to 2026-09-11, per `SECURITY.md`), which was
+  still underway when the fixture was built, not a bug in this package —
   `buildCredentialFromReceipt()` is specifically designed to degrade to
   `state_version: null` on a Gateway failure rather than throw, because a
   chain-agnostic receipt should still be constructible when the one
   chain-specific field is temporarily unavailable. `null` here means
   **witness-only**: a verifier should not treat this credential as chain-pinned,
-  only as attesting to what its (in this case, absent) signers claim happened. Once
-  mainnet resumes, re-running `bun run build-fixture` will pin a real
-  `state_version` automatically — no code change needed.
+  only as attesting to what its (in this case, absent) signers claim happened. The
+  committed fixture still carries `state_version: null`. `buildCredentialFromReceipt()`
+  pins the real `state_version` whenever the Gateway read succeeds, so re-running
+  `bun run build-fixture` can fill it in — no code change needed (not re-run for this edit).
 
 The fixture's header (`unsigned-credential.task3.provenance.json`'s `notice` field,
 and the profile page's own on-screen banner) states plainly: **self-dealt mechanism

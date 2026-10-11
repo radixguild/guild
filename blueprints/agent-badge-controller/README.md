@@ -1,6 +1,6 @@
 # agent-badge-controller
 
-Scrypto package providing the **Guild Agent Badge** primitive — a recallable non-fungible identity badge for Guild agents. The engine-level kill switch behind Path A of the badge recall plan (`docs/research/badge-recall-agent-control.md` — that research set deliberately stayed in the archived `guild-public` repo and was not folded here). Folded into guild-saas from guild-public on 2026-08-14 (slice A).
+Scrypto package providing the **Guild Agent Badge** primitive — a recallable non-fungible identity badge for Guild agents. Recall is an engine-level operation, so the owner badge acts as a kill switch for an agent's badge. Folded into this repository from the archived `guild-public` repository on 2026-08-14.
 
 ## What it does
 
@@ -36,7 +36,7 @@ All `*_updater` roles are `deny_all` — the role configuration is permanently l
 cargo build --release --target wasm32-unknown-unknown
 ```
 
-⚠️ **macOS users**: this hits the bulk-memory WASM issue on Rust >= 1.82 (the operator's `CLAUDE.md` §Scrypto, kept in the private operations repository, has the details — ledger builds/tests run on Linux CI only). Build on Linux (or a Docker container with `rust:1.81-bookworm`).
+⚠️ **macOS users**: this hits the bulk-memory WASM issue on Rust >= 1.82 (ledger builds and tests run on Linux CI only). Build on Linux (or a Docker container with `rust:1.81-bookworm`).
 
 ## Test
 
@@ -66,20 +66,13 @@ CALL_METHOD
 ;
 ```
 
-After deployment, persist the following to operator env (`bot/.env`):
-
-```bash
-AGENT_BADGE_CONTROLLER=<component_address>     # for mint manifests
-AGENT_BADGE_RESOURCE=<agent_badge_resource>    # for Gateway badge-presence queries
-AGENT_BADGE_OWNER=<owner_badge_resource>       # for proof creation in manifests
-AGENT_BADGE_OWNER_ACCOUNT=<operator_account>   # account that holds the owner badge
-```
-
-(The deploy script in PR 2 will print these for you and offer to write to `.env`.)
+After deployment, keep the component address (`<AGENT_BADGE_CONTROLLER>` below), the owner
+badge resource (`<AGENT_BADGE_OWNER>`) and the account that holds the owner badge
+(`<operator_account>`): the manifests below take them as inputs.
 
 ## Mint flow
 
-Mint manifests are owner-gated. Build via `mintAgentBadgeManifest` (see `guild-app/src/lib/manifests.ts` once PR 2 lands):
+Mint manifests are owner-gated. `mintAgentBadgeManifest` in `guild-app/src/lib/manifests.ts` builds one:
 
 ```text
 CALL_METHOD Address(<operator_account>) "create_proof_of_amount"
@@ -90,7 +83,7 @@ CALL_METHOD Address(<agent_radix_address>) "deposit_batch"
   Expression("ENTIRE_WORKTOP");
 ```
 
-The component allocates the next monotonic `badge_id` (1, 2, 3, …) and emits `AgentBadgeMintedEvent`. The bot reads the event from the TX receipt to record the badge_id in `agent_profiles.agent_badge_local_id`.
+The component allocates the next monotonic `badge_id` (1, 2, 3, …) and emits `AgentBadgeMintedEvent`.
 
 ## Recall flow
 
@@ -106,13 +99,10 @@ RECALL_NON_FUNGIBLES_FROM_VAULT
 BURN_RESOURCE Bucket(<recalled>);
 ```
 
-`<agent_vault_address>` is the **internal vault** that holds the agent's badge — must be
-discovered via Gateway `/state/entity/details` on the agent's account. PR 2's deploy +
-recall scripts handle that lookup automatically.
+`<agent_vault_address>` is the **internal vault** that holds the agent's badge — it must be
+discovered via Gateway `/state/entity/details` on the agent's account.
 
-After commit, the agent's vault is empty — any subsequent badge proof check by Guild
-API fails closed. Bot's auth-gate cache (PR 4) detects the absence within 5 min and
-flips `agent_profiles.is_active = 0`.
+After commit, the agent's vault is empty, so no proof of that badge can be created.
 
 ## Why not recall inside the blueprint?
 

@@ -29,7 +29,7 @@ import { TG_GROUP_HANDLE } from "@/lib/config";
 //   • The fix was to quote USD and pay the XRD equivalent. That removed the
 //     first asymmetry and created a worse one: a price the Guild cannot pay.
 //     Measured 2026-09-16 against the Gateway (state_version 558368198) from
-//     the post-sweep roster in `_safety/asset-ledger/asset-ledger-2026-09-12.csv`:
+//     the operator's post-sweep account roster (an asset-ledger CSV kept outside this repository):
 //     32,984 XRD across 28 accounts (~$27), plus 8,377 XRD committed inside
 //     the escrow — 41,361 XRD, about $34, and that is EVERYTHING, working
 //     capital included. One Medium finding at the posted $25 was 73% of every

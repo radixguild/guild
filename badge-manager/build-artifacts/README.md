@@ -2,9 +2,9 @@
 
 These four files are the **only surviving copies** of the compiled BadgeManager package
 artifacts (`.wasm` code + `.rpd` package definition). They were gitignored in guild-public
-(`badge-manager/build/`) and therefore carried by NO git history — they were rescued from
-`~/Projects/_safety/guild-public-preflip-2026-08-14/gitignored-local-only.tar.gz` at fold time
-(2026-08-14) and committed here deliberately.
+(`badge-manager/build/`) and therefore carried by NO git history — they were rescued from a
+local-only archive of the gitignored files at fold time (2026-08-14) and committed here
+deliberately.
 
 | File | sha256 |
 |---|---|
