@@ -127,8 +127,9 @@ function welcomeMember({ name, portal, handle }) {
 }
 
 // "If something goes wrong" and the scam alert were added 2026-10-12 at the operator's request.
-// The alert is SAFETY_LINE's facts, shorter, plus one promise SAFETY_LINE does not make: nobody
-// from the Guild opens a DM first. Keep the two in step.
+// The alert is SAFETY_LINE's facts, shorter, plus two promises SAFETY_LINE does not make: no person
+// from the Guild messages first, and the bot only DMs after /start (wording: the operator, 2026-10-12).
+// Keep the two in step.
 function help({ portal }) {
   return (
     "Radix Guild — commands\n\n" +
@@ -151,7 +152,8 @@ function help({ portal }) {
     "/temp <question> — start a 24h yes/maybe/no pulse check\n" +
     "/temps — see the open checks\n\n" +
     "Scam alert: Radix Guild has one bot, @radix_guild_bot, and the operator is @bigdev_xrd. " +
-    "Nobody from the Guild will DM you first, ask for your seed phrase, or ask you to send XRD by hand.\n\n" +
+    "No person from the Guild will message you first. The bot only DMs you after you've started it. " +
+    "Nobody will ever ask for your seed phrase. Use the main channel for all discussions to be safe.\n\n" +
     "The web app: " + portal
   );
 }
