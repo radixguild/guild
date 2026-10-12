@@ -297,10 +297,19 @@ export const WHAT_THIS_IS_NOT = {
   ],
 }
 
-export const HOW_TO_ANSWER = {
-  heading: "How to answer",
-  body: "Vote on this page (web temperature check: unweighted, one vote per browser, not binding). Temperature checks will also run on the guild's Telegram; longer answers belong there or on RadixTalk. Disagreement is the useful part.",
+/** The poll that used to sit under each question below. It ran as an
+ *  unweighted, one-vote-per-browser web check and drew nothing, so it is
+ *  closed rather than left open for votes nobody will read: the vote path
+ *  is gone from the page and from the API (the tally endpoint still reads,
+ *  so the zero stays checkable). The questions stay as a record of what was
+ *  asked. Operator decision, 2026-10-12. */
+export const CHECKS_CLOSED = {
+  heading: "The poll on this page is closed",
+  notice:
+    "These nine questions ran as a web poll here from 5 September to 12 October 2026 and drew no votes. They stay as a record of what was asked. Anything that should count belongs in the Radix DAO's own process, or on the RadixTalk thread for the piece you care about.",
 }
 
-export const WIDGET_COPY =
-  "Web temperature check: unweighted, one vote per browser; votes from signed-in accounts are counted separately. Not binding."
+export const HOW_TO_ANSWER = {
+  heading: "Where answers count",
+  body: "There is nothing to vote on here. The Radix DAO takes proposals from any XRD holder, and RadixTalk has a thread for most of the pieces above; longer answers belong in either. This page is public under Apache-2.0, so a correction can also be a fork.",
+}
