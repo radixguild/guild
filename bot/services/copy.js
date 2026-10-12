@@ -126,6 +126,9 @@ function welcomeMember({ name, portal, handle }) {
   );
 }
 
+// "If something goes wrong" and the scam alert were added 2026-10-12 at the operator's request.
+// The alert is SAFETY_LINE's facts, shorter, plus one promise SAFETY_LINE does not make: nobody
+// from the Guild opens a DM first. Keep the two in step.
 function help({ portal }) {
   return (
     "Radix Guild — commands\n\n" +
@@ -138,9 +141,17 @@ function help({ portal }) {
     "/taskalerts on|off — DM me when a new task is funded (default off)\n\n" +
     "Help:\n" +
     "/faq — common questions\n" +
-    "/support — get help or report a bug\n" +
-    "/verify — reply to someone's message to check if they're on the Guild team\n\n" +
-    "Community votes (optional, off-ledger, free): /proposals /vote /results\n\n" +
+    "/support — get help or report a bug\n\n" +
+    "If something goes wrong:\n" +
+    "• Money or security (a payment, bond, wallet or key): message @bigdev_xrd privately with the " +
+    "task number and transaction id. Keep details out of public chats.\n" +
+    "• Not sure someone is real? Reply to their message with /verify\n" +
+    "• Anything else: /support, or post in @radix_guild\n\n" +
+    "Community votes (optional, off-ledger, free): /proposals /vote /results\n" +
+    "/temp <question> — start a 24h yes/maybe/no pulse check\n" +
+    "/temps — see the open checks\n\n" +
+    "Scam alert: Radix Guild has one bot, @radix_guild_bot, and the operator is @bigdev_xrd. " +
+    "Nobody from the Guild will DM you first, ask for your seed phrase, or ask you to send XRD by hand.\n\n" +
     "The web app: " + portal
   );
 }

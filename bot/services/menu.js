@@ -47,7 +47,7 @@ async function setupCommandMenu(bot) {
  */
 const UNLISTED = [
   // governance-era — some are in live use by outside members in the group
-  "propose", "new", "poll", "temp", "amend", "temps", "stats", "cancel", "history",
+  "propose", "new", "poll", "amend", "stats", "cancel", "history",
   // task/escrow-era ("bounty" = /tasks unless FEATURE_LEGACY_BOUNTY; "badges" = the /badge card)
   "bounty", "badges", "wallet", "trust", "mystatus",
   // info and support
@@ -69,8 +69,11 @@ const UNLISTED = [
  */
 const RETIRED = ["dispute", "arbiter", "cv3", "game", "leaderboard", "dao", "groups", "group", "wg", "project", "milestone"];
 
-/** Named in /help but not in the dropdown menu. test/command-inventory.test.js checks /help really names them. */
-const HELP_ONLY = ["proposals", "vote", "results", "taskalerts"];
+/**
+ * Named in /help but not in the dropdown menu. test/command-inventory.test.js checks /help really names them.
+ * temp and temps moved here from UNLISTED on 2026-10-12: the operator runs pulse checks with them.
+ */
+const HELP_ONLY = ["proposals", "vote", "results", "taskalerts", "temp", "temps"];
 
 /**
  * Admin-only handlers — each refuses non-admins as its first statement (pinned by
