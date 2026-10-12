@@ -126,6 +126,10 @@ function welcomeMember({ name, portal, handle }) {
   );
 }
 
+// "If something goes wrong" and the scam alert were added 2026-10-12 at the operator's request.
+// The alert is SAFETY_LINE's facts, shorter, plus two promises SAFETY_LINE does not make: no person
+// from the Guild messages first, and the bot only DMs after /start (wording: the operator, 2026-10-12).
+// Keep the two in step.
 function help({ portal }) {
   return (
     "Radix Guild — commands\n\n" +
@@ -138,9 +142,18 @@ function help({ portal }) {
     "/taskalerts on|off — DM me when a new task is funded (default off)\n\n" +
     "Help:\n" +
     "/faq — common questions\n" +
-    "/support — get help or report a bug\n" +
-    "/verify — reply to someone's message to check if they're on the Guild team\n\n" +
-    "Community votes (optional, off-ledger, free): /proposals /vote /results\n\n" +
+    "/support — get help or report a bug\n\n" +
+    "If something goes wrong:\n" +
+    "• Money or security (a payment, bond, wallet or key): message @bigdev_xrd privately with the " +
+    "task number and transaction id. Keep details out of public chats.\n" +
+    "• Not sure someone is real? Reply to their message with /verify\n" +
+    "• Anything else: /support, or post in @radix_guild\n\n" +
+    "Community votes (optional, off-ledger, free): /proposals /vote /results\n" +
+    "/temp <question> — start a 24h yes/maybe/no pulse check\n" +
+    "/temps — see the open checks\n\n" +
+    "Scam alert: Radix Guild has one bot, @radix_guild_bot, and the operator is @bigdev_xrd. " +
+    "No person from the Guild will message you first. The bot only DMs you after you've started it. " +
+    "Nobody will ever ask for your seed phrase. Use the main channel for all discussions to be safe.\n\n" +
     "The web app: " + portal
   );
 }

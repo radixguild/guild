@@ -151,7 +151,7 @@ function setupWizard(bot, db, requireBadge, buildYesNoKeyboard, buildPollKeyboar
     text += "\nBy: @" + (ctx.from.username || ctx.from.first_name) + "\n";
     text += "Ends: " + endsDate + " (" + pending.duration + "h)\n";
     text += "Min votes: " + (pending.type === "temp" ? 1 : 3);
-    if (pending.type === "temp") text += "\nNon-binding — gauging interest";
+    if (pending.type === "temp") text += "\nNon-binding";
 
     // Delete the wizard message
     try { await ctx.deleteMessage(); } catch(e) {}
