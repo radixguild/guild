@@ -229,9 +229,12 @@ describe("/auditor-guide's pull auth-pattern note matches what lib.rs does", () 
     expect(relevant.filter((m) => !page.includes(`method: "${m}"`))).toEqual([])
   })
 
-  // Trust claim 1 ("The platform cannot move escrowed funds") lists the owner
+  // Trust claim 1 (the owner badge's reach over task vaults) lists the owner
   // badge's powers. Until 2026-09-17 it named three of fifteen, omitting every
   // parameter setter — including the two that reach claims already in flight.
+  // Its heading read "The platform cannot move escrowed funds." until
+  // 2026-09-24 and "The owner badge cannot move escrowed funds." until
+  // 2026-10-14; it now names exactly what no owner method can take.
   describe("trust claim 1 discloses every owner power", () => {
     const page = readFileSync(join(APP, "src/app/auditor-guide/page.tsx"), "utf8")
     const claim1 = page.slice(page.indexOf('n: "1"'), page.indexOf('n: "2"'))
@@ -239,7 +242,10 @@ describe("/auditor-guide's pull auth-pattern note matches what lib.rs does", () 
     const ownerMethods = [...authBlock.matchAll(/^\s+([a-z_]+) => restrict_to: \[OWNER\];/gm)].map((m) => m[1])
 
     it("names every restrict_to: [OWNER] method in lib.rs", () => {
-      expect(claim1).toContain("The platform cannot move escrowed funds.")
+      expect(claim1).toContain('claim: "The owner badge cannot withdraw a task\'s reward, insurance or live claim bond."')
+      // The arbiter's reach and the trusted-role framing sit beside it, not elsewhere.
+      expect(claim1).toMatch(/arbiter badge sits in the same operator wallet/)
+      expect(claim1).toMatch(/Both badges are trusted roles today/)
       expect(ownerMethods.length).toBeGreaterThanOrEqual(15)
       expect(ownerMethods.filter((m) => !claim1.includes(m))).toEqual([])
     })

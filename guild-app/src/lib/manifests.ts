@@ -980,7 +980,8 @@ CALL_METHOD
 //   resolve_dispute — ARBITER-ruled: one ruling governs reward AND remaining
 //     insurance (insurance minus the arbiter fee).
 //   auto_resolve_dispute — NOBODY judged: the default ruling governs the
-//     REWARD only; the insurance premium always returns to the poster.
+//     REWARD (and the claim bond, which follows the reward's ruling in its
+//     own lane); the insurance premium always returns to the poster.
 // The app never recomputes these amounts — they arrive in settlement events.
 
 export type DisputeRuling =
@@ -1509,9 +1510,12 @@ CALL_METHOD
 // run (list → fill → withdraw_proceeds, list → cancel; the signed files are kept
 // outside the repo with the ceremony record) — whitespace aside: the `asks`
 // array is emitted on ONE line so the manifest↔ABI gate reads it as one
-// argument. tests/unit/nft-swap-manifests.test.ts pins each builder to those
-// proven manifests, and tests/unit/manifest-abi-gate.test.ts checks every call
-// against src/nft_swap.rs.
+// argument. One addition since: the fill manifest asserts the listed NFT is on
+// the worktop before its deposit (see fillSwapManifest).
+// tests/unit/nft-swap-manifests.test.ts pins each builder to those proven
+// manifests (the fill one plus that assertion), and
+// tests/unit/manifest-abi-gate.test.ts checks every call against
+// src/nft_swap.rs.
 //
 // The account deposits use `try_deposit_batch_or_abort` (the proving run's
 // form): a refused deposit aborts the signer's own transaction before anything
@@ -1607,6 +1611,13 @@ ${depositAllTo(a)}`;
  * blueprint takes no change and no partial payment, so the manifest moves
  * precisely that amount (or that one NFT) and nothing else. The listed NFT
  * comes back on the worktop in the same transaction and lands in `buyer`.
+ *
+ * `assetResource` / `assetId` are the listing's NFT as the chain stores it.
+ * After `fill`, the manifest asserts that exactly that NFT is on the worktop
+ * before anything is deposited, so the buyer's transaction commits only if
+ * the NFT they are paying for arrives in it. The wallet shows the assertion
+ * as a guaranteed deposit. The 2026-09-15 proving run predates it; the rest
+ * of the manifest is that run's shape unchanged.
  */
 export function fillSwapManifest(
   swapComponent: string,
@@ -1614,6 +1625,8 @@ export function fillSwapManifest(
   listingId: number,
   alternative: number,
   ask: SwapAsk,
+  assetResource: string,
+  assetId: string,
 ): string {
   const c = validateAddress(swapComponent, "component_rdx");
   const a = validateAddress(buyer, "account_rdx");
@@ -1621,6 +1634,8 @@ export function fillSwapManifest(
   if (!Number.isInteger(alternative) || alternative < 0 || alternative > 255) {
     throw new Error("Invalid alternative: must be an integer 0-255");
   }
+  const assetRes = validateAddress(assetResource, "resource_rdx");
+  const assetLid = validateLocalId(assetId, "assetId");
   const r = validateAddress(ask.resource, "resource_rdx");
   let payment: string;
   if (ask.kind === "fungible") {
@@ -1659,6 +1674,10 @@ CALL_METHOD
   ${lid}u64
   ${alternative}u8
   Bucket("payment")
+;
+ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES
+  Address("${assetRes}")
+  Array<NonFungibleLocalId>(NonFungibleLocalId("${assetLid}"))
 ;
 ${depositAllTo(a)}`;
 }

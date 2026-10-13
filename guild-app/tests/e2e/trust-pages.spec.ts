@@ -43,7 +43,7 @@ test.describe("Auditor guide page", () => {
     await page.goto("/auditor-guide");
     await expect(page.getByRole("heading", { name: "Auditor’s Guide" })).toBeVisible();
     await expect(page.getByText("auto_resolve_dispute").first()).toBeVisible();
-    await expect(page.getByText("The owner badge cannot move escrowed funds.")).toBeVisible();
+    await expect(page.getByText("The owner badge cannot withdraw a task's reward, insurance or live claim bond.")).toBeVisible();
     await expect(page.getByText("Honest Gaps (the Register)")).toBeVisible();
     await expect(page.getByText("Per-criterion enforced payouts")).toBeVisible();
   });

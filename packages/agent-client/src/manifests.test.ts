@@ -148,11 +148,25 @@ describe('NFT swap builders — parity with guild-app', () => {
     );
   });
 
-  test('fillSwapManifest — fungible and non-fungible payments', () => {
+  // ONE KNOWN DIFFERENCE, until the kit's next release. guild-app's fill builder
+  // takes the listing's NFT and asserts it is on the worktop after `fill`, before
+  // the deposit, so the buyer's transaction commits only if that NFT arrives. This
+  // package's builder ships in the served kit, whose bytes are hash-pinned per
+  // release, so it gains the same assertion in its own release. Until then: the
+  // app's manifest must be exactly the kit's plus that one instruction.
+  test('fillSwapManifest — fungible and non-fungible payments (the app adds the listed-NFT assertion)', () => {
+    type AppFill = (
+      ...a: [...Parameters<typeof clientManifests.fillSwapManifest>, assetResource: string, assetId: string]
+    ) => string;
+    const assertion = `ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES\n  Address("${NFT}")\n  Array<NonFungibleLocalId>(NonFungibleLocalId("#2#"))\n;\n`;
     for (const [alt, ask] of [[0, FUNGIBLE], [1, NON_FUNGIBLE]] as const) {
-      expectServerParity('fillSwapManifest', clientManifests.fillSwapManifest(SWAP, BUYER, 3, alt, ask), () =>
-        (server.fillSwapManifest as unknown as typeof clientManifests.fillSwapManifest)(SWAP, BUYER, 3, alt, ask)
-      );
+      expectServerParity('fillSwapManifest', clientManifests.fillSwapManifest(SWAP, BUYER, 3, alt, ask), () => {
+        const app = (server.fillSwapManifest as unknown as AppFill)(SWAP, BUYER, 3, alt, ask, NFT, '#2#');
+        expect(app.split(assertion)).toHaveLength(2);
+        expect(app.indexOf(assertion)).toBeGreaterThan(app.indexOf('"fill"'));
+        expect(app.indexOf(assertion)).toBeLessThan(app.indexOf('"try_deposit_batch_or_abort"'));
+        return app.replace(assertion, '');
+      });
     }
   });
 

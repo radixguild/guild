@@ -240,7 +240,7 @@ function DocsContent() {
               <ol className="text-[11px] text-muted-foreground space-y-1 list-decimal pl-3">
                 <li>Create the task on the dashboard — free, no on-chain transaction (you sign in with your wallet), not yet claimable</li>
                 <li>Click <strong>Fund</strong>: your Radix Wallet signs a deposit of the reward plus 5% insurance</li>
-                <li>XRD locked in the Scrypto vault — no admin custody</li>
+                <li>XRD locked in the task&rsquo;s Scrypto vault — released by the contract&rsquo;s rules: approval, cancel, a timeout or a dispute ruling</li>
                 <li>Review the submission and approve with your own signed transaction</li>
               </ol>
             </div>

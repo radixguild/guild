@@ -81,7 +81,7 @@ const MECHANISM = [
   },
   {
     method: "resolve_dispute",
-    body: "An arbiter presenting the Guild Arbiter Badge sets the poster/worker shares — the one path where the ruling governs the insurance as well as the reward. Any arbiter fee (≤10% of insurance, fixed at 0 on every task this app funds) returns to the arbiter. Gated by the badge — supply 1, held by the operator — and no turnaround time is promised before the auto-resolve window closes. The on-chain self-dealing check is narrow: the arbiter may not be the task's worker (asserted, reverts otherwise), but nothing checks the poster — it is a caller-supplied destination, not a verified identity — so an arbiter who funded a task may still rule on it. They cannot redirect the money doing so (settlement pays only the pinned accounts), but they can rule in their own favor as poster.",
+    body: "An arbiter presenting the Guild Arbiter Badge sets the poster/worker shares — the one path where the ruling governs the insurance as well as the reward. Any arbiter fee (≤10% of insurance, fixed at 0 on every task this app funds) returns to the arbiter. Gated by the badge — supply 1, held by the operator — and no turnaround time is promised before the auto-resolve window closes. The on-chain self-dealing check is narrow: the account the arbiter badge is assigned to may not be the task's worker account (asserted, reverts otherwise), but nothing checks the poster — it is a caller-supplied destination, not a verified identity — so an arbiter who funded a task may still rule on it. They cannot redirect the money doing so (settlement pays only the pinned accounts), but they can rule in their own favor as poster.",
   },
   {
     method: "auto_resolve_dispute",

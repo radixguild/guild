@@ -10,8 +10,10 @@
 > `min_insurance_fraction` = **0.05 (5%)** on the deployed component — **not the 2% this doc
 > uses** in its flow diagrams and pool math. It is a poster-paid premium, refunded to the
 > poster when unused: `cancel_task` credits the poster reward **and** insurance, and on
-> `auto_resolve_dispute` the insurance returns to the poster whole while only the reward
-> splits (mainnet-measured 0.5 / 0.55 on a 1.0 + 0.05 task). Its stated dependency,
+> `auto_resolve_dispute` the insurance returns to the poster whole while the reward splits
+> (mainnet-measured 0.5 / 0.55 on a 1.0 + 0.05 task, on the PULL component). *(2026-10-14:)*
+> on the live Wave B component the worker's claim bond also splits by the reward's ruling, so
+> under the `SplitEvenly` default half of it is credited to the poster. Its stated dependency,
 > `GuildEscrow`, is the **deprecated** blueprint. Parameter ground truth:
 > `ESCROW-PARAMETER-SHEET.md`; live values: `ESCROW-ADDRESSES.md` (both kept in the private
 > operations repository).

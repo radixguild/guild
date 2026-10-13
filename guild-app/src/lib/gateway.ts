@@ -776,7 +776,8 @@ export interface OnChainTaskInfo {
    *     half no longer holds: Wave B added the OWNER-only
    *     `set_dispute_auto_resolve_default`. It moves the live default, never a
    *     dispute already pinned at raise_dispute.
-   *   • The ruling governs the REWARD ONLY. The insurance leg is hard-coded
+   *   • The ruling governs the REWARD (and the claim bond, which follows the
+   *     reward's ruling in its own lane), never the insurance. The insurance leg is hard-coded
    *     RefundPoster regardless of the ruling (`auto_resolve_dispute` passes
    *     `&DisputeRuling::RefundPoster` for insurance) — an explicit
    *     anti-strict-dominance fix, because a prior version paid the worker MORE
