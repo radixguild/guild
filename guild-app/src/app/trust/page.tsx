@@ -149,7 +149,7 @@ const CHECKABLE_TODAY = [
   },
   {
     title: "The arbiter's independence is narrower than it sounds",
-    body: "resolve_dispute checks one identity: the arbiter may not be the task's worker (the chain asserts it and reverts otherwise). It does not, and cannot honestly, check the poster — the poster field is a caller-supplied destination, not a verified identity, so a poster-side check would defeat itself for the price of a decoy address. In practice: an arbiter who funded a task may still rule on it. They cannot steal doing so — settlement pays only the accounts pinned at claim and funding, never the arbiter, beyond any arbiter fee funded (0 on tasks funded through this app) — but they can rule in their own favor as poster. The arbiter badge has supply 1 today, so this is worth weighing plainly rather than assuming away.",
+    body: "resolve_dispute checks one identity: the account the arbiter badge is assigned to may not be the task's worker account (the chain asserts it and reverts otherwise). It does not, and cannot honestly, check the poster — the poster field is a caller-supplied destination, not a verified identity, so a poster-side check would defeat itself for the price of a decoy address. In practice: an arbiter who funded a task may still rule on it. They cannot steal doing so — settlement pays only the accounts pinned at claim and funding, never the arbiter, beyond any arbiter fee funded (0 on tasks funded through this app) — but they can rule in their own favor as poster. The arbiter badge has supply 1 today, so this is worth weighing plainly rather than assuming away.",
     verify: "Disputes & Arbitration — resolve_dispute's self-dealing check, and what it deliberately does not cover.",
   },
   {
@@ -299,9 +299,10 @@ function TrustContent() {
               <dt className="font-semibold text-sm">Your funds</dt>
               <dd className="text-muted-foreground">
                 Rewards and claim bonds stay in the escrow until its own rules release them. Nobody,
-                the operator included, can take them out early or send a payment to a different
-                account. If this site is down or paused, the contract keeps running and its deadlines
-                still apply. If you can&rsquo;t collect what you&rsquo;re owed — because the site is
+                the operator included, can send a payment to a different account, and outside a
+                dispute nobody can take them out early; on a disputed task the operator, as the only
+                arbiter, decides the split. If this site is down or paused, the contract keeps running
+                and its deadlines still apply. If you can&rsquo;t collect what you&rsquo;re owed — because the site is
                 down, or you no longer hold the badge you claimed with — ask in the group: anyone,
                 the operator included, can deliver it to the account it is owed to.
               </dd>

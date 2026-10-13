@@ -592,7 +592,7 @@ export const DISPUTE_COPY = {
   // trusts nothing else on the page either.
   disputesArbiterConflictScope: {
     off: "",
-    on: "One limit worth stating plainly: the arbiter may not be the task's worker — the blueprint enforces that, because the worker is pinned on the task when they claim it. It does NOT stop an arbiter who funded a task from ruling on it. That side is not enforced on-chain, because a funder is not recorded on the task, so there is nothing for the contract to compare against. Today the operator funds every task and is the only arbiter.",
+    on: "One limit worth stating plainly: the account the arbiter badge is assigned to may not be the task's worker account — the blueprint enforces that, because the worker's account is pinned on the task when they claim it. It does NOT stop an arbiter who funded a task from ruling on it. That side is not enforced on-chain, because a funder is not recorded on the task, so there is nothing for the contract to compare against. Today the operator funds every task and is the only arbiter.",
   },
   // The date is when disputes went live, not when this copy was written: PR #465 merged
   // and deployed 2026-08-29 (docs/PROJECT-STATE.md). It read 2026-08-27 until 2026-10-02.

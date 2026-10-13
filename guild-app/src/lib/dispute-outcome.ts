@@ -111,7 +111,8 @@ export const posterCostOnAutoResolve = (rewardXrd: number, insuranceXrd?: number
  * Mirrors two things in the blueprint, and they live in different places —
  * `worker_share` (lib.rs, its own match on `DisputeRuling`) is only the
  * per-ruling share function:
- *   • the ruling governs the REWARD only. The insurance is hard-coded
+ *   • the ruling governs the REWARD (the claim bond follows it too, in its own
+ *     lane, which this module does not compute). The insurance is hard-coded
  *     `RefundPoster` at the CALL SITE in `auto_resolve_dispute` (lib.rs, its
  *     `credit_split_for_parties` call passing `&DisputeRuling::RefundPoster`
  *     as the insurance ruling),

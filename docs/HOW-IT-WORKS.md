@@ -1,4 +1,6 @@
 <!-- status: live
+     verified: 2026-10-14 ("Why trust it", its first bullet ONLY: re-synced with the live
+     /guide wording and lib.rs's owner and arbiter methods. Nothing else re-checked this pass.)
      verified: 2026-10-11 (step 6 ONLY: the minimum-trust-tier claim, against
      guild-app/src/components/tasks/escrow-actions.tsx, guild-app/src/lib/task-terms.ts and
      guild-app/public/llms.txt. Nothing else re-checked this pass.)
@@ -117,9 +119,14 @@ Per-task disputability is a banned claim in
 
 ## Why trust it
 
-- **Your keys move money. Ours never do.** The platform holds no signing power over
-  escrowed funds. Finalization methods are public on-chain — winners settle from their own
-  wallets. Our watcher alerts; it cannot act.
+- **The platform never signs for you.** Settlement credits each party inside the contract,
+  and everyone collects from their own wallet; the timeout paths are public on-chain. The
+  operator holds two trusted roles today: the owner badge, which changes settings within the
+  contract (each change a public event), and the only arbiter badge, so on a disputed task the
+  operator's ruling decides the split. Forfeited claim bonds collect in a vault only the owner
+  can withdraw, less the bounty paid to whoever calls the public expire. Our watcher alerts;
+  it cannot act. *(Reworded 2026-10-14 to match the live /guide: this line said the
+  platform's keys never move money and that it held no signing power over escrowed funds.)*
 - **Terms are data.** Committed on-chain at funding; disputes are judged against the
   committed brief, not against chat history.
 - **Every promise is checkable.** Component addresses and configuration are published — see

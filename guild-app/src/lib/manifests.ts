@@ -980,7 +980,8 @@ CALL_METHOD
 //   resolve_dispute — ARBITER-ruled: one ruling governs reward AND remaining
 //     insurance (insurance minus the arbiter fee).
 //   auto_resolve_dispute — NOBODY judged: the default ruling governs the
-//     REWARD only; the insurance premium always returns to the poster.
+//     REWARD (and the claim bond, which follows the reward's ruling in its
+//     own lane); the insurance premium always returns to the poster.
 // The app never recomputes these amounts — they arrive in settlement events.
 
 export type DisputeRuling =

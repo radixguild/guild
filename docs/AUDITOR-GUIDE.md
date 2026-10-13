@@ -1,4 +1,9 @@
 <!-- status: live
+     verified: 2026-10-14 (§2 claim 1's heading and its new arbiter bullet, and §6's dispute bullet
+     ONLY: re-derived from lib.rs (resolve_dispute, auto_resolve_dispute, credit_split_for_parties)
+     and read from the Radix Gateway at state version 563024795, where the owner badge and the
+     arbiter badge (supply 1 each) are both held by the operator's account …96fgt3fm. Nothing
+     else re-checked this pass.)
      verified: 2026-10-06 (§6's first two bullets ONLY: replaced with the live /auditor-guide's
      corrected wording, against lib.rs's owner setters and its note on the arbiter badge's mint
      role. Nothing else re-checked this pass.)
@@ -80,9 +85,9 @@ and the owner-only `withdraw_forfeited_bonds`.
 
 ## 2. The trust claims, and how to check each one
 
-1. **"The platform cannot move escrowed funds."** There is no platform key with authority
-   over task vaults: the owner badge cannot touch reward or insurance. Everything it can
-   do, all fifteen `restrict_to: [OWNER]` methods:
+1. **"The owner badge cannot withdraw a task's reward, insurance or live claim bond."** The
+   owner badge has no method over task vaults. Everything it can do, all fifteen
+   `restrict_to: [OWNER]` methods:
    - **Tokens:** `add_accepted_token`, `remove_accepted_token`, `freeze_token`,
      `unfreeze_token` — the whitelist is read only by `create_task`, so these change what
      NEW tasks may be funded in, never an existing task.
@@ -98,6 +103,18 @@ and the owner-only `withdraw_forfeited_bonds`.
      could be cut to zero) and `set_expire_bounty_pct` (0–1 of the forfeited bond to the
      caller; the rest to the owner's vault).
    - Every one of these calls emits a public on-chain event.
+   - **The arbiter badge is a separate power, held in the same operator wallet.** On a disputed
+     task, `resolve_dispute` decides how the reward, the insurance and the worker's claim bond
+     split between poster and worker; it pays no one else beyond the arbiter fee set on the task
+     (0 on tasks funded through this app). Its one identity check refuses a ruling when the
+     account the badge is assigned to is the task's worker account; it does not check the
+     poster. Both badges are trusted roles today, and the aim is to hand the admin badge to the
+     Radix DAO once the DAO is formed, with no date set.
+
+   ⚠️ *(corrected 2026-10-14)* This claim read "The platform cannot move escrowed funds." The
+   owner badge cannot, but the operator also holds the only arbiter badge, whose ruling moves a
+   disputed task's funds between the parties. The heading now names the badge it is about, as
+   the in-app twin has since 2026-09-24, and the arbiter's reach is stated beside it.
 
    ⚠️ *(corrected 2026-09-17)* This claim listed only the whitelist, freeze and
    forfeited-bond powers, omitting the ten parameter setters Wave B added — including the two
@@ -221,9 +238,12 @@ disclosure. No trustee is retained.
   the private operations repository) CHECK 1/2 were INVERTED with it — a disputes-OFF build
   now FAILS the deploy.** The app exposes dispute-raising and
   the arbiter path. What an auditor should check instead: the settled terms are SplitEvenly
-  50/50 of the reward only, insurance returns whole to the poster, arbiter fee 0, 7-day
-  auto-resolve, and the poster-stonewall asymmetry (worker loses, poster ends better off than
-  approving) is stated in the product copy rather than hidden. ⚠️ *(2026-08-23 note kept for
+  50/50 of the reward, the worker's claim bond split the same way (so half of it is credited to
+  the poster), insurance returns whole to the poster, arbiter fee 0, 7-day auto-resolve
+  (`auto_resolve_dispute` passes its default ruling to `credit_split_for_parties` for the
+  reward, hard-codes `RefundPoster` for the insurance, and that helper splits the claim-bond
+  vault by the reward's ruling), and the poster-stonewall asymmetry (worker loses, poster ends
+  better off than approving) is stated in the product copy rather than hidden. ⚠️ *(2026-08-23 note kept for
   provenance)* This line previously said
   that meant "BUG-7 remains open" — under the now-superseded PUSH blueprint that was the
   live risk this flag was gating; under PULL, BUG-7's mechanism (a caller receiving and

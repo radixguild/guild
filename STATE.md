@@ -16,7 +16,9 @@ _Last written: 2026-10-11. That day's changes were checked against the rollout v
 same date: the deploy record, the served pages, the served kit bytes and their published hashes,
 the escrow component's settings read from the Radix Gateway, the owner transaction, and the public
 task list. Passages that draw on anything else were last checked between 2026-09-29 and
-2026-10-06 and were not re-read._
+2026-10-06 and were not re-read. On 2026-10-14 the owner table's "Cannot" row and the arbiter
+bullet under Disputes were re-read against the escrow source and the badge holders on the Radix
+Gateway, and reworded to match._
 
 ## Live today *(as of 2026-10-11)*
 
@@ -101,7 +103,7 @@ on the site itself.
 | | |
 |---|---|
 | **Can** | Change twelve settings through ten owner-only calls (the claim bond percentage, floor and cap, the review window, the arbiter-fee cap, the minimum insurance fraction a poster must fund, both submit deadlines, the dispute-resolve window and default split, the expiry grace period, and the expired-claim bounty share) — most take effect only for steps taken after the change; two reach claims already in flight (the grace window after a claim deadline, and the share of a forfeited bond paid to whoever ends it). Add or freeze an accepted token (freezing stops new tasks; it touches nothing already in flight). Collect bonds that have already been forfeited. Every change is a public on-chain event. Separately, the operator holds the badge that mints arbiter badges, so it can issue more of them, each assigned to one account (see "Disputes," below). |
-| **Cannot** | Withdraw a task's live reward or claim bond, reverse a settlement, redirect a payment to a different account, pause the contract outright (freezing only stops *new* tasks), move a deadline that has already started, or stop a specific account from calling the contract directly. Nobody, the operator included, can reach into escrow and take a reward or a live claim bond early. |
+| **Cannot** | Withdraw a task's live reward or claim bond, reverse a settlement, redirect a payment to a different account, pause the contract outright (freezing only stops *new* tasks), move a deadline that has already started, or stop a specific account from calling the contract directly. Outside a dispute, nobody, the operator included, can reach into escrow and take a reward or a live claim bond early; on a disputed task the arbiter's ruling decides the split, and the operator holds the only arbiter badge (see "Disputes," below). Both badges are trusted roles today. |
 
 Off-chain, the operator can take the site down or roll it back, suspend an account's access to
 the *site*, and stop new tasks from being funded through it — none of which reaches the chain: a
@@ -119,9 +121,9 @@ suspended account can still submit a raw transaction the contract accepts.
   to the poster in full — insurance is the poster's premium, not a prize the dispute path
   redistributes, so the default pays the same insurance outcome a normal approval would.
 - **The arbiter's independence is narrower than it sounds.** `resolve_dispute` checks one
-  identity: the arbiter may not be the task's *worker* — the chain asserts this and reverts
-  otherwise. It cannot honestly check the *poster*, because the poster address is a
-  caller-supplied field at task creation, not a verified identity; a poster-side check would be
+  identity: the account the arbiter badge is assigned to may not be the task's *worker* account —
+  the chain asserts this and reverts otherwise. It cannot honestly check the *poster*, because the
+  poster address is a caller-supplied field at task creation, not a verified identity; a poster-side check would be
   defeated by a decoy address for the price of one transaction. In practice, an arbiter who
   funded a task may still rule on it as poster — they cannot steal by doing so (settlement pays
   only the accounts pinned at claim and funding, plus any funded arbiter fee, which is 0% on
