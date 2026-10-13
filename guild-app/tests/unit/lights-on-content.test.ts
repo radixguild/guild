@@ -5,6 +5,7 @@ import {
   WHAT_THIS_IS_NOT,
   CHECKS_CLOSED,
   HOW_TO_ANSWER,
+  PAGE_HEADER,
   type CheckId,
 } from "@/content/lights-on"
 
@@ -101,5 +102,15 @@ describe("lights-on content — the closed poll", () => {
     expect(CHECKS_CLOSED.notice).toContain("Radix DAO's own process")
     expect(HOW_TO_ANSWER.body).toContain("nothing to vote on here")
     expect(HOW_TO_ANSWER.body).not.toMatch(/vote on this page/i)
+  })
+
+  // The tagline is the H1 subtitle AND the page's meta description, so it is
+  // what a link preview shows. Before 2026-10-13 it still called the page "an
+  // open set of questions" after the poll had closed.
+  it("the tagline (subtitle and link preview) says the poll is closed, with its dates", () => {
+    expect(PAGE_HEADER.tagline).toContain("5 September to 12 October 2026")
+    expect(PAGE_HEADER.tagline).toContain("drew no votes and is closed")
+    expect(PAGE_HEADER.tagline).not.toMatch(/\bopen\b/i)
+    expect(PAGE_HEADER.tagline.length).toBeLessThanOrEqual(160)
   })
 })
