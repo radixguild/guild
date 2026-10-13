@@ -71,11 +71,11 @@ export const COLD_ROUTES = [
   // so it is exactly the page that wants a gate over it.
   "/check-badge",
   // /lights-on ("Who keeps the lights on?") — added in the same commit that
-  // brings the page in. A static, server-rendered page: its draft copy AND
-  // the TempCheck widget's static disclaimer sentence are both present in the
-  // SSR'd HTML this gate scans. Only the per-option vote TALLIES are
-  // client-fetched after hydration (a count, never a claim), so this page
-  // does not need a CLIENT_RENDERED entry the way /tasks or /groups do.
+  // brings the page in. A static, server-rendered page with no client-fetched
+  // content since the poll closed on 2026-10-12 and its vote widget was
+  // removed: every sentence, including the closed-poll notice, is in the
+  // SSR'd HTML this gate scans, so this page does not need a CLIENT_RENDERED
+  // entry the way /tasks or /groups do.
   "/lights-on",
   // /swaps — added in the same commit that brings the page in, like /agents,
   // /check-badge and /lights-on before it. It is claim-dense by nature: it

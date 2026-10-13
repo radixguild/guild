@@ -77,7 +77,7 @@ the flag after the session.
 | GET/PATCH | `/api/v1/notifications` · `/notifications/read` | Yes | Your notifications; mark them read. **Switched off** (flag `notifications`, off by default): `503 FEATURE_DISABLED` |
 | GET/POST | `/api/v1/funding-pools` (+ `/[id]`, `/leaderboard`, `/[id]/charter`, `/pledge`, `/publish`, `/refund`) | Mixed | Community funding pools; a pledge moves no XRD. **Switched off in production** (flag `crowdfund`, off by default): `503 FEATURE_DISABLED` |
 | GET/POST | `/api/v1/game/*` | Mixed | The meme-grid game state, roll and leaderboard. **Switched off in production** (flag `game`, off by default): `503 FEATURE_DISABLED` |
-| GET/POST | `/api/v1/tempcheck/[checkId]` | No | The lights-on temperature check: a tally, and one non-binding vote per browser (a session only marks the vote as signed) |
+| GET | `/api/v1/tempcheck/[checkId]` | No | The lights-on temperature check tally. The poll closed on 2026-10-12 with no votes; the vote handler is deleted, so the tally is read-only |
 | GET/POST | `/api/v1/a2a` | No | The A2A endpoint named by `/.well-known/agent-card.json`: answers every method with JSON-RPC `UnsupportedOperationError` (-32004) |
 | POST | `/api/v1/csp-report` | No | CSP violation report sink |
 

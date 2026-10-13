@@ -267,7 +267,7 @@ describe("/about says why the Guild exists, near the top, without overclaiming",
     expect(text).toContain(PURPOSE);
     const at = text.indexOf(PURPOSE);
     expect(at).toBeLessThan(text.indexOf("What the Guild Offers"));
-    expect(at).toBeLessThan(text.indexOf("Open temperature check"));
+    expect(at).toBeLessThan(text.indexOf("Temperature check (closed)"));
     expect(at).toBeLessThan(text.indexOf("The Operator"));
   });
 

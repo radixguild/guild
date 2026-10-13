@@ -352,7 +352,6 @@ const ROUTE_META = {
   },
   "GET /quote/xrd-usd": { summary: "XRD/USD quote used for display", auth: "none", tag: "meta" },
   "GET /tempcheck/{checkId}": { summary: "Lights-on temperature check tallies", auth: "none", tag: "tempcheck" },
-  "POST /tempcheck/{checkId}": { summary: "Vote in a lights-on temperature check", auth: "none", schema: "tempCheckVoteSchema", tag: "tempcheck" },
   "GET /users/{address}/profile": { summary: "Public profile for a wallet address", auth: "none", tag: "users" },
   "GET /users/leaderboard": { summary: "XP leaderboard (app ledger)", auth: "none", tag: "users" },
   "POST /csp-report": { summary: "CSP violation report sink (report-uri / Reporting API)", auth: "none", tag: "meta" },

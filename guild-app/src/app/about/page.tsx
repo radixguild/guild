@@ -43,18 +43,18 @@ function AboutContent() {
         </CardContent>
       </Card>
 
-      {/* Open temperature check — pulled forward when /decisions itself was
+      {/* Temperature check, closed 2026-10-12 — pulled forward when /decisions itself was
           removed 2026-09-04 (bigdev's instruction), so this is the one
           in-app pointer to the community input effort. One line, deliberately:
           the page it links to carries its own disclaimers in full. */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm uppercase tracking-wide text-muted-foreground">Open temperature check</CardTitle>
+          <CardTitle className="text-sm uppercase tracking-wide text-muted-foreground">Temperature check (closed)</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm">
             <Link href="/lights-on" className="text-primary hover:underline">Who keeps the lights on?</Link>
-            {" "}— an open set of questions to the Radix community about shared infrastructure. Nothing decided; not binding.
+            {" "}— a set of questions put to the Radix community about shared infrastructure from 5 September to 12 October 2026. It drew no votes and is closed; the page keeps the record.
           </p>
         </CardContent>
       </Card>

@@ -301,14 +301,6 @@ export const verifyAuthSchema = z.object({
   }),
 })
 
-// /lights-on temperature checks. `option` is checked against the shape here
-// only — whether it is a REAL option key for the given checkId is a lookup
-// against src/content/lights-on.ts's TEMP_CHECKS in the route, since that
-// depends on which checkId the request names.
-export const tempCheckVoteSchema = z.object({
-  option: z.string().min(1).max(100),
-})
-
 // PATCH /api/v1/notifications/read body. `ids` omitted → mark ALL of the
 // caller's unread notifications read (see markNotificationsRead's contract);
 // present (even []) → mark exactly those ids, ownership-checked at the query

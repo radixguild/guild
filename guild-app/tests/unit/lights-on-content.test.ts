@@ -3,7 +3,8 @@ import {
   TEMP_CHECK_IDS,
   TEMP_CHECKS,
   WHAT_THIS_IS_NOT,
-  WIDGET_COPY,
+  CHECKS_CLOSED,
+  HOW_TO_ANSWER,
   type CheckId,
 } from "@/content/lights-on"
 
@@ -86,10 +87,19 @@ describe("lights-on content — the three sentences that must survive verbatim",
   })
 })
 
-describe("lights-on content — widget copy", () => {
-  it("is the exact, fixed disclaimer sentence", () => {
-    expect(WIDGET_COPY).toBe(
-      "Web temperature check: unweighted, one vote per browser; votes from signed-in accounts are counted separately. Not binding.",
-    )
+describe("lights-on content — the closed poll", () => {
+  // The nine checks ran from 2026-09-05 to 2026-10-12 and drew no votes. The
+  // page says so in its own words rather than quietly dropping the widget,
+  // and the dates and the result are pinned here because "it drew nothing" is
+  // the one claim on the page about our own work.
+  it("states the dates it ran and that it drew no votes", () => {
+    expect(CHECKS_CLOSED.notice).toContain("from 5 September to 12 October 2026")
+    expect(CHECKS_CLOSED.notice).toContain("drew no votes")
+  })
+
+  it("sends anything that should count to the DAO or RadixTalk, and promises no vote here", () => {
+    expect(CHECKS_CLOSED.notice).toContain("Radix DAO's own process")
+    expect(HOW_TO_ANSWER.body).toContain("nothing to vote on here")
+    expect(HOW_TO_ANSWER.body).not.toMatch(/vote on this page/i)
   })
 })

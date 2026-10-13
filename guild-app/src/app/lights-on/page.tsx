@@ -1,12 +1,12 @@
 import type { Metadata } from "next"
 import { AppShell } from "@/components/app-shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { TempCheck } from "@/components/tempcheck/temp-check"
 import { cn } from "@/lib/utils"
 import {
   PAGE_HEADER,
   WHERE_THINGS_STAND,
   QUESTIONS_INTRO,
+  CHECKS_CLOSED,
   Q3_GROUP,
   TEMP_CHECKS,
   WHAT_WE_MEASURED,
@@ -23,10 +23,11 @@ import { withPageOg } from "@/lib/page-metadata";
 // table on this page is the approved draft, verbatim, sourced from
 // src/content/lights-on.ts so the copy is testable independently of this
 // file. Registered as a COLD_ROUTE in scripts/honest-copy.mjs: this is a
-// server component, so the draft's copy — and the widget's static
-// disclaimer sentence — are all present in the server-rendered HTML the
-// deploy gate scans. Only the vote TALLIES themselves are client-fetched
-// after hydration (see TempCheck), and a tally is a count, never a claim.
+// server component, so every sentence is present in the server-rendered
+// HTML the deploy gate scans. The page used to carry a vote widget per
+// question; the poll closed on 2026-10-12 with no votes, so the widget and
+// the vote endpoint are gone and the options render as a static record of
+// what was asked (see CHECKS_CLOSED in the content module).
 
 export const metadata: Metadata = withPageOg("/lights-on", {
   title: "Who keeps the lights on? — Radix Guild",
@@ -67,11 +68,12 @@ function DataTable({ table, heading }: { table: TableSpec; heading?: string }) {
 }
 
 /** One question — a q1/q2/q4/q5/q6/q7 heading, or a q3a/q3b/q3c bold
- *  sub-question — followed by its body paragraph(s) and its TempCheck
- *  widget. `isMainHeading` (from the content module) decides which tag the
- *  question's own lead-in line renders as, matching the source markdown:
- *  a `###` heading for the numbered questions, bold paragraph text for the
- *  three parts of question 3. */
+ *  sub-question — followed by its body paragraph(s) and the options it
+ *  offered, now as a plain list: the poll is closed, so these are a record,
+ *  not a control. `isMainHeading` (from the content module) decides which
+ *  tag the question's own lead-in line renders as, matching the source
+ *  markdown: a `###` heading for the numbered questions, bold paragraph
+ *  text for the three parts of question 3. */
 function QuestionBlock({ id, className }: { id: CheckId; className?: string }) {
   const q = TEMP_CHECKS[id]
   return (
@@ -86,7 +88,11 @@ function QuestionBlock({ id, className }: { id: CheckId; className?: string }) {
           {paragraph}
         </p>
       ))}
-      <TempCheck checkId={id} options={q.options} />
+      <ul className="list-disc pl-5 space-y-1 text-sm leading-relaxed text-muted-foreground">
+        {q.options.map((option) => (
+          <li key={option.key}>{option.label}</li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -121,6 +127,9 @@ function LightsOnContent() {
           <CardTitle className="text-lg">{QUESTIONS_INTRO.heading}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
+          <p className="text-sm leading-relaxed">
+            <strong>{CHECKS_CLOSED.heading}.</strong> {CHECKS_CLOSED.notice}
+          </p>
           <p className="text-sm leading-relaxed">{QUESTIONS_INTRO.body}</p>
           <p className="text-sm leading-relaxed">
             <strong>{QUESTIONS_INTRO.beforeMoneyLabel}</strong> {QUESTIONS_INTRO.beforeMoneyBody}
