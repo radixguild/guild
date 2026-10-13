@@ -176,7 +176,7 @@ export const Q3_GROUP = {
 export const PAGE_HEADER = {
   title: "Who keeps the lights on?",
   tagline:
-    "An open set of questions to the Radix community. Nothing on this page is decided. Everything can change.",
+    "Questions put to the Radix community on shared infrastructure, 5 September to 12 October 2026. The poll drew no votes and is closed; this page keeps the record.",
   byline:
     "AI-drafted: this text was produced with AI research tooling and checked against public sources by bigdev, one pseudonymous builder who kept shipping through the halt. bigdev will replace it with his own words. Corrections welcome. Last updated 2026-09-17.",
 }

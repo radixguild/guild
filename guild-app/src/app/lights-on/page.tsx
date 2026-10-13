@@ -18,16 +18,17 @@ import {
 } from "@/content/lights-on"
 import { withPageOg } from "@/lib/page-metadata";
 
-// "Who keeps the lights on?" — an open temperature check to the Radix
-// community, not a plan or a decision. Every sentence, heading, list and
-// table on this page is the approved draft, verbatim, sourced from
-// src/content/lights-on.ts so the copy is testable independently of this
-// file. Registered as a COLD_ROUTE in scripts/honest-copy.mjs: this is a
-// server component, so every sentence is present in the server-rendered
-// HTML the deploy gate scans. The page used to carry a vote widget per
-// question; the poll closed on 2026-10-12 with no votes, so the widget and
-// the vote endpoint are gone and the options render as a static record of
-// what was asked (see CHECKS_CLOSED in the content module).
+// "Who keeps the lights on?" — a temperature check put to the Radix
+// community from 2026-09-05 to 2026-10-12, now closed; never a plan or a
+// decision. Every sentence, heading, list and table on this page is the
+// approved draft, verbatim, sourced from src/content/lights-on.ts so the
+// copy is testable independently of this file. Registered as a COLD_ROUTE
+// in scripts/honest-copy.mjs: this is a server component, so every
+// sentence is present in the server-rendered HTML the deploy gate scans.
+// The page used to carry a vote widget per question; the poll closed on
+// 2026-10-12 with no votes, so the widget and the vote endpoint are gone
+// and the options render as a static record of what was asked (see
+// CHECKS_CLOSED in the content module).
 
 export const metadata: Metadata = withPageOg("/lights-on", {
   title: "Who keeps the lights on? — Radix Guild",
