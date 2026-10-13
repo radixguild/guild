@@ -550,19 +550,6 @@
           "status"
         ]
       },
-      "tempCheckVoteSchema": {
-        "type": "object",
-        "properties": {
-          "option": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100
-          }
-        },
-        "required": [
-          "option"
-        ]
-      },
       "tgLinkCodeSchema": {
         "type": "object",
         "properties": {
@@ -5139,67 +5126,6 @@
                 "schema": {
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "summary": "Vote in a lights-on temperature check",
-        "tags": [
-          "tempcheck"
-        ],
-        "parameters": [
-          {
-            "name": "checkId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK. Envelope `{ ok: true, data: ... }`. Response bodies are not schema-typed yet — call the endpoint to see the shape."
-          },
-          "400": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "RATE_LIMITED — see Retry-After",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "FEATURE_DISABLED or AGENT_LANE_OFF — the operator has switched this surface off",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/tempCheckVoteSchema"
               }
             }
           }
