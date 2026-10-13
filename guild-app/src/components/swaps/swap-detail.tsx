@@ -129,7 +129,9 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
   const fill = async () => {
     if (picked === null || behind) return
     const ask = l.asks[picked]
-    const id = await tx.send((account) => fillSwapManifest(view.component, account, l.listingId, picked, ask))
+    const id = await tx.send((account) =>
+      fillSwapManifest(view.component, account, l.listingId, picked, ask, l.assetResource, l.assetId),
+    )
     if (id) {
       setPicked(null)
       setChecked(false)

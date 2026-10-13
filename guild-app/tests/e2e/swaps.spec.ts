@@ -161,7 +161,11 @@ test.describe("NFT swap — the listing page", () => {
     await go.click();
 
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
-    expect((await sentManifests(page))[0]).toBe(fillSwapManifest(SWAP, MOCK_ACCOUNT, 3, 0, ASKS[0]));
+    expect((await sentManifests(page))[0]).toBe(fillSwapManifest(SWAP, MOCK_ACCOUNT, 3, 0, ASKS[0], NFT, "#2#"));
+    // The listing's own NFT (detail(): NFT #2#) is asserted on the worktop before the deposit.
+    expect((await sentManifests(page))[0]).toMatch(
+      new RegExp(`"fill"[\\s\\S]*ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES\\s+Address\\("${NFT}"\\)\\s+Array<NonFungibleLocalId>\\(NonFungibleLocalId\\("#2#"\\)\\)[\\s\\S]*"try_deposit_batch_or_abort"`),
+    );
     await expect(page.getByText("Filled — the NFT is in your account.")).toBeVisible();
   });
 
@@ -192,7 +196,7 @@ test.describe("NFT swap — the listing page", () => {
     await page.getByRole("button", { name: "Open my wallet to fill" }).click();
 
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
-    expect((await sentManifests(page))[0]).toBe(fillSwapManifest(SWAP, MOCK_ACCOUNT, 3, 1, ASKS[1]));
+    expect((await sentManifests(page))[0]).toBe(fillSwapManifest(SWAP, MOCK_ACCOUNT, 3, 1, ASKS[1], NFT, "#2#"));
   });
 
   // nft_swap.rs keeps cancel and extend open after expiry so the NFT is never
