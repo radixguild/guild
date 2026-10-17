@@ -668,6 +668,10 @@ guild-worker fill-swap 3 --alternative 0 --max-price 5000 --live
 - **What a fill pays is read from the chain, never typed.** `fill-swap` takes a listing id and an
   alternative index; the amount and resource come from the listing the component stores. There is
   no `--amount` to get wrong. `--alternative` is required when a listing has more than one.
+- **The fill commits only if the listed NFT arrives.** The listing's NFT (resource and id) is read
+  from the chain with its asks, and the manifest asserts that exact NFT is on the worktop after
+  `fill`, before the deposit (`ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES`, the same instruction the
+  website's buy transaction carries). The dry run prints it.
 - **`--live` needs your own bound on the spend**, because the listing id is still typed and a
   transposed one would pay a different listing's ask in full. For a token alternative pass
   `--max-price <amount>[:<resource>]` (the resource defaults to XRD); for an NFT alternative pass
