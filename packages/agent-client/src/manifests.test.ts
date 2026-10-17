@@ -148,26 +148,79 @@ describe('NFT swap builders — parity with guild-app', () => {
     );
   });
 
-  // ONE KNOWN DIFFERENCE, until the kit's next release. guild-app's fill builder
-  // takes the listing's NFT and asserts it is on the worktop after `fill`, before
-  // the deposit, so the buyer's transaction commits only if that NFT arrives. This
-  // package's builder ships in the served kit, whose bytes are hash-pinned per
-  // release, so it gains the same assertion in its own release. Until then: the
-  // app's manifest must be exactly the kit's plus that one instruction.
-  test('fillSwapManifest — fungible and non-fungible payments (the app adds the listed-NFT assertion)', () => {
-    type AppFill = (
-      ...a: [...Parameters<typeof clientManifests.fillSwapManifest>, assetResource: string, assetId: string]
-    ) => string;
-    const assertion = `ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES\n  Address("${NFT}")\n  Array<NonFungibleLocalId>(NonFungibleLocalId("#2#"))\n;\n`;
-    for (const [alt, ask] of [[0, FUNGIBLE], [1, NON_FUNGIBLE]] as const) {
-      expectServerParity('fillSwapManifest', clientManifests.fillSwapManifest(SWAP, BUYER, 3, alt, ask), () => {
-        const app = (server.fillSwapManifest as unknown as AppFill)(SWAP, BUYER, 3, alt, ask, NFT, '#2#');
-        expect(app.split(assertion)).toHaveLength(2);
-        expect(app.indexOf(assertion)).toBeGreaterThan(app.indexOf('"fill"'));
-        expect(app.indexOf(assertion)).toBeLessThan(app.indexOf('"try_deposit_batch_or_abort"'));
-        return app.replace(assertion, '');
-      });
+  // Both builders take the listing's NFT and assert it is on the worktop after
+  // `fill`, before the deposit, so the buyer's transaction commits only if that
+  // NFT arrives. guild-app's builder gained the assertion first (#52) and the
+  // kit's in 0.8.4; since then the two manifests must be identical, with no
+  // allowance for a difference.
+  const OTHER_NFT = { kind: 'nonFungible' as const, resource: RECEIPT, id: '#9#' };
+  const SAME_COLLECTION = { kind: 'nonFungible' as const, resource: NFT, id: '#1#' };
+  const assertion = (resource: string, id: string) =>
+    `ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES\n  Address("${resource}")\n  Array<NonFungibleLocalId>(NonFungibleLocalId("${id}"))\n;\n`;
+
+  test('fillSwapManifest — fungible, non-fungible and same-collection payments', () => {
+    for (const [alt, ask] of [[0, FUNGIBLE], [1, NON_FUNGIBLE], [2, OTHER_NFT], [3, SAME_COLLECTION]] as const) {
+      expectServerParity('fillSwapManifest', clientManifests.fillSwapManifest(SWAP, BUYER, 3, alt, ask, NFT, '#2#'), () =>
+        (server.fillSwapManifest as unknown as typeof clientManifests.fillSwapManifest)(SWAP, BUYER, 3, alt, ask, NFT, '#2#')
+      );
     }
+  });
+
+  // Holds with or without the sibling app (GUILD_NO_SIBLING), so the kit's own
+  // run fails if the instruction moves or goes.
+  test('every fill asserts the listed NFT after fill and before the deposit, whatever the payment', () => {
+    // Paying with an NFT of the listed NFT's own collection is the case where a
+    // resource-level check would not tell the two apart: the assertion names the
+    // listed id, and the payment id has already left in Bucket("payment").
+    for (const ask of [FUNGIBLE, OTHER_NFT, SAME_COLLECTION]) {
+      const m = clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, ask, NFT, '#2#');
+      const fill = m.indexOf(`Address("${SWAP}")\n  "fill"`);
+      const check = m.indexOf(assertion(NFT, '#2#'));
+      const deposit = m.indexOf('"try_deposit_batch_or_abort"');
+      expect(fill).toBeGreaterThan(-1);
+      expect(check).toBeGreaterThan(fill);
+      expect(deposit).toBeGreaterThan(check);
+      expect(m.split('ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES')).toHaveLength(2);
+    }
+  });
+
+  test('fillSwapManifest — the exact non-fungible fill, byte for byte (inline golden)', () => {
+    expect(clientManifests.fillSwapManifest(SWAP, BUYER, 3, 1, SAME_COLLECTION, NFT, '#2#')).toBe(`CALL_METHOD
+  Address("${BUYER}")
+  "withdraw_non_fungibles"
+  Address("${NFT}")
+  Array<NonFungibleLocalId>(NonFungibleLocalId("#1#"))
+;
+TAKE_NON_FUNGIBLES_FROM_WORKTOP
+  Address("${NFT}")
+  Array<NonFungibleLocalId>(NonFungibleLocalId("#1#"))
+  Bucket("payment")
+;
+CALL_METHOD
+  Address("${SWAP}")
+  "fill"
+  3u64
+  1u8
+  Bucket("payment")
+;
+ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES
+  Address("${NFT}")
+  Array<NonFungibleLocalId>(NonFungibleLocalId("#2#"))
+;
+CALL_METHOD
+  Address("${BUYER}")
+  "try_deposit_batch_or_abort"
+  Expression("ENTIRE_WORKTOP")
+  Enum<0u8>()
+;`);
+  });
+
+  test('a fill cannot be built without the listed NFT, so the assertion cannot be left out', () => {
+    const build = clientManifests.fillSwapManifest as unknown as (...a: unknown[]) => string;
+    expect(() => build(SWAP, BUYER, 3, 0, FUNGIBLE)).toThrow(/Invalid resource_rdx/);
+    expect(() => build(SWAP, BUYER, 3, 0, FUNGIBLE, NFT)).toThrow(/assetId/);
+    expect(() => build(SWAP, BUYER, 3, 0, FUNGIBLE, NFT, '')).toThrow(/assetId/);
+    expect(() => build(SWAP, BUYER, 3, 0, FUNGIBLE, MAINNET_XRD.replace('resource_', 'component_'), '#2#')).toThrow(/Invalid resource_rdx/);
   });
 
   test('the four receipt-holder calls', () => {
@@ -186,9 +239,12 @@ describe('NFT swap builders — parity with guild-app', () => {
 
   test('the client refuses the same inputs the app refuses', () => {
     expect(() => clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#', [], 1790114665)).toThrow(/at least one/);
-    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 256, FUNGIBLE)).toThrow(/alternative/);
-    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, { ...FUNGIBLE, amount: '0.0' })).toThrow(/ask\.amount/);
+    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 256, FUNGIBLE, NFT, '#2#')).toThrow(/alternative/);
+    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, { ...FUNGIBLE, amount: '0.0' }, NFT, '#2#')).toThrow(/ask\.amount/);
     expect(() => clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#")', [FUNGIBLE], 1790114665)).toThrow(/assetId/);
+    // An injected listed-NFT address or id never reaches the manifest text.
+    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, FUNGIBLE, `${NFT}")`, '#2#')).toThrow(/Invalid resource_rdx/);
+    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, FUNGIBLE, NFT, '#2#")')).toThrow(/assetId/);
   });
 });
 

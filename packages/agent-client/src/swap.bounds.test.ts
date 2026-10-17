@@ -104,7 +104,7 @@ describe('runFillSwap --live — the bound', () => {
       const { d, signed } = deps(ask);
       const r = await runFillSwap({ listingId: 3, live: true, identity: id, config: CONFIG, deps: d, ...bound });
       expect(r).toMatchObject({ dryRun: false, status: 'CommittedSuccess' });
-      expect(signed).toEqual([fillSwapManifest(CONFIG.nftSwapComponent, id.address, 3, 0, ask)]);
+      expect(signed).toEqual([fillSwapManifest(CONFIG.nftSwapComponent, id.address, 3, 0, ask, NFT, '#2#')]);
     }
   });
 

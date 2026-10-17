@@ -960,7 +960,9 @@ CALL_METHOD
 // The six NftSwap calls, byte-identical to guild-app/src/lib/manifests.ts's
 // swap builders (cross-asserted in manifests.test.ts), which are themselves
 // pinned to the manifests the 2026-09-15 proving run signed on the live
-// component (guild-app/tests/unit/nft-swap-manifests.test.ts). Deposits use
+// component (guild-app/tests/unit/nft-swap-manifests.test.ts). One addition
+// since that run: the fill manifest asserts the listed NFT is on the worktop
+// before its deposit (see fillSwapManifest). Deposits use
 // `try_deposit_batch_or_abort`, the proving run's form: a refused deposit
 // aborts the signer's own transaction before anything moves.
 
@@ -1053,13 +1055,20 @@ ${depositAllTo(a)}`;
 
 /** Fill listing `listingId` with its alternative at index `alternative`. `ask`
  *  must be that alternative exactly as the chain stores it — read it from the
- *  chain (swap.ts readSwapListing), never from a flag. */
+ *  chain (swap.ts readSwapListing), never from a flag.
+ *
+ *  `assetResource` / `assetId` are the listing's NFT as the chain stores it,
+ *  read the same way. After `fill`, the manifest asserts that exactly that NFT
+ *  is on the worktop before anything is deposited, so the buyer's transaction
+ *  commits only if the NFT they are paying for arrives in it. */
 export function fillSwapManifest(
   swapComponent: string,
   buyer: string,
   listingId: number,
   alternative: number,
   ask: SwapAsk,
+  assetResource: string,
+  assetId: string,
 ): string {
   const c = validateAddress(swapComponent, 'component_rdx');
   const a = validateAddress(buyer, 'account_rdx');
@@ -1067,6 +1076,8 @@ export function fillSwapManifest(
   if (!Number.isInteger(alternative) || alternative < 0 || alternative > 255) {
     throw new Error('Invalid alternative: must be an integer 0-255');
   }
+  const assetRes = validateAddress(assetResource, 'resource_rdx');
+  const assetLid = validateLocalId(assetId, 'assetId');
   const r = validateAddress(ask.resource, 'resource_rdx');
   let payment: string;
   if (ask.kind === 'fungible') {
@@ -1105,6 +1116,10 @@ CALL_METHOD
   ${lid}u64
   ${alternative}u8
   Bucket("payment")
+;
+ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES
+  Address("${assetRes}")
+  Array<NonFungibleLocalId>(NonFungibleLocalId("${assetLid}"))
 ;
 ${depositAllTo(a)}`;
 }

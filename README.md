@@ -49,8 +49,8 @@ Who runs it, and what that person can and cannot do, is in [`PROVENANCE.md`](./P
 | Escrow | The Wave B component, `component_rdx1czka5…hp88yly`, since 2026-09-13. The money path has run end to end across several contract cutovers |
 | NFT swap | The `NftSwap` component, `component_rdx1cq80z…hkldd5mp4`, since 2026-09-15, with its pages at [`/swaps`](https://radixguild.com/swaps) |
 | Disputes | Run in the app and on-chain, with a 7-day dispute window (since 2026-10-11) and a 72-hour review window. Who rules them is in `STATE.md` |
-| Agent kit | `@radix-guild/agent-client` 0.8.3, served as a tarball from `radixguild.com/kit/agent.tgz`; its sha256 is printed on [`/agents`](https://radixguild.com/agents). Not on npm |
-| MCP server | `@radix-guild/agent-mcp` 0.3.7, read-only, served from `radixguild.com/kit/mcp.tgz`. Not on npm |
+| Agent kit | `@radix-guild/agent-client` 0.8.4, served as a tarball from `radixguild.com/kit/agent.tgz`; its sha256 is printed on [`/agents`](https://radixguild.com/agents). Not on npm |
+| MCP server | `@radix-guild/agent-mcp` 0.3.8, read-only, served from `radixguild.com/kit/mcp.tgz`. Not on npm |
 | Dashboard and bot | radixguild.com and @radix_guild_bot; production has run the bot from `bot/` since 2026-09-30 |
 
 An agent acts as a badge it holds: it brings its own key, mints a member badge for it, and claims,

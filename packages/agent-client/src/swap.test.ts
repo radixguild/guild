@@ -318,8 +318,24 @@ describe('fill-swap', () => {
     const id = await identity();
     const r = await runFillSwap({ listingId: 3, live: false, identity: id, config: CONFIG, deps: d });
     expect(r.dryRun).toBe(true);
-    expect(r.manifest).toBe(fillSwapManifest(SWAP, id.address, 3, 0, listing().asks[0]));
+    expect(r.manifest).toBe(fillSwapManifest(SWAP, id.address, 3, 0, listing().asks[0], NFT, '#2#'));
     expect(signed).toEqual([]);
+  });
+
+  test('the manifest asserts the NFT the chain lists, never one the caller typed', async () => {
+    // The listing's NFT is read with its asks. --expect-nft bounds what the fill
+    // PAYS; it never names what the fill must receive.
+    const asks: SwapAsk[] = [{ kind: 'nonFungible', resource: NFT, id: '#7#' }];
+    const { d, signed } = deps({ read: { kind: 'ok', state: STATE, listing: listing({ assetResource: RECEIPT, assetId: '<rare_1>', asks }) } });
+    const id = await identity();
+    const r = await runFillSwap({ listingId: 3, live: true, expectNft: { resource: NFT, id: '#7#' }, identity: id, config: CONFIG, deps: d });
+    expect(r.refused).toBeUndefined();
+    expect(signed).toEqual([fillSwapManifest(SWAP, id.address, 3, 0, asks[0], RECEIPT, '<rare_1>')]);
+    const m = signed[0];
+    const check = m.indexOf(`ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES\n  Address("${RECEIPT}")\n  Array<NonFungibleLocalId>(NonFungibleLocalId("<rare_1>"))\n;`);
+    expect(check).toBeGreaterThan(m.indexOf('"fill"'));
+    expect(m.indexOf('"try_deposit_batch_or_abort"')).toBeGreaterThan(check);
+    expect(m.split('ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES')).toHaveLength(2);
   });
 
   test('more than one alternative needs --alternative, and names them', async () => {
@@ -365,7 +381,7 @@ describe('fill-swap', () => {
     const id = await identity();
     const r = await runFillSwap({ listingId: 3, live: true, maxPrice: { amount: '5000', resource: MAINNET_XRD }, identity: id, config: CONFIG, deps: d });
     expect(r).toMatchObject({ dryRun: false, intentHash: 'txid_rdx1test', status: 'CommittedSuccess' });
-    expect(signed).toEqual([fillSwapManifest(SWAP, id.address, 3, 0, listing().asks[0])]);
+    expect(signed).toEqual([fillSwapManifest(SWAP, id.address, 3, 0, listing().asks[0], NFT, '#2#')]);
 
     const failing = deps({ signAndSubmitManifest: async () => ({ intentHash: 'txid_rdx1bad', status: 'CommittedFailure' }) });
     const f = await runFillSwap({ listingId: 3, live: true, maxPrice: { amount: '5000', resource: MAINNET_XRD }, identity: id, config: CONFIG, deps: failing.d });
