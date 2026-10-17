@@ -14,7 +14,9 @@
 //     component, and builds the payment from the stored ask. A flag cannot say
 //     "5000" where the chain says "50000". `--live` also needs the caller's
 //     own bound (`--max-price` / `--expect-nft`), so a mistyped listing id
-//     cannot pay some other listing's ask.
+//     cannot pay some other listing's ask. The NFT the fill receives comes
+//     from the same chain read, and the manifest asserts that exact NFT is on
+//     the worktop before the deposit: the transaction commits only if it arrives.
 //   • These preconditions are checked first, against the chain: the listing's
 //     state at the LEDGER clock (not this machine's), who holds the receipt,
 //     whether the NFT to list is in this account, each ask's resource kind and
@@ -577,7 +579,7 @@ export async function runFillSwap(opts: FillSwapOptions): Promise<SwapLegResult>
   }
   const ask = listing.asks[alt];
   const account = identity?.address ?? DRYRUN_PLACEHOLDER_ACCOUNT;
-  const manifest = fillSwapManifest(config.nftSwapComponent, account, listingId, alt, ask);
+  const manifest = fillSwapManifest(config.nftSwapComponent, account, listingId, alt, ask, listing.assetResource, listing.assetId);
   const feeBlock = feeRefusal(state.fees.fill, 'fill');
   const bound = spendCheck(ask, opts.maxPrice, opts.expectNft);
   const boundBlock =
