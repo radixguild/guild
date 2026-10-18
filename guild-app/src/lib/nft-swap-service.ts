@@ -6,13 +6,16 @@
 import { NFT_SWAP_COMPONENT } from "./config"
 import {
   canonicalLocalId,
+  formatLocalId,
   isHidden,
   parseHiddenList,
+  shortAddress,
   swapStatus,
   type SwapAsk,
   type SwapListing,
   type SwapStatus,
 } from "./nft-swap"
+import { collectionCounts, sortSwapListings, type SwapSort } from "./nft-swap-sort"
 import {
   ENTITY_BATCH,
   readListingReceiptHolder,
@@ -48,8 +51,9 @@ interface SwapCommon {
   ledgerTime: number
   fees: { fill: SwapFee | null; extend: SwapFee | null }
   /** Display data for the resources the page shows by name: on the board
-   *  each listing's NFT and its first ask, on a listing's page its NFT and
-   *  first DETAIL_ASK_DISPLAY_CAP asks. A hidden listing contributes only XRD.
+   *  each listing's NFT and its first ask (and the collections in `collections`),
+   *  on a listing's page its NFT and first DETAIL_ASK_DISPLAY_CAP asks. A
+   *  hidden listing contributes only XRD.
    *  Absent entries = not looked up or the Gateway did not say; show the
    *  address. */
   resources: Record<string, SwapResourceView>
@@ -65,7 +69,14 @@ export interface SwapBoardView extends SwapCommon {
   /** Listings the operator hid from these pages (they stay on chain). */
   hidden: number
   listings: SwapListingView[]
-  /** Pass as `before` for the next page; null = no more. */
+  /** The collections among the listings this `status` and `seller` match
+   *  (before any `collection` filter, `before` or `offset`), most listings
+   *  first, at most COLLECTION_FACET_CAP. `resources` names them. */
+  collections: { resource: string; count: number }[]
+  /** How many more collections than COLLECTION_FACET_CAP there are. */
+  moreCollections: number
+  /** Pass as `before` (sort newest) or as `offset` (any other sort) for the
+   *  next page; null = no more. */
   nextCursor: number | null
 }
 
@@ -85,6 +96,13 @@ export interface SwapDetailView extends SwapCommon {
 
 export const SWAP_FILTERS = ["open", "expired", "filled", "cancelled", "all"] as const
 export type SwapFilter = (typeof SWAP_FILTERS)[number]
+
+/** Collections the board lists in its collection filter and names, and, for
+ *  `sort=name`, looks the NFT names of up: one Gateway read per collection, so
+ *  this bounds what a sort or a filter can cost on a cold cache. A listing in
+ *  a collection past it sorts by that collection's address instead of an NFT
+ *  name. */
+export const COLLECTION_FACET_CAP = 100
 
 /** Asks a listing's page looks up display data for. The blueprint sets no
  *  limit on asks and a stranger writes them, so the rest show by address. */
@@ -239,14 +257,20 @@ function displayResources(l: SwapListing, asks: SwapAsk[], hidden: boolean): str
 }
 
 /**
- * One page of the board, newest first. `status` filters at the ledger clock;
- * `seller` narrows to one account's listings; `before` is the previous page's
- * cursor. null = the chain could not be read.
+ * One page of the board. `status` filters at the ledger clock; `seller`
+ * narrows to one account's listings; `collection` to one NFT resource.
+ * `sort` orders it (nft-swap-sort.ts; default newest): `before` is the
+ * previous page's cursor for newest (a listing id), `offset` for every other
+ * sort (how many sorted listings to skip). All of it runs over the listings
+ * already scanned (at most SWAP_SCAN_CAP). null = the chain could not be read.
  */
 export async function getSwapBoard(opts: {
   status?: SwapFilter
   seller?: string
+  collection?: string
+  sort?: SwapSort
   before?: number
+  offset?: number
   limit?: number
   component?: string
 }): Promise<SwapBoardView | null> {
@@ -257,6 +281,8 @@ export async function getSwapBoard(opts: {
   const hidden = hiddenList()
   const limit = Math.min(Math.max(opts.limit ?? 48, 1), 100)
   const status = opts.status ?? "all"
+  const sort = opts.sort ?? "newest"
+  const hid = (l: SwapListing) => isHidden(l, hidden)
 
   // A seller-filtered view ("My listings") still shows that seller's hidden
   // listings — flagged, with no NFT name or picture — so the hide lever cannot
@@ -264,22 +290,68 @@ export async function getSwapBoard(opts: {
   // counted only once it passed every other filter: the count sits beside
   // this filter's results, so it says how many of THOSE the operator hid, not
   // how many hidden listings exist anywhere.
-  let hiddenCount = 0
-  const matching = board.listings.filter((l) => {
+  const inScope = board.listings.filter((l) => {
     if (opts.seller && l.seller !== opts.seller) return false
-    if (opts.before !== undefined && l.listingId >= opts.before) return false
-    if (status !== "all" && swapStatus(l, ledgerTime) !== status) return false
-    if (!opts.seller && isHidden(l, hidden)) {
-      hiddenCount++
-      return false
-    }
-    return true
+    return status === "all" || swapStatus(l, ledgerTime) === status
   })
-  const page = matching.slice(0, limit)
-  const shown = page.filter((l) => !isHidden(l, hidden))
+  const visible = opts.seller ? inScope : inScope.filter((l) => !hid(l))
+  const inCollection = (l: SwapListing) => !opts.collection || l.assetResource === opts.collection
+  const hiddenCount = opts.seller
+    ? 0
+    : inScope.filter(
+        (l) => hid(l) && inCollection(l) && (sort !== "newest" || opts.before === undefined || l.listingId < opts.before),
+      ).length
+
+  // The collection filter's options count what status and seller match, not
+  // what the collection filter itself leaves, so every option stays choosable.
+  const counts = collectionCounts(visible)
+  const facets = counts.slice(0, COLLECTION_FACET_CAP)
+  // A collection every listing of which is hidden is not looked up by name.
+  const nameable = new Set(visible.filter((l) => !hid(l)).map((l) => l.assetResource))
+  const matching = visible.filter(inCollection)
+
+  let page: SwapListing[]
+  let nextCursor: number | null
+  if (sort === "newest") {
+    const rest = matching.filter((l) => opts.before === undefined || l.listingId < opts.before)
+    page = rest.slice(0, limit)
+    nextCursor = rest.length > limit ? page[page.length - 1].listingId : null
+  } else {
+    // The name order needs every listing's displayed name, i.e. the NFT
+    // reads for all of `matching`: bounded to COLLECTION_FACET_CAP collections
+    // (the filtered one, or the biggest), the rest sort by address and id.
+    const lookup = (opts.collection ? [opts.collection] : counts.slice(0, COLLECTION_FACET_CAP).map((c) => c.resource)).filter(
+      (r) => nameable.has(r),
+    )
+    const looked = new Set(lookup)
+    const [nfts, names] =
+      sort === "name"
+        ? await Promise.all([
+            nftsFor(matching.filter((l) => !hid(l) && looked.has(l.assetResource)).map((l) => ({ resource: l.assetResource, id: l.assetId }))),
+            resourcesFor(lookup),
+          ])
+        : [new Map<string, NftDisplay | null>(), {} as Record<string, SwapResourceView>]
+    const sorted = sortSwapListings(matching, sort, {
+      ledgerNow: ledgerTime,
+      xrd: XRD_ADDRESS,
+      nameOf: (l) => {
+        const id = formatLocalId(l.assetId)
+        if (hid(l)) return `${shortAddress(l.assetResource)} ${id}`
+        return nfts.get(nftKey(l.assetResource, l.assetId))?.name ?? `${names[l.assetResource]?.name ?? shortAddress(l.assetResource)} ${id}`
+      },
+    })
+    const start = Math.max(opts.offset ?? 0, 0)
+    page = sorted.slice(start, start + limit)
+    nextCursor = start + limit < sorted.length ? start + limit : null
+  }
+
+  const shown = page.filter((l) => !hid(l))
   const nfts = await nftsFor(shown.map((l) => ({ resource: l.assetResource, id: l.assetId })))
   // A card names its first ask only (askSummary), so only that one is looked up.
-  const resources = await resourcesFor(page.flatMap((l) => displayResources(l, l.asks.slice(0, 1), isHidden(l, hidden))))
+  const resources = await resourcesFor([
+    ...page.flatMap((l) => displayResources(l, l.asks.slice(0, 1), hid(l))),
+    ...facets.map((c) => c.resource).filter((r) => nameable.has(r)),
+  ])
 
   return {
     component,
@@ -291,10 +363,10 @@ export async function getSwapBoard(opts: {
     truncated: board.truncated,
     unreadable: board.unreadable,
     hidden: hiddenCount,
-    listings: page.map((l) =>
-      view(l, ledgerTime, nfts.get(nftKey(l.assetResource, l.assetId)) ?? null, isHidden(l, hidden)),
-    ),
-    nextCursor: matching.length > limit ? page[page.length - 1].listingId : null,
+    listings: page.map((l) => view(l, ledgerTime, nfts.get(nftKey(l.assetResource, l.assetId)) ?? null, hid(l))),
+    collections: facets,
+    moreCollections: counts.length - facets.length,
+    nextCursor,
   }
 }
 

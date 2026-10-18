@@ -36,6 +36,12 @@ const NO_H1_ALLOWED = new Set([
   // 2026-09-04 (bigdev's instruction), so none exists under src/app any more.
   "start/page.tsx",
   "how-it-works/page.tsx",
+  // /swaps/[id]: the page's <h1> is the listing's NFT name, which is a
+  // stranger's text and so is rendered client-side by <SwapDetail/> after the
+  // chain read, never in the prerendered HTML (launch-check CHECK 4). The
+  // server sends only a small "Listing #n" label. The test below pins that
+  // component's headings instead, so the page cannot quietly lose its title.
+  "swaps/[id]/page.tsx",
 ])
 
 /** The one deliberate exception to the size rule, with its reason. */
@@ -90,6 +96,18 @@ describe("page headings", () => {
     }
     expect(missing, "routes with no <h1> — a page with no title has no subject").toEqual([])
     expect(duplicated, "routes with more than one <h1>").toEqual([])
+  })
+
+  it("the swap listing page has its one h1 in <SwapDetail/> (the NFT's name), the same size, in every state", () => {
+    const page = code(readFileSync(join(APP, "swaps/[id]/page.tsx"), "utf8"))
+    expect(page, "the server page must not name the NFT, so it sends no <h1>").not.toMatch(/<h1[\s>]/)
+    const detail = code(readFileSync(join(process.cwd(), "src/components/swaps/swap-detail.tsx"), "utf8"))
+    // Loaded: the NFT's name. Loading and failed: a screen-reader-only fallback.
+    // Three branches that never render together, so a page has exactly one.
+    const heads = detail.match(/<h1[^>]*>/g) ?? []
+    expect(heads).toHaveLength(3)
+    expect(heads.filter((h) => h.includes("text-2xl"))).toHaveLength(1)
+    expect(heads.filter((h) => h.includes("sr-only"))).toHaveLength(2)
   })
 
   it("every page h1 is text-2xl — one size, no exceptions but the guide hero", () => {

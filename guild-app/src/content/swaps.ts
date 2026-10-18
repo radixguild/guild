@@ -92,11 +92,35 @@ export const BOARD_COPY = {
    *  lister names: it is not "listings I made". */
   mine: "Pays my account",
   hiddenCard: "Hidden by the operator",
+  sort: {
+    label: "Sort",
+    options: {
+      newest: "Newest",
+      ending: "Ending soon",
+      "price-asc": "Price: low to high",
+      "price-desc": "Price: high to low",
+      name: "Name: A to Z",
+    },
+    /** Under the control while the sort it explains is chosen. */
+    notes: {
+      ending: "Open listings come first, soonest expiry first. Any others follow, newest first.",
+      price: "Price sorts use the XRD ask only (the lowest, if there are several). Listings with no XRD ask come last.",
+    },
+  },
+  collection: {
+    label: "Collection",
+    all: "All collections",
+    /** The filter lists the biggest collections; the rest are not in it. */
+    notListed: (n: number) => `${n} more collection${n === 1 ? " is" : "s are"} not listed here.`,
+  },
   unreadableListings: (n: number) =>
     `${n} listing${n === 1 ? "" : "s"} on the ledger could not be read by this site, so nothing is shown here rather than a board that may be incomplete. The listings are still on chain; the Radix Gateway has every one.`,
 } as const
 
 export const DETAIL_COPY = {
+  /** Read by screen readers only, while the listing loads or cannot be read:
+   *  once it loads, the NFT's own name is the page's heading. */
+  pageHeading: "NFT swap listing",
   fillHeading: "Fill this listing",
   fillIntro:
     "Pick one of the seller's terms. You send exactly that, and the NFT comes to your account in the same transaction — or the transaction fails and only the network fee is spent.",

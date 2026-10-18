@@ -595,6 +595,177 @@ describe("getSwapBoard / getSwapDetail", () => {
   })
 })
 
+// ── Sort and collection filter (GET /api/v1/swaps ?sort= ?collection=) ─────
+
+describe("getSwapBoard — sort, collection filter, collection counts", () => {
+  const open = LEDGER_SECS + 86400
+  const DAY = 86400
+  const COLL_A = NFT
+  const COLL_B = "resource_rdx1nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002"
+  const TOKEN = "resource_rdx1tcccccccccccccccccccccccccccccccccccccccc0003"
+  const NAMES: Record<string, string> = {
+    [`${COLL_A} #1#`]: "Zed Fox",
+    [`${COLL_A} #2#`]: "Fox 10",
+    [`${COLL_A} #5#`]: "Fox 9",
+    [`${COLL_B} #3#`]: "alpha dino",
+  }
+
+  /** A Listed copy of listing 2 in `coll`, expiring `exp`, asking `asks`. */
+  const listing = (id: number, coll: string, exp: number, asks: SwapAsk[]) => {
+    const e = withAsks(listedEntry(id, exp), asks)
+    e.value.programmatic_json.fields.find((f: any) => f.field_name === "asset_resource").value = coll
+    return e
+  }
+  const xrd = (amount: string): SwapAsk => ({ kind: "fungible", resource: XRD, amount })
+  const world = () => [
+    listing(1, COLL_A, open + 2 * DAY, [xrd("50")]),
+    listing(2, COLL_A, open - DAY / 2, [xrd("5.5"), { kind: "fungible", resource: TOKEN, amount: "1" }]),
+    listing(3, COLL_B, open + DAY, [{ kind: "fungible", resource: TOKEN, amount: "7" }]),
+    listing(4, COLL_B, LEDGER_SECS - 60, [xrd("1")]), // expired
+    listing(5, COLL_A, open + 4 * DAY, [xrd("200"), xrd("20")]),
+  ]
+  const resourceNames: Handler = (body) =>
+    ok({
+      items: body.addresses.map((address: string) => ({
+        address,
+        metadata: { items: [{ key: "name", value: { typed: { value: address === COLL_A ? "Lantern Foxes" : address === COLL_B ? "Dinos" : "Radix" } } }] },
+        details: address === XRD || address === TOKEN ? { type: "FungibleResource", divisibility: 18 } : { type: "NonFungibleResource" },
+      })),
+    })
+  const nftNames: Handler = (body) =>
+    ok({
+      non_fungible_ids: body.non_fungible_ids.map((id: string) => ({
+        non_fungible_id: id,
+        is_burned: false,
+        data: { programmatic_json: { fields: NAMES[`${body.resource_address} ${id}`] ? [{ field_name: "name", value: NAMES[`${body.resource_address} ${id}`] }] : [] } },
+      })),
+    })
+  const stub = (entries = world(), extra: Parameters<typeof gatewayStub>[0] = {}) =>
+    gatewayStub({ entries, next: entries.length + 1, resourceRead: resourceNames, nftRead: nftNames, ...extra })
+  const ids = async (o: Parameters<typeof getSwapBoard>[0]) => (await getSwapBoard(o))!.listings.map((l) => l.listingId)
+  const nftReads = () => fetchSpy.mock.calls.filter((c) => pathOf(c) === "/state/non-fungible/data")
+
+  it("newest is the default and still pages by listing id", async () => {
+    stub()
+    expect(await ids({})).toEqual([5, 4, 3, 2, 1])
+    expect(await ids({ sort: "newest" })).toEqual([5, 4, 3, 2, 1])
+    const p1 = await getSwapBoard({ sort: "newest", limit: 2 })
+    expect(p1!.nextCursor).toBe(4)
+    expect(await ids({ sort: "newest", limit: 2, before: 4 })).toEqual([3, 2])
+  })
+
+  it("ending: open listings by soonest expiry, then the rest newest first", async () => {
+    stub()
+    // open: 2 (in 12 h), 3 (1 d), 1 (2 d), 5 (4 d); then 4, which has expired.
+    expect(await ids({ sort: "ending" })).toEqual([2, 3, 1, 5, 4])
+    expect(await ids({ sort: "ending", status: "open" })).toEqual([2, 3, 1, 5])
+  })
+
+  it("price sorts use the lowest XRD ask only, and listings with no XRD ask come last either way", async () => {
+    stub()
+    // lowest XRD asks: 4 → 1, 2 → 5.5, 5 → 20 (of 200 / 20), 1 → 50; 3 asks a token only.
+    expect(await ids({ sort: "price-asc" })).toEqual([4, 2, 5, 1, 3])
+    expect(await ids({ sort: "price-desc" })).toEqual([1, 5, 2, 4, 3])
+  })
+
+  it("price compares exact decimals, not text or floats", async () => {
+    stub([
+      listing(1, COLL_A, open, [xrd("9")]),
+      listing(2, COLL_A, open, [xrd("10")]),
+      listing(3, COLL_A, open, [xrd("0.000000000000000002")]),
+      listing(4, COLL_A, open, [xrd("0.000000000000000001")]),
+      listing(5, COLL_A, open, [xrd("123456789012345678901234567890")]),
+    ])
+    expect(await ids({ sort: "price-asc" })).toEqual([4, 3, 1, 2, 5])
+  })
+
+  it("name: the NFT's name as shown, numbers by value, case ignored; an unnamed NFT sorts as 'Collection #id'", async () => {
+    stub()
+    // "alpha dino" (3), "Dinos #4" (4: no NFT name, so collection and id), "Fox 9" (5), "Fox 10" (2), "Zed Fox" (1)
+    expect(await ids({ sort: "name" })).toEqual([3, 4, 5, 2, 1])
+  })
+
+  it("tied sort keys fall back to newest first", async () => {
+    stub([listing(1, COLL_A, open, [xrd("5")]), listing(2, COLL_A, open, [xrd("5")]), listing(3, COLL_A, open, [xrd("5")])])
+    expect(await ids({ sort: "price-asc" })).toEqual([3, 2, 1])
+    expect(await ids({ sort: "ending" })).toEqual([3, 2, 1])
+  })
+
+  it("every sort keeps the same listings; an offset cursor pages the non-newest sorts", async () => {
+    stub()
+    const p1 = await getSwapBoard({ sort: "price-asc", limit: 2 })
+    expect(p1!.listings.map((l) => l.listingId)).toEqual([4, 2])
+    expect(p1!.nextCursor).toBe(2)
+    const p2 = await getSwapBoard({ sort: "price-asc", limit: 2, offset: 2 })
+    expect(p2!.listings.map((l) => l.listingId)).toEqual([5, 1])
+    expect(p2!.nextCursor).toBe(4)
+    const p3 = await getSwapBoard({ sort: "price-asc", limit: 2, offset: 4 })
+    expect(p3!.listings.map((l) => l.listingId)).toEqual([3])
+    expect(p3!.nextCursor).toBeNull()
+    for (const sort of ["ending", "price-asc", "price-desc", "name"] as const) {
+      expect((await ids({ sort })).slice().sort()).toEqual([1, 2, 3, 4, 5])
+    }
+  })
+
+  it("the collection filter keeps one collection; the counts do not shrink with it, and name it", async () => {
+    stub()
+    const all = await getSwapBoard({})
+    expect(all!.collections).toEqual([{ resource: COLL_A, count: 3 }, { resource: COLL_B, count: 2 }])
+    expect(all!.moreCollections).toBe(0)
+    expect(all!.resources[COLL_A]?.name).toBe("Lantern Foxes")
+    expect(all!.resources[COLL_B]?.name).toBe("Dinos")
+
+    const b = await getSwapBoard({ collection: COLL_B, sort: "price-desc" })
+    expect(b!.listings.map((l) => l.listingId)).toEqual([4, 3])
+    expect(b!.collections).toEqual(all!.collections)
+    expect(await ids({ collection: "resource_rdx1nnoneoflistingscollectionxxxxxxxxxxxxxxxxxxxx" })).toEqual([])
+  })
+
+  it("the counts follow status and seller (they count what those filters leave)", async () => {
+    stub()
+    const open = await getSwapBoard({ status: "open" })
+    expect(open!.collections).toEqual([{ resource: COLL_A, count: 3 }, { resource: COLL_B, count: 1 }])
+    const expired = await getSwapBoard({ status: "expired", collection: COLL_A })
+    expect(expired!.listings).toEqual([])
+    expect(expired!.collections).toEqual([{ resource: COLL_B, count: 1 }])
+  })
+
+  it("hidden listings are out of the counts and the names on the public board, and still counted as hidden", async () => {
+    vi.stubEnv("NFT_SWAP_HIDDEN", "3")
+    stub()
+    const pub = await getSwapBoard({})
+    expect(pub!.collections).toEqual([{ resource: COLL_A, count: 3 }, { resource: COLL_B, count: 1 }])
+    expect(pub!.hidden).toBe(1)
+    expect((await getSwapBoard({ collection: COLL_B }))!.hidden).toBe(1)
+    expect((await getSwapBoard({ collection: COLL_A }))!.hidden).toBe(0)
+    expect(await ids({ sort: "name" })).toEqual([4, 5, 2, 1])
+    // The seller's own view keeps it, flagged and nameless, and sorts it by address and id.
+    const mine = await getSwapBoard({ seller: SELLER, sort: "price-asc" })
+    expect(mine!.listings.map((l) => l.listingId)).toEqual([4, 2, 5, 1, 3])
+    expect(mine!.listings.find((l) => l.listingId === 3)!.asset).toEqual({ name: null, imageUrl: null })
+  })
+
+  it("a collection whose every listing is hidden is counted but never named", async () => {
+    vi.stubEnv("NFT_SWAP_HIDDEN", "3, 4")
+    stub()
+    const mine = await getSwapBoard({ seller: SELLER })
+    expect(mine!.collections.map((c) => c.resource)).toEqual([COLL_A, COLL_B])
+    expect(mine!.resources[COLL_A]?.name).toBe("Lantern Foxes")
+    expect(mine!.resources[COLL_B]).toBeUndefined()
+  })
+
+  it("past 100 collections: the filter lists the biggest 100 and says how many it left off; sort=name reads at most 100 + the page", async () => {
+    const colls = resources(105, "q")
+    stub(colls.map((c, i) => listing(i + 1, c, open + i, [xrd(String(i + 1))])))
+    const b = await getSwapBoard({ sort: "name", limit: 1 })
+    expect(b!.collections).toHaveLength(100)
+    expect(b!.moreCollections).toBe(5)
+    expect(nftReads().length).toBeLessThanOrEqual(101)
+    // A collection past the cap is still filterable by address.
+    expect(await ids({ collection: colls[104] })).toEqual([105])
+  })
+})
+
 describe("GET /api/v1/swaps and /api/v1/swaps/{id}", () => {
   // A distinct client address per request, so the per-address limiter never
   // trips across tests; one test drives it on purpose.
@@ -652,6 +823,50 @@ describe("GET /api/v1/swaps and /api/v1/swaps/{id}", () => {
     })
     expect(res.status).toBe(502)
     expect((await res.json()).error.code).toBe("LISTING_UNREADABLE")
+  })
+
+  it("refuses a bad sort, collection or offset, and a cursor that does not belong to the sort, with a named code", async () => {
+    const coll = "resource_rdx1nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002"
+    for (const [q, code] of [
+      ["?sort=cheapest", "INVALID_SORT"],
+      ["?sort=", "INVALID_SORT"],
+      ["?sort=NAME", "INVALID_SORT"],
+      ["?collection=nope", "INVALID_COLLECTION"],
+      ["?collection=account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm", "INVALID_COLLECTION"],
+      ["?sort=price-asc&before=3", "INVALID_CURSOR"],
+      ["?sort=name&before=3", "INVALID_CURSOR"],
+      ["?offset=2", "INVALID_CURSOR"],
+      ["?sort=newest&offset=2", "INVALID_CURSOR"],
+      ["?sort=name&offset=0", "INVALID_CURSOR"],
+      ["?sort=name&offset=-1", "INVALID_CURSOR"],
+      ["?sort=name&offset=1.5", "INVALID_CURSOR"],
+      ["?sort=name&offset=1e3", "INVALID_CURSOR"],
+      ["?sort=name&offset=1001", "INVALID_CURSOR"],
+      ["?sort=name&offset=", "INVALID_CURSOR"],
+    ]) {
+      const res = await getBoardRoute(req(q))
+      expect(res.status, q).toBe(400)
+      expect((await res.json()).error.code, q).toBe(code)
+    }
+    // And the same values, well-formed, are accepted.
+    gatewayStub()
+    for (const q of ["?sort=newest&before=2", "?sort=ending", "?sort=price-asc&offset=1", "?sort=price-desc", "?sort=name&offset=1000", `?collection=${coll}`]) {
+      expect((await getBoardRoute(req(q))).status, q).toBe(200)
+    }
+  })
+
+  it("passes sort, collection and offset through and returns the collections", async () => {
+    gatewayStub()
+    const res = await getBoardRoute(req(`?status=all&sort=ending&collection=${NFT}`))
+    expect(res.status).toBe(200)
+    const body = (await res.json()).data
+    expect(body.listings.length).toBeGreaterThan(0)
+    expect(body.listings.every((l: any) => l.assetResource === NFT)).toBe(true)
+    expect(body.collections).toEqual([{ resource: NFT, count: 2 }])
+    expect(body.moreCollections).toBe(0)
+    // `offset` pages a sorted board: skipping everything leaves an empty page.
+    const rest = await getBoardRoute(req("?sort=name&offset=5"))
+    expect((await rest.json()).data.listings).toEqual([])
   })
 
   it("rate-limits one address at 60 a minute", async () => {
