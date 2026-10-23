@@ -359,7 +359,12 @@ jobs:
 
   e2e:
     name: playwright e2e (guild-app)
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest (2026-10-23): ubuntu-latest moved to 26.04
+    # between the 17 Oct run (image ubuntu-24.04, green) and the 22 Oct run
+    # (ubuntu-26.04, red), and @playwright/test 1.59.1 refuses it: "Playwright
+    # does not support chromium on ubuntu26.04-x64". Move back to latest once
+    # a Playwright bump supports 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
