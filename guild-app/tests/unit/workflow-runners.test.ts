@@ -118,8 +118,9 @@ describe("CI workflow runners", () => {
     const e2e = allJobs.find((j) => j.name === "playwright e2e (guild-app)")!;
     expect(/\bsudo\s/.test(stripComments(gitleaks.body))).toBe(true);
     expect(/^\s{4}services:/m.test(stripComments(e2e.body))).toBe(true);
-    // ...and that both are correctly NOT on slim.
-    expect([gitleaks.runsOn, e2e.runsOn]).toEqual(["ubuntu-latest", "ubuntu-latest"]);
+    // ...and that both are correctly NOT on slim. e2e is pinned to 24.04 because
+    // Playwright 1.59.1 has no chromium for ubuntu-latest's 26.04 (test.yml).
+    expect([gitleaks.runsOn, e2e.runsOn]).toEqual(["ubuntu-latest", "ubuntu-24.04"]);
   });
 });
 
