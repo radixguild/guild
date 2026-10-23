@@ -293,21 +293,26 @@ const ROUTE_META = {
   // P7-03: the NFT swap board, read from the guild-nft-swap component — there is no
   // database copy, so these never disagree with the chain (src/lib/nft-swap.ts).
   "GET /swaps": {
-    summary: "NFT swap listings, newest first, read from the guild-nft-swap component on chain",
+    summary: "NFT swap listings, newest first unless `sort` says otherwise, read from the guild-nft-swap component on chain",
     auth: "none", tag: "swaps",
     query: [
       { name: "status", enum: ["open", "expired", "filled", "cancelled", "all"], description: "At the ledger clock in `ledgerTime`. `open` = fillable now; `expired` = still Listed but past its expiry (only the seller can act: cancel or extend). Default `all`." },
       { name: "seller", description: "Only listings whose pinned seller is this account address." },
-      { name: "before", description: "Cursor: the previous page's `nextCursor` (a listing id)." },
+      { name: "sort", enum: ["newest", "ending", "price-asc", "price-desc", "name"], description: "Default `newest` (highest listing id first). `ending` = open listings by soonest expiry, then the rest newest first. `price-asc` / `price-desc` = by the listing's lowest XRD alternative only; a listing that asks for no XRD sorts last either way. `name` = the NFT's name as the board shows it (the collection name and id when it has none), A to Z with numbers by value. Applied over the newest 1000 listings the board reads. 400 INVALID_SORT otherwise." },
+      { name: "collection", description: "Only listings of this NFT resource address. 400 INVALID_COLLECTION if it is not a resource address." },
+      { name: "before", description: "Cursor for `sort=newest`: the previous page's `nextCursor` (a listing id). 400 INVALID_CURSOR with any other sort." },
+      { name: "offset", description: "Cursor for every other sort: the previous page's `nextCursor` (how many sorted listings to skip), 1-1000. 400 INVALID_CURSOR with `sort=newest`." },
       { name: "limit", description: "1-100, default 48." },
     ],
     description:
       "Each listing is the component's own record (seller, asset, asks as exact decimal strings, unix-second times, state) " +
       "plus `status` and best-effort NFT display data. `resources` carries name / symbol / divisibility for each " +
-      "listing's asset resource and its FIRST ask's resource only (a hidden listing contributes only XRD); any other " +
-      "resource is absent — show its address. `fees` are the live `fill` and `extend_listing` royalties. Listings the " +
+      "listing's asset resource and its FIRST ask's resource only (a hidden listing contributes only XRD), plus the " +
+      "collections in `collections`; any other resource is absent — show its address. `collections` lists the NFT " +
+      "collections among the listings `status` and `seller` match (before `collection`, `before` and `offset`), with a " +
+      "`count` each, most listings first and at most 100; `moreCollections` is how many further ones are left off. `fees` are the live `fill` and `extend_listing` royalties. Listings the " +
       "operator hid are left off unless `seller` is given, where they appear with `hidden: true` and no NFT display data; " +
-      "`hidden` counts the ones left off that would otherwise have matched `status` and `before`. " +
+      "`hidden` counts the ones left off that would otherwise have matched `status`, `collection` and the `before` cursor. " +
       "503 CHAIN_UNREADABLE when the Gateway cannot be read — never an empty list in its place. 429 RATE_LIMITED (60/min per address).",
   },
   "GET /swaps/{id}": {

@@ -1,6 +1,8 @@
 import type { Metadata } from "next"
+import { Suspense } from "react"
 import { AppShell } from "@/components/app-shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { SwapBoard } from "@/components/swaps/swap-board"
 import { NFT_SWAP_COMPONENT } from "@/lib/config"
 import { SWAPS_HEADER, HOW_IT_WORKS, WHAT_THIS_IS_NOT, PROVING_RUN, VERIFY } from "@/content/swaps"
@@ -11,7 +13,9 @@ import { withPageOg } from "@/lib/page-metadata"
 // it in the prerendered HTML (it is a COLD_ROUTE in scripts/honest-copy.mjs).
 // The listings render client-side in <SwapBoard/> from GET /api/v1/swaps,
 // which reads the guild-nft-swap component on chain — see swap-board.tsx for
-// why stranger-written NFT text stays out of the prerendered page.
+// why stranger-written NFT text stays out of the prerendered page. The board
+// reads ?sort= and ?collection= with useSearchParams(), which needs a Suspense
+// boundary on a static page: only the board's skeleton waits behind it.
 
 export const metadata: Metadata = withPageOg("/swaps", {
   title: "Swaps — Radix Guild",
@@ -27,7 +31,17 @@ export default function SwapsPage() {
           <p className="text-muted-foreground">{SWAPS_HEADER.tagline}</p>
         </header>
 
-        <SwapBoard />
+        <Suspense
+          fallback={
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {Array.from({ length: 4 }, (_, i) => (
+                <Skeleton key={i} className="aspect-[3/4] w-full rounded-xl" />
+              ))}
+            </div>
+          }
+        >
+          <SwapBoard />
+        </Suspense>
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>

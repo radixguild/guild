@@ -149,8 +149,12 @@ test.describe("NFT swap — the listing page", () => {
     await stubDetail(page, SELLER);
     await page.goto("/swaps/3");
 
-    await expect(page.getByRole("heading", { level: 1, name: "Swap listing 3" })).toBeVisible();
-    await expect(page.getByText("Guild swap throwaway 2")).toBeVisible();
+    // The NFT leads: its name is the heading, "Collection #id" sits under it, and the
+    // listing's own number is a small label (the server sends only that, and the tab title).
+    await expect(page.getByRole("heading", { level: 1, name: "Guild swap throwaway 2" })).toBeVisible();
+    await expect(page.getByText("Guild Swap Throwaway NFT #2", { exact: true })).toBeVisible();
+    await expect(page.getByText("Listing #3", { exact: true })).toBeVisible();
+    await expect(page).toHaveTitle("Guild swap throwaway 2 · Guild Swap Throwaway NFT #2 — Radix Guild");
     // A buyer is not the receipt holder: no seller panel.
     await expect(page.getByRole("button", { name: "Cancel listing" })).toHaveCount(0);
 
@@ -336,7 +340,9 @@ test.describe("NFT swap — the listing page", () => {
     });
     await page.goto("/swaps/3");
 
-    await expect(page.getByRole("heading", { level: 2, name: "NFT #2#" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "NFT #2" })).toBeVisible();
+    // A hidden listing never changes the tab title to anything it holds.
+    await expect(page).toHaveTitle("Listing #3 · NFT swap — Radix Guild");
     await expect(page.getByText(`NFT #7# of ${shortAddress(ASK_NFT)}`)).toBeVisible();
     await expect(page.getByText(`1 ${shortAddress(TOKEN)}`)).toBeVisible();
     await expect(page.getByText("Guild Swap Throwaway NFT")).toHaveCount(0);
@@ -376,6 +382,8 @@ test.describe("NFT swap — the board", () => {
       unreadable: [],
       hidden: 0,
       listings: [],
+      collections: [],
+      moreCollections: 0,
       nextCursor: null,
       ...over,
     },
@@ -390,6 +398,46 @@ test.describe("NFT swap — the board", () => {
     await page.goto("/swaps");
     await expect(page.getByRole("alert").filter({ hasText: BOARD_COPY.unreadable })).toBeVisible();
     await expect(page.getByText(BOARD_COPY.empty.open)).toHaveCount(0);
+  });
+
+  // The server sorts and filters (nft-swap-gateway.test.ts); the page's job is to keep the
+  // choice in the URL, send it, and show the collections it was told about.
+  test("sort and collection live in the URL, go to the API, and survive a reload", async ({ page }) => {
+    const OTHER_COLL = "resource_rdx1n" + "d".repeat(40) + "0004";
+    const seen: string[] = [];
+    await page.route(/\/api\/v1\/swaps\?/, (route) => {
+      seen.push(route.request().url());
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          board({
+            resources: { [NFT]: RESOURCES[NFT], [OTHER_COLL]: { ...RESOURCES[NFT], name: "Other Dinos" } },
+            collections: [{ resource: NFT, count: 5 }, { resource: OTHER_COLL, count: 2 }],
+          }),
+        ),
+      });
+    });
+    await page.goto("/swaps");
+    await expect(page.getByLabel("Sort")).toHaveValue("newest");
+    await expect(page.getByLabel("Collection").locator("option")).toHaveText([
+      BOARD_COPY.collection.all,
+      "Guild Swap Throwaway NFT (5)",
+      "Other Dinos (2)",
+    ]);
+
+    await page.getByLabel("Sort").selectOption("price-asc");
+    await expect(page).toHaveURL(/\/swaps\?sort=price-asc$/);
+    await expect(page.getByText(BOARD_COPY.sort.notes.price)).toBeVisible();
+    await expect.poll(() => seen.at(-1)).toContain("sort=price-asc");
+
+    await page.getByLabel("Collection").selectOption(OTHER_COLL);
+    await expect(page).toHaveURL(new RegExp(`/swaps\\?sort=price-asc&collection=${OTHER_COLL}$`));
+    await expect.poll(() => seen.at(-1)).toContain(`collection=${OTHER_COLL}`);
+
+    await page.reload();
+    await expect(page.getByLabel("Sort")).toHaveValue("price-asc");
+    await expect(page.getByLabel("Collection")).toHaveValue(OTHER_COLL);
   });
 
   test("listings that exist but do not parse fail closed, never 'Nothing is listed'", async ({ page }) => {

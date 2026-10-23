@@ -13,7 +13,9 @@ import {
   expiryForDays,
   extendedExpiry,
   formatAmount,
+  formatLocalId,
   isHidden,
+  isLocalId,
   MAX_LISTING_HORIZON_SECS,
   normalizeDecimal,
   parseHiddenList,
@@ -265,5 +267,40 @@ describe("the operator's hide list", () => {
     expect([...h.ids]).toEqual([7])
     expect([...h.resources]).toEqual([NFT])
     expect(parseHiddenList(undefined).invalid).toEqual([])
+  })
+})
+
+describe("formatLocalId — the four Radix local-id forms, for people", () => {
+  it("integer #9897# reads #9897 (and the ledger's own spelling #09897# the same)", () => {
+    expect(formatLocalId("#9897#")).toBe("#9897")
+    expect(formatLocalId("#1#")).toBe("#1")
+    expect(formatLocalId("#09897#")).toBe("#9897")
+    expect(formatLocalId("#0#")).toBe("#0")
+  })
+
+  it("string <abc> reads abc, case kept", () => {
+    expect(formatLocalId("<abc>")).toBe("abc")
+    expect(formatLocalId("<maple_fox_7>")).toBe("maple_fox_7")
+  })
+
+  it("bytes [..] keep their brackets, are shortened with an ellipsis when long, and are lowercased", () => {
+    expect(formatLocalId("[deadbeef]")).toBe("[deadbeef]")
+    expect(formatLocalId("[0123456789ABCDEF]")).toBe("[0123456789abcdef]") // 16 hex digits: still whole
+    expect(formatLocalId("[0123456789abcdef0123456789abcdef]")).toBe("[01234567…abcdef]")
+  })
+
+  it("a RUID {..} is always shortened with an ellipsis", () => {
+    const ruid = "{0123456789abcdef-fedcba9876543210-0011223344556677-8899aabbccddeeff}"
+    expect(isLocalId(ruid)).toBe(true)
+    expect(formatLocalId(ruid)).toBe("{01234567…ddeeff}")
+    expect(formatLocalId(ruid)).not.toBe(ruid)
+  })
+
+  it("never alters what it cannot parse, and the raw id is untouched by it", () => {
+    expect(formatLocalId("not an id")).toBe("not an id")
+    expect(formatLocalId("")).toBe("")
+    const raw = "#9897#"
+    formatLocalId(raw)
+    expect(raw).toBe("#9897#")
   })
 })

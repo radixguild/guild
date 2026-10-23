@@ -63,14 +63,39 @@ const G = vi.hoisted(() => ({
 }))
 vi.mock("@/lib/nft-swap-gateway", () => G)
 
-const R = vi.hoisted(() => ({ push: vi.fn() }))
-vi.mock("next/navigation", () => ({ useRouter: () => R }))
+// The board keeps ?sort= and ?collection= in the URL. A tiny stand-in for the
+// router: replace() rewrites the query and re-renders whoever reads it.
+const NAV = vi.hoisted(() => {
+  let params = new URLSearchParams()
+  const subs = new Set<() => void>()
+  return {
+    get: () => params,
+    set: (qs: string) => {
+      params = new URLSearchParams(qs)
+      subs.forEach((f) => f())
+    },
+    subscribe: (f: () => void) => {
+      subs.add(f)
+      return () => void subs.delete(f)
+    },
+  }
+})
+const R = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
+vi.mock("next/navigation", async () => {
+  const { useSyncExternalStore } = await import("react")
+  return {
+    useRouter: () => R,
+    usePathname: () => "/swaps",
+    useSearchParams: () => useSyncExternalStore(NAV.subscribe, NAV.get, NAV.get),
+  }
+})
 
 import { humanizeSwapTxError } from "@/components/swaps/swap-bits"
 import { SwapDetail } from "@/components/swaps/swap-detail"
 import { SwapBoard } from "@/components/swaps/swap-board"
 import { ListNftForm } from "@/components/swaps/list-nft-form"
 import { humanizeTxError } from "@/lib/escrow-utils"
+import { shortAddress } from "@/lib/nft-swap"
 import * as swapsCopy from "@/content/swaps"
 import { BOARD_COPY, DETAIL_COPY } from "@/content/swaps"
 import type { SwapBoardView, SwapDetailView } from "@/lib/nft-swap-service"
@@ -124,6 +149,9 @@ beforeEach(() => {
   F.apiFetch.mockReset()
   Object.values(G).forEach((f) => f.mockReset())
   R.push.mockReset()
+  R.replace.mockReset()
+  R.replace.mockImplementation((url: string) => NAV.set(url.split("?")[1] ?? ""))
+  NAV.set("")
 })
 afterEach(() => {
   cleanup()
@@ -308,6 +336,92 @@ describe("SwapDetail", () => {
     expect(screen.queryByText(DETAIL_COPY.moreAsks)).toBeNull()
   })
 
+  it("leads with the NFT: its name is the one h1, 'Collection #id' sits under it, the tab is retitled", async () => {
+    const d = detail()
+    d.listing.assetId = "#9897#"
+    d.resources = { [ASSET]: { name: "Lantern Foxes", symbol: null, divisibility: null, kind: "nonFungible", iconUrl: null } } as never
+    d.listing.asset = { name: "Maple Quillson", imageUrl: null }
+    F.apiFetch.mockResolvedValue(answer(d))
+    document.title = "Listing #7 · NFT swap — Radix Guild"
+    render(<SwapDetail listingId="7" />)
+
+    await screen.findByRole("heading", { level: 1, name: "Maple Quillson" })
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1)
+    expect(screen.getByText("Lantern Foxes #9897")).toBeInTheDocument()
+    await waitFor(() => expect(document.title).toBe("Maple Quillson · Lantern Foxes #9897 — Radix Guild"))
+    // The id row reads #9897 and keeps the raw id in its hover title and its copy button.
+    expect(screen.getByText("#9897")).toHaveAttribute("title", "#9897#")
+    expect(screen.getByRole("button", { name: "Copy NFT id" })).toBeInTheDocument()
+    expect(screen.getByText("Receipt held by")).toBeInTheDocument()
+    expect(screen.queryByText("Receipt")).toBeNull()
+  })
+
+  it("copies the RAW local id, not the readable one", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    const d = detail()
+    d.listing.assetId = "#9897#"
+    F.apiFetch.mockResolvedValue(answer(d))
+    render(<SwapDetail listingId="7" />)
+    fireEvent.click(await screen.findByRole("button", { name: "Copy NFT id" }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("#9897#"))
+  })
+
+  it("without an NFT name the heading is 'Collection #id' and no second line repeats it", async () => {
+    const d = detail()
+    d.listing.assetId = "<dino_7>"
+    d.listing.asset = { name: null, imageUrl: null }
+    d.resources = { [ASSET]: { name: "Dinos", symbol: null, divisibility: null, kind: "nonFungible", iconUrl: null } } as never
+    F.apiFetch.mockResolvedValue(answer(d))
+    render(<SwapDetail listingId="7" />)
+    await screen.findByRole("heading", { level: 1, name: "Dinos dino_7" })
+    expect(screen.getAllByText("Dinos dino_7")).toHaveLength(1)
+    await waitFor(() => expect(document.title).toBe("Dinos dino_7 — Radix Guild"))
+  })
+
+  it("a hidden listing keeps the plain NFT heading and the hidden copy, and never retitles the tab", async () => {
+    const d = detail()
+    d.listing.hidden = true
+    d.listing.asset = { name: null, imageUrl: null }
+    d.resources = { [ASSET]: { name: "Should Not Show", symbol: null, divisibility: null, kind: "nonFungible", iconUrl: null } } as never
+    F.apiFetch.mockResolvedValue(answer(d))
+    document.title = "Listing #7 · NFT swap — Radix Guild"
+    render(<SwapDetail listingId="7" />)
+    await screen.findByRole("heading", { level: 1, name: "NFT #1" })
+    expect(screen.getByText(DETAIL_COPY.hidden)).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain("Should Not Show")
+    expect(document.title).toBe("Listing #7 · NFT swap — Radix Guild")
+  })
+
+  it("a listing that becomes hidden while the page is open puts the plain 'Listing #n' title back", async () => {
+    const shown = detail()
+    shown.listing.asset = { name: "Maple Quillson", imageUrl: null }
+    const hiddenNow = detail({ expiresAt: T + 86_400 * 31 })
+    hiddenNow.listing.hidden = true
+    hiddenNow.listing.asset = { name: null, imageUrl: null }
+    F.apiFetch.mockResolvedValueOnce(answer(shown)).mockResolvedValue(answer(hiddenNow))
+    W.send.mockResolvedValue(committed())
+    document.title = "Listing #7 · NFT swap — Radix Guild"
+    render(<SwapDetail listingId="7" />)
+    await waitFor(() => expect(document.title).toContain("Maple Quillson"))
+
+    // The seller extends; the re-read answers with the listing hidden by then.
+    fireEvent.click(await screen.findByRole("button", { name: "Extend by 30 days" }))
+    await screen.findByText(DETAIL_COPY.hidden)
+    await waitFor(() => expect(document.title).toBe("Listing #7 · NFT swap — Radix Guild"))
+    expect(document.body.textContent).not.toContain("Maple Quillson")
+  })
+
+  it("has a heading while it loads and when the read fails, and the tab title is left alone until it loads", async () => {
+    document.title = "Listing #7 · NFT swap — Radix Guild"
+    F.apiFetch.mockRejectedValue(new DOMException("The operation timed out.", "TimeoutError"))
+    render(<SwapDetail listingId="7" />)
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(DETAIL_COPY.pageHeading)
+    await screen.findByText(/could not be read/)
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(DETAIL_COPY.pageHeading)
+    expect(document.title).toBe("Listing #7 · NFT swap — Radix Guild")
+  })
+
   it("bounds the detail read with a timeout and treats a failed read as unreadable", async () => {
     F.apiFetch.mockRejectedValue(new DOMException("The operation timed out.", "TimeoutError"))
     render(<SwapDetail listingId="7" />)
@@ -330,6 +444,8 @@ function board(over: Partial<SwapBoardView> = {}): SwapBoardView {
     unreadable: [],
     hidden: 0,
     listings: [],
+    collections: [],
+    moreCollections: 0,
     nextCursor: null,
     ...over,
   }
@@ -374,6 +490,172 @@ describe("SwapBoard", () => {
     render(<SwapBoard />)
     await screen.findByText(BOARD_COPY.unreadable)
     expect(F.apiFetch.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal)
+  })
+})
+
+const COLL_B = "resource_rdx1nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002"
+const named = (name: string) => ({ name, symbol: null, divisibility: null, kind: "nonFungible", iconUrl: null })
+
+function card(id: number, over: Partial<SwapBoardView["listings"][number]> = {}): SwapBoardView["listings"][number] {
+  const d = detail().listing
+  return { ...d, listingId: id, assetId: `#${9890 + id}#`, asset: { name: `Fox ${id}`, imageUrl: null }, ...over }
+}
+
+describe("SwapBoard — cards, sort and collection filter", () => {
+  const withFacets = (over: Partial<SwapBoardView> = {}) =>
+    board({
+      listings: [card(7)],
+      resources: { [ASSET]: named("Lantern Foxes"), [COLL_B]: named("Dinos") } as never,
+      collections: [{ resource: ASSET, count: 12 }, { resource: COLL_B, count: 3 }],
+      ...over,
+    })
+
+  it("a card leads with the NFT's name, then 'Collection #id', and ends on the listing number", async () => {
+    F.apiFetch.mockResolvedValue(answer(withFacets()))
+    render(<SwapBoard />)
+    const name = await screen.findByText("Fox 7")
+    const line = screen.getByText("Lantern Foxes #9897")
+    expect(line).toHaveAttribute("title", `${ASSET} #9897#`)
+    const last = screen.getByText(/^Listing 7 ·/)
+    // document order: name, then the id line, then the listing number
+    expect(name.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(line.compareDocumentPosition(last) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("an unnamed NFT shows 'Collection #id' once; a hidden one keeps the hidden copy and an address", async () => {
+    F.apiFetch.mockResolvedValue(
+      answer(
+        withFacets({
+          listings: [
+            card(7, { asset: { name: null, imageUrl: null } }),
+            card(8, { hidden: true, asset: { name: null, imageUrl: null } }),
+          ],
+        }),
+      ),
+    )
+    render(<SwapBoard />)
+    await screen.findByText(BOARD_COPY.hiddenCard)
+    expect(screen.getAllByText("Lantern Foxes #9897")).toHaveLength(1)
+    expect(screen.getByText(`${shortAddress(ASSET)} #9898`)).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain("#9898#")
+  })
+
+  it("starts from the URL: ?sort= and ?collection= go straight into the first read", async () => {
+    NAV.set(`sort=price-desc&collection=${COLL_B}`)
+    F.apiFetch.mockResolvedValue(answer(withFacets()))
+    render(<SwapBoard />)
+    await waitFor(() => expect(F.apiFetch).toHaveBeenCalled())
+    const u = new URL(lastUrl(), "http://x")
+    expect(u.searchParams.get("sort")).toBe("price-desc")
+    expect(u.searchParams.get("collection")).toBe(COLL_B)
+    expect(u.searchParams.get("status")).toBe("open")
+    expect(await screen.findByLabelText("Sort")).toHaveValue("price-desc")
+    expect(screen.getByLabelText("Collection")).toHaveValue(COLL_B)
+  })
+
+  it("ignores a ?sort= or ?collection= it does not know — the API never sees them", async () => {
+    NAV.set("sort=cheapest&collection=nope")
+    F.apiFetch.mockResolvedValue(answer(withFacets()))
+    render(<SwapBoard />)
+    await screen.findByText("Fox 7")
+    expect(lastUrl()).not.toContain("sort=")
+    expect(lastUrl()).not.toContain("collection=")
+    expect(screen.getByLabelText("Sort")).toHaveValue("newest")
+  })
+
+  it("choosing a sort writes it to the URL and re-reads with it; newest drops it again", async () => {
+    F.apiFetch.mockResolvedValue(answer(withFacets()))
+    render(<SwapBoard />)
+    await screen.findByText("Fox 7")
+    fireEvent.change(screen.getByLabelText("Sort"), { target: { value: "price-asc" } })
+    expect(R.replace).toHaveBeenLastCalledWith("/swaps?sort=price-asc", { scroll: false })
+    await waitFor(() => expect(lastUrl()).toContain("sort=price-asc"))
+    // The note says what a price sort covers; it is not there for other sorts.
+    expect(screen.getByText(BOARD_COPY.sort.notes.price)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText("Sort"), { target: { value: "ending" } })
+    await waitFor(() => expect(lastUrl()).toContain("sort=ending"))
+    expect(screen.queryByText(BOARD_COPY.sort.notes.price)).toBeNull()
+    expect(screen.getByText(BOARD_COPY.sort.notes.ending)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText("Sort"), { target: { value: "newest" } })
+    expect(R.replace).toHaveBeenLastCalledWith("/swaps", { scroll: false })
+    await waitFor(() => expect(lastUrl()).not.toContain("sort="))
+  })
+
+  it("lists the collections present with their counts and names, keyed by resource address", async () => {
+    F.apiFetch.mockResolvedValue(answer(withFacets({ moreCollections: 4 })))
+    render(<SwapBoard />)
+    const select = await screen.findByLabelText("Collection")
+    const opts = Array.from(select.querySelectorAll("option")).map((o) => [o.value, o.textContent])
+    expect(opts).toEqual([
+      ["", BOARD_COPY.collection.all],
+      [ASSET, "Lantern Foxes (12)"],
+      [COLL_B, "Dinos (3)"],
+    ])
+    expect(screen.getByText(BOARD_COPY.collection.notListed(4))).toBeInTheDocument()
+
+    fireEvent.change(select, { target: { value: COLL_B } })
+    expect(R.replace).toHaveBeenLastCalledWith(`/swaps?collection=${COLL_B}`, { scroll: false })
+    await waitFor(() => expect(lastUrl()).toContain(`collection=${COLL_B}`))
+  })
+
+  it("a chosen collection with none left under this status stays in the select, as (0)", async () => {
+    NAV.set(`collection=${COLL_B}`)
+    F.apiFetch.mockResolvedValue(answer(withFacets({ listings: [], collections: [{ resource: ASSET, count: 12 }] })))
+    render(<SwapBoard />)
+    const select = await screen.findByLabelText("Collection")
+    expect(select).toHaveValue(COLL_B)
+    expect(screen.getByRole("option", { name: `${shortAddress(COLL_B)} (0)` })).toBeInTheDocument()
+    // With a collection chosen, an empty answer is a filter result, not "nothing is listed".
+    expect(screen.queryByText(BOARD_COPY.empty.open)).toBeNull()
+    expect(screen.getByText(BOARD_COPY.empty.other)).toBeInTheDocument()
+  })
+
+  it("Load more pages newest with `before` (a listing id) and every other sort with `offset`", async () => {
+    F.apiFetch.mockResolvedValue(answer(withFacets({ nextCursor: 7 })))
+    const view = render(<SwapBoard />)
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }))
+    await waitFor(() => expect(lastUrl()).toContain("before=7"))
+    expect(lastUrl()).not.toContain("offset=")
+    view.unmount()
+
+    NAV.set("sort=name")
+    F.apiFetch.mockReset()
+    F.apiFetch.mockResolvedValue(answer(withFacets({ nextCursor: 48 })))
+    render(<SwapBoard />)
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }))
+    await waitFor(() => expect(lastUrl()).toContain("offset=48"))
+    expect(lastUrl()).toContain("sort=name")
+    expect(lastUrl()).not.toContain("before=")
+  })
+
+  it("Load more shows a listing once when the server re-sorted between pages, with unique keys", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+    NAV.set("sort=name")
+    F.apiFetch
+      .mockResolvedValueOnce(answer(withFacets({ listings: [card(1), card(2)], nextCursor: 2 })))
+      .mockResolvedValueOnce(answer(withFacets({ listings: [card(2), card(3)], nextCursor: null })))
+    render(<SwapBoard />)
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }))
+    await screen.findByText("Fox 3")
+    expect(screen.getAllByText("Fox 1")).toHaveLength(1)
+    expect(screen.getAllByText("Fox 2")).toHaveLength(1)
+    expect(errors.mock.calls.filter((c) => /same key|unique "key"/i.test(String(c[0])))).toEqual([])
+    errors.mockRestore()
+  })
+
+  it("a reply from before the sort changed is not spliced into the new order", async () => {
+    const later = deferred<unknown>()
+    F.apiFetch.mockResolvedValueOnce(answer(withFacets({ nextCursor: 7 }))).mockReturnValueOnce(later.promise)
+    render(<SwapBoard />)
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }))
+    await waitFor(() => expect(F.apiFetch).toHaveBeenCalledTimes(2))
+    F.apiFetch.mockResolvedValue(answer(withFacets({ listings: [card(1)] })))
+    fireEvent.change(screen.getByLabelText("Sort"), { target: { value: "name" } })
+    await screen.findByText("Fox 1")
+    await act(async () => later.resolve(answer(withFacets({ listings: [card(99)] }))))
+    expect(screen.queryByText("Fox 99")).toBeNull()
   })
 })
 

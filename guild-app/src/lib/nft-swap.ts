@@ -94,6 +94,27 @@ export function canonicalLocalId(id: string): string {
   return id
 }
 
+/**
+ * A local id the way a person reads it, for headings, cards and rows. Display
+ * only: the id that goes into a manifest, a comparison or a copy action is the
+ * raw one (put it in a `title`).
+ *
+ *   #9897#        → #9897
+ *   <abc>         → abc
+ *   [0a1b…]       → [0a1b2c3d…e5f6a7]   (long hex shortened, short kept)
+ *   {01234567-…}  → {01234567…89abcd}   (a RUID is always long)
+ *
+ * Anything that is not a local id comes back unchanged.
+ */
+export function formatLocalId(id: string): string {
+  if (!isLocalId(id)) return id
+  const canon = canonicalLocalId(id)
+  const inner = canon.slice(1, -1)
+  if (canon.startsWith("#")) return `#${inner}`
+  if (canon.startsWith("<")) return inner
+  return inner.length > 16 ? `${canon[0]}${inner.slice(0, 8)}…${inner.slice(-6)}${canon[canon.length - 1]}` : canon
+}
+
 // ── Parsing the Gateway's programmatic JSON ─────────────────────────────────
 
 type Field = { field_name?: string; value?: unknown; variant_name?: string; fields?: unknown; elements?: unknown }

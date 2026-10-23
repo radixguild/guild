@@ -24,6 +24,7 @@ import {
   extendedExpiry,
   filledAsk,
   formatAmount,
+  formatLocalId,
   proceedsOwed,
   receiptBurnable,
   type SwapAsk,
@@ -37,6 +38,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import {
   AddressLink,
   askText,
+  CopyButton,
+  nftParts,
   NftImage,
   relativeTime,
   SwapStatusBadge,
@@ -77,6 +80,25 @@ function feeText(fee: SwapFee | null): string {
   if (!fee) return "could not be read — the wallet's fee summary shows it"
   if (fee.unit === "USD") return `$${formatAmount(fee.amount)}, paid in XRD at the network's rate`
   return `${formatAmount(fee.amount)} XRD`
+}
+
+/**
+ * What the page calls the NFT: `name` is the main heading, `line` the
+ * "Collection #id" line under it, `title` the browser-tab title once the
+ * listing has loaded. A hidden listing keeps the plain "NFT #id" heading and no
+ * line, and its `title` is the server's "Listing #n · NFT swap" one: the page
+ * then names nothing a stranger wrote, and a tab that showed the NFT's name
+ * before the listing was hidden goes back to it. The same title stands in
+ * whenever there is no name to show.
+ */
+export function detailLabels(view: SwapDetailView): { name: string; line: string | null; title: string } {
+  const l = view.listing
+  const p = nftParts(l, view.resources)
+  const plainTitle = `Listing #${l.listingId} · NFT swap — Radix Guild`
+  if (l.hidden) return { name: `NFT ${p.id}`, line: null, title: plainTitle }
+  const line = p.name ? `${p.collection} ${p.id}` : null
+  const name = p.name ?? (p.collName ? `${p.collName} ${p.id}` : `NFT ${p.id}`)
+  return { name, line, title: name.trim() ? `${name}${line ? ` · ${line}` : ""} — Radix Guild` : plainTitle }
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -335,6 +357,13 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
   const [load, setLoad] = useState<Load>({ state: "loading" })
   const [notice, setNotice] = useState<{ text: string; txId: string } | null>(null)
   const [waiting, setWaiting] = useState(justListed)
+  // The server title is "Listing #n" (it never names the NFT); once the
+  // listing has loaded, the tab names the NFT instead, and goes back to the
+  // plain one when a later read shows the listing hidden or nameless.
+  const pageTitle = load.state === "ok" ? detailLabels(load.view).title : null
+  useEffect(() => {
+    if (pageTitle) document.title = pageTitle
+  }, [pageTitle])
 
   const [reloadKey, setReloadKey] = useState(0)
   const refresh = () => setReloadKey((k) => k + 1)
@@ -397,6 +426,7 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
   if (load.state === "loading") {
     return (
       <div className="space-y-3">
+        <h1 className="sr-only">{DETAIL_COPY.pageHeading}</h1>
         {waiting && <p className="text-xs text-muted-foreground" role="status">{DETAIL_COPY.waiting}</p>}
         <Skeleton className="h-80 w-full rounded-xl" />
       </div>
@@ -404,16 +434,19 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
   }
   if (load.state === "error") {
     return (
-      <p className="rounded-lg border p-4 text-sm" role="alert">
-        {load.message}
-      </p>
+      <>
+        <h1 className="sr-only">{DETAIL_COPY.pageHeading}</h1>
+        <p className="rounded-lg border p-4 text-sm" role="alert">
+          {load.message}
+        </p>
+      </>
     )
   }
 
   const { view } = load
   const l = view.listing
+  const { name, line } = detailLabels(view)
   const coll = l.hidden ? null : (view.resources[l.assetResource]?.name ?? null)
-  const name = l.hidden ? `NFT ${l.assetId}` : (l.asset.name ?? (coll ? `${coll} ${l.assetId}` : `NFT ${l.assetId}`))
   const holdsReceipt = Boolean(tx.account && view.receipt?.holder === tx.account)
   const filled = filledAsk(l)
   const behind = waiting || Boolean(load.stale)
@@ -430,9 +463,14 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
         <div className="min-w-0 space-y-4">
           <header className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-semibold break-words">{name}</h2>
+              <h1 className="text-2xl font-semibold break-words">{name}</h1>
               <SwapStatusBadge status={l.status} />
             </div>
+            {line && (
+              <p className="text-base text-muted-foreground break-words" title={`${l.assetResource} ${l.assetId}`}>
+                {line}
+              </p>
+            )}
             <p className="text-sm text-muted-foreground">On the Guild NFT swap component</p>
           </header>
           <dl className="space-y-2">
@@ -441,7 +479,10 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
               <AddressLink address={l.assetResource} />
             </Row>
             <Row label="NFT id">
-              <span className="font-mono text-xs">{l.assetId}</span>
+              <span className="font-mono text-xs" title={l.assetId}>
+                {formatLocalId(l.assetId)}
+              </span>
+              <CopyButton text={l.assetId} label="Copy NFT id" />
             </Row>
             <Row label="Proceeds to">
               <AddressLink address={l.seller} />
@@ -463,7 +504,7 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
                 </span>
               </Row>
             )}
-            <Row label="Receipt">
+            <Row label="Receipt held by">
               {view.receipt === null ? (
                 <span className="text-muted-foreground">holder could not be read</span>
               ) : view.receipt.burned ? (

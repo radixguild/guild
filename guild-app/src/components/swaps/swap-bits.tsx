@@ -3,11 +3,11 @@
 // Small pieces shared by the swap board, the listing page and the List form.
 
 import { useCallback, useRef, useState } from "react"
-import { ImageOff } from "lucide-react"
+import { Check, Copy, ImageOff } from "lucide-react"
 import { useWallet } from "@/hooks/useWallet"
 import { humanizeTxError, type HumanizedTxError } from "@/lib/escrow-utils"
-import { formatAmount, shortAddress, type SwapAsk, type SwapStatus } from "@/lib/nft-swap"
-import type { SwapResourceView } from "@/lib/nft-swap-service"
+import { formatAmount, formatLocalId, shortAddress, type SwapAsk, type SwapStatus } from "@/lib/nft-swap"
+import type { SwapListingView, SwapResourceView } from "@/lib/nft-swap-service"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
@@ -101,6 +101,54 @@ export function SwapStatusBadge({ status }: { status: SwapStatus }) {
     <Badge variant={status === "open" ? "default" : status === "filled" ? "secondary" : "outline"}>
       {STATUS_LABEL[status]}
     </Badge>
+  )
+}
+
+/**
+ * How a listing names its NFT, for a card or a page heading. `name` is the
+ * NFT's own name (a stranger's text; null when it has none, or the listing is
+ * hidden), `collection` the collection's name (its short address when the
+ * Gateway gave none, and always for a hidden listing, which names nothing a
+ * stranger wrote) and `id` the readable form of the local id. The raw id
+ * belongs in a `title`, never in the text.
+ */
+export function nftParts(
+  l: Pick<SwapListingView, "assetResource" | "assetId" | "hidden" | "asset">,
+  resources: Record<string, SwapResourceView>,
+): { name: string | null; collName: string | null; collection: string; id: string } {
+  const collName = l.hidden ? null : (resources[l.assetResource]?.name ?? null)
+  return {
+    name: l.hidden ? null : l.asset.name,
+    collName,
+    collection: collName ?? shortAddress(l.assetResource),
+    id: formatLocalId(l.assetId),
+  }
+}
+
+/** A small button that copies `text` (the RAW local id) to the clipboard. A
+ *  refused write (no permission, no secure context) does nothing visible. */
+export function CopyButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded align-middle text-muted-foreground hover:text-foreground"
+      onClick={() => {
+        void (async () => {
+          try {
+            await navigator.clipboard.writeText(text)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1500)
+          } catch {
+            // Nothing to report: the id is on the page and in the hover title.
+          }
+        })()
+      }}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
   )
 }
 
