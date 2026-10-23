@@ -181,8 +181,94 @@ test('pollEscrowEvents: small ordinary lag does NOT guard — no operator alert,
   assert.equal(alerted, 0, 'ordinary catch-up must not alert the operator');
   assert.equal(bot._calls.length, 0);
   const cursorRow = db.prepare("SELECT value FROM watcher_state WHERE key = 'escrow_last_version'").get();
-  // No matching tx were found in range, so the cursor is untouched by the
-  // (non-guarded) poll loop itself — it was never fast-forwarded past 100.
+  // The stream reply carries no ledger_state, so the idle advance has nothing
+  // it can trust and leaves the cursor alone — never fast-forwarded past 100.
+  assert.equal(cursorRow, undefined);
+});
+
+// ── Idle cursor advance (2026-10-23) ────────────────────────────────────
+// Before this fix an idle component never moved the cursor, so a healthy
+// poller tripped the guard on network throughput alone every ~10-24h.
+
+function idleGateway(state) {
+  return async (url, opts) => {
+    if (String(url).includes('/status/gateway-status')) {
+      return jsonResponse({ ledger_state: { state_version: state.tip } });
+    }
+    state.streamBodies.push(JSON.parse(opts.body));
+    return jsonResponse({ items: [], ledger_state: { state_version: state.readAt ?? state.tip } });
+  };
+}
+
+test('pollEscrowEvents: idle poll advances the cursor to the stream read state, not the status tip', async () => {
+  const db = freshDb();
+  const state = { tip: 105, readAt: 104, streamBodies: [] };
+  global.fetch = idleGateway(state);
+
+  _resetForTest({ dbInstance: db, botInstance: fakeBot(), lastVersion: 100, lastTip: 90, adminNotifier: async () => {} });
+  await pollEscrowEvents();
+
+  const cursorRow = db.prepare("SELECT value FROM watcher_state WHERE key = 'escrow_last_version'").get();
+  assert.equal(Number(cursorRow.value), 104, 'cursor follows what the stream read covered');
+});
+
+test('pollEscrowEvents: an idle, always-up poller never trips the guard on throughput alone', async () => {
+  const db = freshDb();
+  const alerts = [];
+  const state = { tip: 1_000_000, streamBodies: [] };
+  global.fetch = idleGateway(state);
+
+  _resetForTest({
+    dbInstance: db,
+    botInstance: fakeBot(),
+    lastVersion: 1_000_000,
+    lastTip: 1_000_000,
+    adminNotifier: async (msg) => { alerts.push(msg); },
+  });
+
+  // Ten polls, each with the ledger 60k further on: 600k in all, six times
+  // the default MAX_REPLAY. The old code tripped on the second poll.
+  for (let i = 0; i < 10; i++) {
+    state.tip += 60_000;
+    await pollEscrowEvents();
+  }
+
+  assert.deepEqual(alerts, [], 'no replay-guard alert for an idle component');
+  const cursorRow = db.prepare("SELECT value FROM watcher_state WHERE key = 'escrow_last_version'").get();
+  assert.equal(Number(cursorRow.value), 1_600_000);
+  // Each poll asks for the range after the previous poll's read state.
+  assert.equal(state.streamBodies[9].from_ledger_state.state_version, 1_540_001);
+});
+
+test('pollEscrowEvents: a short page that still carries next_cursor does not advance the cursor', async () => {
+  const db = freshDb();
+  global.fetch = async (url) => {
+    if (String(url).includes('/status/gateway-status')) {
+      return jsonResponse({ ledger_state: { state_version: 105 } });
+    }
+    return jsonResponse({ items: [], next_cursor: 'more', ledger_state: { state_version: 105 } });
+  };
+
+  _resetForTest({ dbInstance: db, botInstance: fakeBot(), lastVersion: 100, lastTip: 90, adminNotifier: async () => {} });
+  await pollEscrowEvents();
+
+  const cursorRow = db.prepare("SELECT value FROM watcher_state WHERE key = 'escrow_last_version'").get();
+  assert.equal(cursorRow, undefined);
+});
+
+test('pollEscrowEvents: a failed stream read does not advance the cursor', async () => {
+  const db = freshDb();
+  global.fetch = async (url) => {
+    if (String(url).includes('/status/gateway-status')) {
+      return jsonResponse({ ledger_state: { state_version: 105 } });
+    }
+    return jsonResponse({ ledger_state: { state_version: 105 } }, false);
+  };
+
+  _resetForTest({ dbInstance: db, botInstance: fakeBot(), lastVersion: 100, lastTip: 90, adminNotifier: async () => {} });
+  await pollEscrowEvents();
+
+  const cursorRow = db.prepare("SELECT value FROM watcher_state WHERE key = 'escrow_last_version'").get();
   assert.equal(cursorRow, undefined);
 });
 
