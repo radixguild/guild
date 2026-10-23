@@ -36,6 +36,19 @@
  * the gap entirely: fast-forward the cursor to the tip, log one line, and
  * send at most one operator alert. Normal day-to-day catch-up (the bot was
  * down for minutes to a few hours) stays completely unaffected.
+ *
+ * ── Idle cursor advance (2026-10-23) ────────────────────────────────────
+ * Until this date "only advanced as events are processed" was literal: a
+ * poll that found nothing left the cursor where it was. With no escrow
+ * activity the gap to the tip grew by network throughput alone, so a
+ * healthy, always-up poller tripped the guard every ~10-24h (every trip
+ * from 13 Oct to 22 Oct "skipped 0 events"; the last real escrow tx was
+ * 11 Oct) and paged the operator for nothing. A poll that pages through to
+ * the end without error now also moves the cursor up to the ledger state its
+ * last page was READ AT (`ledger_state.state_version` on the stream
+ * response) — that page was short, so it holds every watched tx up to that
+ * version. Not the gateway-status tip: that is a separate call and can come
+ * from a different, further-ahead Gateway node than the stream read.
  */
 
 const GATEWAY = process.env.RADIX_GATEWAY || "https://mainnet.radixdlt.com";
@@ -529,6 +542,9 @@ async function pollEscrowEvents({ isCancelled = () => false } = {}) {
   // Paging cursor, separate from lastStateVersion: it advances to the last
   // item of every page whether or not that page held anything to process.
   let pageCursor = lastStateVersion;
+  // Ledger state_version the latest page was read at (idle cursor advance —
+  // see the module header). 0 = not reported, so nothing is advanced.
+  let readAt = 0;
 
   // Pagination loop — fetch all pages to prevent sync loss on >50 TX bursts
   while (hasMore) {
@@ -577,6 +593,10 @@ async function pollEscrowEvents({ isCancelled = () => false } = {}) {
     gatewayHealthy();
 
     const items = resp.body?.items || [];
+    // A page that carries next_cursor is not the end of the range, however
+    // short it is — never advance past what a later page could still hold.
+    const pageReadAt = resp.body?.ledger_state?.state_version;
+    readAt = Number.isFinite(pageReadAt) && !resp.body?.next_cursor ? pageReadAt : 0;
 
     if (items.length === 0) break;
 
@@ -662,6 +682,19 @@ async function pollEscrowEvents({ isCancelled = () => false } = {}) {
     }
     pageCursor = Math.max(pageCursor, pageEnd);
     hasMore = items.length >= 50;
+  }
+
+  // Reached only when paging ended on a short or empty page with no error or
+  // cancel (those `return` above), so every watched tx up to `readAt` was on
+  // a page this poll read. Without this an idle component never moves the
+  // cursor and the replay guard trips on throughput alone.
+  if (readAt > lastStateVersion) {
+    lastStateVersion = readAt;
+    try {
+      db.prepare("INSERT OR REPLACE INTO watcher_state (key, value) VALUES ('escrow_last_version', ?)").run(String(readAt));
+    } catch (e) {
+      console.error("[EscrowWatcher] Failed to save state version:", e.message);
+    }
   }
 
   if (totalProcessed > 0) {
