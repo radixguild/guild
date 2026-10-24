@@ -754,6 +754,53 @@ describe("getSwapBoard — sort, collection filter, collection counts", () => {
     expect(mine!.resources[COLL_B]).toBeUndefined()
   })
 
+  // The operator can hide a whole collection by putting its resource address in
+  // NFT_SWAP_HIDDEN. On the PUBLIC board that collection must be gone entirely:
+  // not a card, not an option in the collection filter, not a name, and not a
+  // Gateway read made on its account (guild#56 review follow-up).
+  it("a hidden collection does not show on the public board: no cards, no filter option, no name, no reads", async () => {
+    vi.stubEnv("NFT_SWAP_HIDDEN", COLL_B)
+    stub()
+    const pub = await getSwapBoard({ status: "all" })
+    // COLL_B holds listings 3 and 4; COLL_A's 1, 2 and 5 stay.
+    expect(pub!.listings.map((l) => l.listingId)).toEqual([5, 2, 1])
+    expect(pub!.listings.every((l) => l.assetResource === COLL_A && !l.hidden)).toBe(true)
+    expect(pub!.collections).toEqual([{ resource: COLL_A, count: 3 }])
+    expect(pub!.moreCollections).toBe(0)
+    expect(pub!.resources[COLL_B]).toBeUndefined()
+    expect(pub!.resources[COLL_A]?.name).toBe("Lantern Foxes")
+    // It is counted as hidden (the board says "2 hidden from this site by the operator"), and nothing more.
+    expect(pub!.hidden).toBe(2)
+    // Every sort leaves it out too, and a link that filters on it by address finds nothing.
+    for (const sort of ["newest", "ending", "price-asc", "price-desc", "name"] as const) {
+      expect(await ids({ sort })).toEqual(expect.not.arrayContaining([3, 4]))
+    }
+    const direct = await getSwapBoard({ collection: COLL_B, sort: "name" })
+    expect(direct!.listings).toEqual([])
+    expect(direct!.resources[COLL_B]).toBeUndefined()
+    // No NFT or resource read was spent on the hidden collection.
+    expect(nftReads().every((c) => bodyOf(c).resource_address !== COLL_B)).toBe(true)
+    const entityReads = fetchSpy.mock.calls.filter((c) => pathOf(c) === "/state/entity/details")
+    expect(entityReads.some((c) => (bodyOf(c).addresses ?? []).includes(COLL_B))).toBe(false)
+  })
+
+  it("a hidden collection's address appears nowhere in the public API's answer", async () => {
+    vi.stubEnv("NFT_SWAP_HIDDEN", COLL_B)
+    stub()
+    const res = await getBoardRoute(
+      new Request("http://x/api/v1/swaps?status=all", { headers: { "x-forwarded-for": "10.9.8.7" } }) as any,
+    )
+    expect(res.status).toBe(200)
+    const text = JSON.stringify(await res.json())
+    expect(text).toContain(COLL_A)
+    expect(text).not.toContain(COLL_B)
+    expect(text).not.toContain("Dinos")
+    // Its owner still sees it, flagged and nameless, in their own view.
+    const mine = await getSwapBoard({ seller: SELLER })
+    expect(mine!.listings.filter((l) => l.hidden).map((l) => l.listingId)).toEqual([4, 3])
+    expect(mine!.resources[COLL_B]).toBeUndefined()
+  })
+
   it("past 100 collections: the filter lists the biggest 100 and says how many it left off; sort=name reads at most 100 + the page", async () => {
     const colls = resources(105, "q")
     stub(colls.map((c, i) => listing(i + 1, c, open + i, [xrd(String(i + 1))])))
