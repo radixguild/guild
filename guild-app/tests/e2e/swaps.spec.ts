@@ -91,6 +91,29 @@ async function stubDetail(page: Page, receiptHolder: string, over: Parameters<ty
  *  the spec does not import a client component. */
 const stamp = (secs: number) => new Date(secs * 1000).toISOString().replace("T", " ").replace(/:\d\d\.\d{3}Z$/, " UTC");
 
+// The site's XRD/USD quote (GET /api/v1/quote/xrd-usd) is read by every page
+// through <XrdUsdProvider>. Stubbed for the whole file so no spec depends on
+// the live price feeds: by default the quote is unavailable (503), so a swap
+// page shows no ≈US$ text; the ≈US$ specs below register their own quote.
+const QUOTE = "**/api/v1/quote/xrd-usd";
+const quote = (over: object = {}) => ({
+  rate: 0.0006,
+  inverse_rate: 1666.67,
+  source: "astrolescent",
+  fetched_at: LEDGER_ISO,
+  staleness_seconds: 0,
+  fallback_active: false,
+  stale: false,
+  age_seconds: 180,
+  ...over,
+});
+const stubQuote = (page: Page, status: number, body: unknown) =>
+  page.route(QUOTE, (route) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) }));
+
+test.beforeEach(async ({ page }) => {
+  await stubQuote(page, 503, { ok: false, error: { code: "QUOTE_UNAVAILABLE", message: "no quote" } });
+});
+
 // Every button that sends a transaction from the listing page.
 const TX_BUTTONS = /^(Fill|Fill with this|Cancel listing|Extend by 30 days|Withdraw .*|Burn the listing receipt)$/;
 
@@ -343,7 +366,8 @@ test.describe("NFT swap — the listing page", () => {
     await expect(page.getByRole("heading", { level: 1, name: "NFT #2" })).toBeVisible();
     // A hidden listing never changes the tab title to anything it holds.
     await expect(page).toHaveTitle("Listing #3 · NFT swap — Radix Guild");
-    await expect(page.getByText(`NFT #7# of ${shortAddress(ASK_NFT)}`)).toBeVisible();
+    // exact: the short collection address now also reads under the line ("The NFT #7# of …").
+    await expect(page.getByText(`NFT #7# of ${shortAddress(ASK_NFT)}`, { exact: true })).toBeVisible();
     await expect(page.getByText(`1 ${shortAddress(TOKEN)}`)).toBeVisible();
     await expect(page.getByText("Guild Swap Throwaway NFT")).toHaveCount(0);
     await expect(page.locator("main img")).toHaveCount(0);
@@ -362,8 +386,8 @@ test.describe("NFT swap — the listing page", () => {
     await stubDetail(page, SELLER, { listing: { asks } });
     await page.goto("/swaps/3");
 
-    await expect(page.getByText(`NFT #9# of ${shortAddress(COLL)}`)).toBeVisible();
-    await expect(page.getByText(`NFT #10# of ${shortAddress(COLL)}`)).toBeVisible();
+    await expect(page.getByText(`NFT #9# of ${shortAddress(COLL)}`, { exact: true })).toBeVisible();
+    await expect(page.getByText(`NFT #10# of ${shortAddress(COLL)}`, { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Fill with this" })).toHaveCount(10);
   });
 });
@@ -445,6 +469,153 @@ test.describe("NFT swap — the board", () => {
     await page.goto("/swaps");
     await expect(page.getByRole("alert").filter({ hasText: BOARD_COPY.unreadableListings(1) })).toBeVisible();
     await expect(page.getByText(BOARD_COPY.empty.open)).toHaveCount(0);
+  });
+
+  // PR A (empty state): a board with no open listing is never a bare page.
+  test("an empty board says what a swap is and how to list, and the link goes to the List page", async ({ page }) => {
+    await stubBoard(page, 200, board({ total: 0 }));
+    await page.goto("/swaps");
+    await expect(page.getByRole("heading", { name: BOARD_COPY.empty.open })).toBeVisible();
+    await expect(page.getByText(BOARD_COPY.emptyWhat, { exact: false })).toBeVisible();
+    await expect(page.getByText(BOARD_COPY.emptyHint, { exact: false })).toBeVisible();
+    const box = page.locator("section[aria-label='Listings']").locator("div", { has: page.getByRole("heading", { name: BOARD_COPY.empty.open }) }).last();
+    await box.getByRole("link", { name: BOARD_COPY.listCta }).click();
+    // A dev server compiles /swaps/list on first visit; CI runs the production build.
+    await expect(page).toHaveURL(/\/swaps\/list$/, { timeout: 30_000 });
+  });
+
+  // PR A (loading text): while the read is out, the board says so.
+  test("the board says it is loading while the read is out, then shows the listings", async ({ page }) => {
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    await page.route(/\/api\/v1\/swaps\?/, async (route) => {
+      await held;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(board({ resources: RESOURCES, listings: [detail(SELLER).data.listing] })),
+      });
+    });
+    await page.goto("/swaps");
+    await expect(page.getByRole("status").filter({ hasText: BOARD_COPY.loading })).toBeVisible();
+    release();
+    await expect(page.getByText("Guild swap throwaway 2")).toBeVisible();
+    await expect(page.getByText(BOARD_COPY.loading)).toHaveCount(0);
+  });
+
+  test("the listing page says it is loading while the read is out", async ({ page }) => {
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    await page.route("**/api/v1/swaps/3", async (route) => {
+      await held;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(detail(SELLER)) });
+    });
+    await page.goto("/swaps/3");
+    await expect(page.getByRole("status").filter({ hasText: DETAIL_COPY.loading })).toBeVisible();
+    release();
+    await expect(page.getByRole("heading", { level: 1, name: "Guild swap throwaway 2" })).toBeVisible();
+    await expect(page.getByText(DETAIL_COPY.loading)).toHaveCount(0);
+  });
+});
+
+// PR A (≈US$): the dollar figure is display only and fails soft.
+test.describe("NFT swap — ≈US$ beside XRD asks", () => {
+  const boardWithOneListing = {
+    ok: true,
+    data: {
+      component: SWAP,
+      receiptResource: RECEIPT,
+      ledgerTime: LEDGER,
+      fees: { fill: { unit: "XRD", amount: "0" }, extend: { unit: "XRD", amount: "0" } },
+      resources: RESOURCES,
+      total: 1,
+      truncated: false,
+      unreadable: [],
+      hidden: 0,
+      listings: [detail(SELLER).data.listing],
+      collections: [],
+      moreCollections: 0,
+      nextCursor: null,
+    },
+  };
+  const stubBoardOne = (page: Page) =>
+    page.route(/\/api\/v1\/swaps\?/, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(boardWithOneListing) }),
+    );
+
+  test("a fresh quote adds ≈US$ to the XRD ask on the card and the listing page, with its source and age on hover", async ({ page }) => {
+    await stubQuote(page, 200, quote());
+    await stubBoardOne(page);
+    await stubDetail(page, SELLER);
+    await page.goto("/swaps");
+    // 5,000 XRD at 0.0006 USD/XRD
+    const onCard = page.getByText("≈US$3.00");
+    await expect(onCard).toBeVisible();
+    await expect(onCard).toHaveAttribute("title", /Display only.*set and paid in XRD.*Astrolescent.*updated 3 min ago/);
+    await page.goto("/swaps/3");
+    await expect(page.getByText("≈US$3.00")).toBeVisible();
+    // The NFT alternative is not priced.
+    await expect(page.getByText(/≈US\$/)).toHaveCount(1);
+  });
+
+  test("no quote, or a stale one: no dollar text at all", async ({ page }) => {
+    await stubBoardOne(page);
+    await stubDetail(page, SELLER);
+    // The file-level default is "quote unavailable".
+    await page.goto("/swaps");
+    await expect(page.getByText("Guild swap throwaway 2")).toBeVisible();
+    await expect(page.getByText(/US\$/)).toHaveCount(0);
+
+    await stubQuote(page, 200, quote({ stale: true, age_seconds: 4000 }));
+    await page.goto("/swaps/3");
+    await expect(page.getByRole("heading", { level: 1, name: "Guild swap throwaway 2" })).toBeVisible();
+    await expect(page.getByText(/US\$/)).toHaveCount(0);
+  });
+
+  test("the sentence the buyer confirms carries no dollar figure, and manifests are unchanged by it", async ({ page }) => {
+    await injectWalletMock(page);
+    await stubQuote(page, 200, quote());
+    await stubDetail(page, SELLER);
+    await page.goto("/swaps/3");
+    await page.getByRole("button", { name: "Fill with this" }).first().click();
+    await expect(page.getByText(/You receive the NFT/)).not.toContainText("US$");
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Open my wallet to fill" }).click();
+    await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
+    expect((await sentManifests(page))[0]).toBe(fillSwapManifest(SWAP, MOCK_ACCOUNT, 3, 0, ASKS[0], NFT, "#2#"));
+  });
+});
+
+// PR A (short addresses): at phone width nothing scrolls sideways, addresses are
+// short, and the full value is one tap (copy) or one hover (title) away.
+test.describe("NFT swap — short addresses at 375 px", () => {
+  test.use({ viewport: { width: 375, height: 812 } });
+
+  test("the listing page shows short addresses, copies the full one, and does not scroll sideways", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await stubDetail(page, SELLER);
+    await page.goto("/swaps/3");
+    const payee = page.getByRole("link", { name: shortAddress(SELLER) }).first();
+    await expect(payee).toBeVisible();
+    await expect(payee).toHaveAttribute("title", SELLER);
+    await expect(page.locator("main")).not.toContainText(SELLER);
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+
+    // The copy button next to the payee puts the FULL address on the clipboard.
+    await page.getByText("Proceeds to").locator("..").getByRole("button", { name: "Copy address" }).click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(SELLER);
+  });
+
+  test("the Fill confirmation keeps the collection's full address and still does not scroll sideways", async ({ page }) => {
+    await injectWalletMock(page);
+    await stubDetail(page, SELLER);
+    await page.goto("/swaps/3");
+    await page.getByRole("button", { name: "Fill with this" }).first().click();
+    await expect(page.getByText(/You receive the NFT/)).toContainText(NFT);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
   });
 });
 

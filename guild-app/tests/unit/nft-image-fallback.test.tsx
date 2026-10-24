@@ -62,6 +62,26 @@ describe("NftImage", () => {
     render(<NftImage src={null} alt="Guild badge #3#" />)
     expect(screen.getByRole("img", { name: "Guild badge #3# — no image" })).toBeInTheDocument()
   })
+
+  // A slow picture host leaves the box empty for a few seconds: it pulses like
+  // a Skeleton until the picture has loaded, never a blank square.
+  it("pulses until the picture has loaded, then stops", () => {
+    render(<NftImage src={NFT_PIC} alt="Guild badge #3#" />)
+    const img = screen.getByRole("img", { name: "Guild badge #3#" })
+    expect(img).toHaveClass("animate-pulse")
+    fireEvent.load(img)
+    expect(img).not.toHaveClass("animate-pulse")
+  })
+
+  it("pulses again for the next picture when the first one fails", () => {
+    render(<NftImage src={NFT_PIC} fallbackSrc={ICON} alt="Guild badge #3#" />)
+    fireEvent.load(screen.getByRole("img", { name: "Guild badge #3#" }))
+    fireEvent.error(screen.getByRole("img", { name: "Guild badge #3#" }))
+    const icon = screen.getByRole("img", { name: "Guild badge #3# (collection icon)" })
+    expect(icon).toHaveClass("animate-pulse")
+    fireEvent.load(icon)
+    expect(icon).not.toHaveClass("animate-pulse")
+  })
 })
 
 describe("the call sites pass the collection icon", () => {

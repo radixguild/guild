@@ -64,7 +64,7 @@ export interface XrdAmountProps {
 
 /** "moments" / "12 min" / "3h 5m" — coarse on purpose, this is tooltip
  *  copy, not a stopwatch. */
-function formatAge(ageSeconds: number | null | undefined): string | null {
+export function formatAge(ageSeconds: number | null | undefined): string | null {
   if (typeof ageSeconds !== "number" || !Number.isFinite(ageSeconds) || ageSeconds < 0) {
     return null
   }
