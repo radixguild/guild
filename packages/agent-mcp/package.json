@@ -37,7 +37,7 @@
     "smoke:node": "node smoke/stdio-smoke.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.31.0",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "@radixdlt/radix-engine-toolkit": "1.0.6",
     "bip39": "3.1.0",
     "zod": "4.4.3"
