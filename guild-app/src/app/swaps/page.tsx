@@ -2,8 +2,7 @@ import type { Metadata } from "next"
 import { Suspense } from "react"
 import { AppShell } from "@/components/app-shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Skeleton } from "@/components/ui/skeleton"
-import { SwapBoard } from "@/components/swaps/swap-board"
+import { BoardLoading, SwapBoard } from "@/components/swaps/swap-board"
 import { NFT_SWAP_COMPONENT } from "@/lib/config"
 import { SWAPS_HEADER, HOW_IT_WORKS, WHAT_THIS_IS_NOT, PROVING_RUN, VERIFY } from "@/content/swaps"
 import { withPageOg } from "@/lib/page-metadata"
@@ -31,15 +30,7 @@ export default function SwapsPage() {
           <p className="text-muted-foreground">{SWAPS_HEADER.tagline}</p>
         </header>
 
-        <Suspense
-          fallback={
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {Array.from({ length: 4 }, (_, i) => (
-                <Skeleton key={i} className="aspect-[3/4] w-full rounded-xl" />
-              ))}
-            </div>
-          }
-        >
+        <Suspense fallback={<BoardLoading />}>
           <SwapBoard />
         </Suspense>
 

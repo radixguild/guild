@@ -8,6 +8,10 @@ import { useWallet } from "@/hooks/useWallet"
 import { humanizeTxError, type HumanizedTxError } from "@/lib/escrow-utils"
 import { formatAmount, formatLocalId, shortAddress, type SwapAsk, type SwapStatus } from "@/lib/nft-swap"
 import type { SwapListingView, SwapResourceView } from "@/lib/nft-swap-service"
+import { approxUsd, usdTitle } from "@/lib/nft-swap-usd"
+import { XRD_ADDRESS } from "@/lib/radix"
+import { useXrdUsd } from "@/lib/use-xrd-usd"
+import { formatAge } from "@/components/XrdAmount"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
@@ -35,6 +39,9 @@ export const dashboardEntity = (address: string) => {
  * load, and its alt text says it is the collection's icon, not this NFT's
  * picture. Many collections set only the resource icon, the Guild's own
  * included (2026-10-07: none of its NFTs carries a per-id image).
+ *
+ * Until the picture has loaded (a slow IPFS gateway can take a few seconds) the
+ * box pulses like a Skeleton instead of sitting there blank.
  */
 export function NftImage({
   src,
@@ -48,6 +55,7 @@ export function NftImage({
   className?: string
 }) {
   const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set())
+  const [loaded, setLoaded] = useState<ReadonlySet<string>>(() => new Set())
   const shown = pickNftImage(src, fallbackSrc, failed)
   if (!shown) {
     return (
@@ -71,8 +79,14 @@ export function NftImage({
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
+      onLoad={() => setLoaded((prev) => new Set(prev).add(shown.url))}
       onError={() => setFailed((prev) => new Set(prev).add(shown.url))}
-      className={cn("bg-muted", isIcon ? "object-contain p-[12%]" : "object-cover", className)}
+      className={cn(
+        "bg-muted",
+        !loaded.has(shown.url) && "animate-pulse",
+        isIcon ? "object-contain p-[12%]" : "object-cover",
+        className,
+      )}
     />
   )
 }
@@ -125,8 +139,9 @@ export function nftParts(
   }
 }
 
-/** A small button that copies `text` (the RAW local id) to the clipboard. A
- *  refused write (no permission, no secure context) does nothing visible. */
+/** A small button that copies `text` (the RAW local id, or a full address) to
+ *  the clipboard. A refused write (no permission, no secure context) does
+ *  nothing visible. */
 export function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false)
   return (
@@ -142,7 +157,7 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
             setCopied(true)
             setTimeout(() => setCopied(false), 1500)
           } catch {
-            // Nothing to report: the id is on the page and in the hover title.
+            // Nothing to report: the value is on the page and in the hover title.
           }
         })()
       }}
@@ -163,11 +178,43 @@ export function askText(ask: SwapAsk, resources: Record<string, SwapResourceView
   return `NFT ${ask.id} of ${coll}`
 }
 
-/** The first alternative, plus "or N more". */
-export function askSummary(asks: SwapAsk[], resources: Record<string, SwapResourceView>): string {
-  if (asks.length === 0) return "—"
-  const first = askText(asks[0], resources)
-  return asks.length === 1 ? first : `${first} or ${asks.length - 1} more`
+/**
+ * "≈US$1.23" beside an XRD ask, from the site's one XRD/USD quote. Display
+ * only, and it says so on hover. Renders nothing for a token or NFT ask, and
+ * nothing while the quote is missing or stale: never a zero, never a guess.
+ */
+export function UsdApprox({ ask }: { ask: SwapAsk }) {
+  const { rate, stale, ageSeconds, source } = useXrdUsd()
+  if (ask.kind !== "fungible" || ask.resource !== XRD_ADDRESS) return null
+  const text = approxUsd(ask.amount, { rate, stale })
+  if (!text) return null
+  // A real space before the span, so a narrow card can break the line there
+  // (a margin alone leaves "XRD≈US$3.00" as one unbreakable word).
+  return (
+    <>
+      {" "}
+      <span className="whitespace-nowrap text-xs font-normal text-muted-foreground" title={usdTitle(source, formatAge(ageSeconds))}>
+        {text}
+      </span>
+    </>
+  )
+}
+
+/** The first alternative, its ≈US$ when it asks XRD, plus "or N more". */
+export function AskSummary({ asks, resources }: { asks: SwapAsk[]; resources: Record<string, SwapResourceView> }) {
+  if (asks.length === 0) return <>—</>
+  return (
+    <>
+      {askText(asks[0], resources)}
+      <UsdApprox ask={asks[0]} />
+      {asks.length > 1 && (
+        <>
+          {" "}
+          <span className="whitespace-nowrap">or {asks.length - 1} more</span>
+        </>
+      )}
+    </>
+  )
 }
 
 /** "in 3 days" / "2 hours ago", against the LEDGER clock the API reported. */
@@ -321,16 +368,26 @@ export function TxDoneLine({ txId, children }: { txId: string | null; children: 
   )
 }
 
-/** A full address, monospaced and breakable, linked to the Dashboard. */
-export function AddressLink({ address, className }: { address: string; className?: string }) {
+/**
+ * An address in the short form every dense row uses ("account_rdx12y6c…fgt3fm"),
+ * linked to the Dashboard. The full value is in the hover title and one tap
+ * away on the copy button (a title does not show on a phone). `full` prints the
+ * whole address, breakable, for the one place a reader must compare it
+ * against the creator's published one before signing (the Fill confirmation).
+ */
+export function AddressLink({ address, className, full = false }: { address: string; className?: string; full?: boolean }) {
   return (
-    <a
-      href={dashboardEntity(address)}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={cn("font-mono text-xs break-all underline-offset-4 hover:underline", className)}
-    >
-      {address}
-    </a>
+    <span className={cn("max-w-full items-center align-middle", full ? "inline" : "inline-flex")}>
+      <a
+        href={dashboardEntity(address)}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={address}
+        className={cn("font-mono text-xs underline-offset-4 hover:underline", full && "break-all", className)}
+      >
+        {full ? address : shortAddress(address)}
+      </a>
+      <CopyButton text={address} label="Copy address" />
+    </span>
   )
 }

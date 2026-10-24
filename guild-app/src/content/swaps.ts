@@ -77,10 +77,16 @@ export const VERIFY = {
 export const BOARD_COPY = {
   listCta: "List an NFT",
   empty: {
-    open: "Nothing is listed right now.",
+    open: "No open listings right now.",
     other: "No listings match this filter.",
   },
+  /** One line on what a swap is, for a visitor who lands on an empty board.
+   *  Blueprint behaviour: a fill is one transaction, or nothing changes hands. */
+  emptyWhat:
+    "A swap is one NFT listed on the Radix ledger for fixed terms: a buyer who meets them gets the NFT in a single transaction, or nothing changes hands.",
   emptyHint: "Anyone with a Radix Wallet can list an NFT here.",
+  /** Shown while the board is read from the component (a few seconds). */
+  loading: "Loading listings from the Radix ledger…",
   unreadable:
     "The swap component could not be read from the Radix Gateway just now, so nothing is shown rather than an empty board. Try again shortly.",
   truncated:
@@ -118,6 +124,8 @@ export const BOARD_COPY = {
 } as const
 
 export const DETAIL_COPY = {
+  /** Shown while the listing is read from the component (a few seconds). */
+  loading: "Loading this listing from the Radix ledger…",
   /** Read by screen readers only, while the listing loads or cannot be read:
    *  once it loads, the NFT's own name is the page's heading. */
   pageHeading: "NFT swap listing",

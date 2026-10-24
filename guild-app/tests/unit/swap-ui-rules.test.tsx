@@ -25,7 +25,7 @@
  * humanizer maps only the refusals this site's manifests can reach.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react"
+import { render, screen, cleanup, fireEvent, waitFor, act, within } from "@testing-library/react"
 import "@testing-library/jest-dom/vitest"
 
 const SELLER = "account_rdx12seller0000000000000000000000000000000000000000000000"
@@ -44,6 +44,18 @@ vi.mock("@/hooks/useWallet", () => ({
 
 const F = vi.hoisted(() => ({ apiFetch: vi.fn() }))
 vi.mock("@/lib/api-fetch", () => ({ apiFetch: F.apiFetch }))
+
+// The site's one XRD/USD quote (use-xrd-usd.tsx), set per test; empty = no usable quote.
+const QUOTE_NONE = { rate: null as number | null, stale: false, ageSeconds: null as number | null, source: null as string | null }
+const Q = vi.hoisted(() => ({
+  value: { rate: null, stale: false, ageSeconds: null, source: null } as {
+    rate: number | null
+    stale: boolean
+    ageSeconds: number | null
+    source: string | null
+  },
+}))
+vi.mock("@/lib/use-xrd-usd", () => ({ useXrdUsd: () => Q.value }))
 
 vi.mock("@/lib/manifests", () => ({
   burnListingReceiptManifest: () => "BURN",
@@ -145,6 +157,7 @@ const answer = (data: unknown) => ({ ok: true, json: async () => ({ ok: true, da
 
 beforeEach(() => {
   W.account = SELLER
+  Q.value = { ...QUOTE_NONE }
   W.send.mockReset()
   F.apiFetch.mockReset()
   Object.values(G).forEach((f) => f.mockReset())
@@ -727,5 +740,210 @@ describe("ListNftForm", () => {
 
     await act(async () => readBack.resolve(9))
     expect(R.push).toHaveBeenCalledWith("/swaps/9?listed=1")
+  })
+})
+
+// ── 7. PR A polish: empty state, loading text, ≈US$, short addresses ─────────
+
+describe("SwapBoard — empty state", () => {
+  it("an empty open board says what a swap is and how to list, with the link", async () => {
+    F.apiFetch.mockResolvedValue(answer(board()))
+    render(<SwapBoard />)
+    const title = await screen.findByText(BOARD_COPY.empty.open)
+    expect(screen.getByText(`${BOARD_COPY.emptyWhat} ${BOARD_COPY.emptyHint}`)).toBeInTheDocument()
+    // The link to the existing list flow sits inside the empty state itself.
+    const box = title.parentElement as HTMLElement
+    expect(within(box).getByRole("link", { name: BOARD_COPY.listCta })).toHaveAttribute("href", "/swaps/list")
+    expect(box.querySelector("h3")).toBe(title)
+  })
+
+  it("an empty filter answer is a filter result: no swap explainer, no second list button", async () => {
+    F.apiFetch.mockResolvedValue(answer(board()))
+    render(<SwapBoard />)
+    await screen.findByText(BOARD_COPY.empty.open)
+    fireEvent.click(screen.getByRole("button", { name: "Expired" }))
+    const title = await screen.findByText(BOARD_COPY.empty.other)
+    expect(screen.queryByText(BOARD_COPY.empty.open)).toBeNull()
+    expect(screen.queryByText(new RegExp(BOARD_COPY.emptyWhat.slice(0, 20)))).toBeNull()
+    expect(within(title.parentElement as HTMLElement).queryByRole("link")).toBeNull()
+  })
+
+  it("is not shown for a board that has listings", async () => {
+    F.apiFetch.mockResolvedValue(answer(board({ listings: [card(7)] })))
+    render(<SwapBoard />)
+    await screen.findByText("Fox 7")
+    expect(screen.queryByText(BOARD_COPY.empty.open)).toBeNull()
+  })
+})
+
+describe("loading text", () => {
+  it("the board says it is loading, over the skeletons, until the read answers", async () => {
+    const read = deferred<ReturnType<typeof answer>>()
+    F.apiFetch.mockReturnValue(read.promise)
+    render(<SwapBoard />)
+    const line = screen.getByText(BOARD_COPY.loading)
+    expect(line).toHaveAttribute("role", "status")
+    expect(line.parentElement).toHaveAttribute("aria-busy", "true")
+    expect(screen.queryByText(BOARD_COPY.empty.open)).toBeNull()
+    await act(async () => read.resolve(answer(board({ listings: [card(7)] }))))
+    await screen.findByText("Fox 7")
+    expect(screen.queryByText(BOARD_COPY.loading)).toBeNull()
+  })
+
+  it("the board says it is loading again when a filter asks for a new read", async () => {
+    F.apiFetch.mockResolvedValueOnce(answer(board({ listings: [card(7)] })))
+    render(<SwapBoard />)
+    await screen.findByText("Fox 7")
+    const next = deferred<ReturnType<typeof answer>>()
+    F.apiFetch.mockReturnValue(next.promise)
+    fireEvent.click(screen.getByRole("button", { name: "Filled" }))
+    expect(screen.getByText(BOARD_COPY.loading)).toBeInTheDocument()
+    await act(async () => next.resolve(answer(board())))
+    await screen.findByText(BOARD_COPY.empty.other)
+  })
+
+  it("the listing page says it is loading, never a bare skeleton, then shows the listing", async () => {
+    const read = deferred<ReturnType<typeof answer>>()
+    F.apiFetch.mockReturnValue(read.promise)
+    render(<SwapDetail listingId="7" />)
+    expect(screen.getByText(DETAIL_COPY.loading)).toHaveAttribute("role", "status")
+    expect(screen.getByRole("heading", { level: 1, name: DETAIL_COPY.pageHeading })).toBeInTheDocument()
+    await act(async () => read.resolve(answer(detail())))
+    await screen.findByText("Proceeds to")
+    expect(screen.queryByText(DETAIL_COPY.loading)).toBeNull()
+  })
+
+  it("a just-listed page shows the waiting line in the loading slot, not two status lines", async () => {
+    const read = deferred<ReturnType<typeof answer>>()
+    F.apiFetch.mockReturnValue(read.promise)
+    render(<SwapDetail listingId="7" justListed />)
+    expect(screen.getByText(DETAIL_COPY.waiting)).toBeInTheDocument()
+    expect(screen.queryByText(DETAIL_COPY.loading)).toBeNull()
+  })
+})
+
+describe("≈US$ beside an XRD ask", () => {
+  const FRESH = { rate: 0.0006, stale: false, ageSeconds: 180, source: "astrolescent" }
+  const TOKEN = "resource_rdx1tokenxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  const xrdAsk = (amount: string) => ({ kind: "fungible" as const, resource: XRD, amount })
+
+  it("shows ≈US$ on the board card for the first XRD ask, display only, with its source and age", async () => {
+    Q.value = FRESH
+    F.apiFetch.mockResolvedValue(answer(board({ listings: [card(7, { asks: [xrdAsk("5000"), xrdAsk("100")] })] })))
+    render(<SwapBoard />)
+    const usd = await screen.findByText("≈US$3.00")
+    expect(usd.title).toContain("Display only")
+    expect(usd.title).toContain("set and paid in XRD")
+    expect(usd.title).toContain("Astrolescent")
+    expect(usd.title).toContain("updated 3 min ago")
+    // The card still reads "<ask> … or 1 more": the dollar figure is only an addition.
+    expect(usd.parentElement?.textContent).toContain("or 1 more")
+  })
+
+  it("shows ≈US$ on each XRD alternative on the listing page, and on what a filled listing was paid", async () => {
+    Q.value = FRESH
+    const d = detail()
+    d.listing.asks = [xrdAsk("100"), xrdAsk("200")]
+    F.apiFetch.mockResolvedValue(answer(d))
+    const view = render(<SwapDetail listingId="7" />)
+    await screen.findByText("≈US$0.06")
+    expect(screen.getByText("≈US$0.12")).toBeInTheDocument()
+    view.unmount()
+
+    const filled = detail()
+    filled.listing.asks = [xrdAsk("100"), xrdAsk("200")]
+    filled.listing.state = "Filled"
+    filled.listing.filledWith = 1
+    filled.listing.status = "filled"
+    F.apiFetch.mockResolvedValue(answer(filled))
+    render(<SwapDetail listingId="7" />)
+    await screen.findByText("Filled with")
+    expect(screen.getAllByText("≈US$0.12").length).toBeGreaterThan(0)
+  })
+
+  it("never prices a token or an NFT ask, which the XRD rate says nothing about", async () => {
+    Q.value = FRESH
+    const d = detail()
+    d.listing.asks = [
+      { kind: "fungible", resource: TOKEN, amount: "5000" },
+      { kind: "nonFungible", resource: ASSET, id: "#1#" },
+    ]
+    F.apiFetch.mockResolvedValue(answer(d))
+    render(<SwapDetail listingId="7" />)
+    await screen.findByText("Proceeds to")
+    expect(document.body.textContent).not.toContain("US$")
+  })
+
+  it.each([
+    ["no quote at all", { ...QUOTE_NONE }],
+    ["a stale quote", { ...FRESH, stale: true }],
+    ["a zero rate", { ...FRESH, rate: 0 }],
+  ])("shows no dollar text with %s — never a zero, never a guess", async (_label, quote) => {
+    Q.value = quote
+    F.apiFetch.mockResolvedValue(answer(board({ listings: [card(7, { asks: [xrdAsk("5000")] })] })))
+    const view = render(<SwapBoard />)
+    await screen.findByText("Fox 7")
+    expect(document.body.textContent).not.toContain("US$")
+    view.unmount()
+    F.apiFetch.mockResolvedValue(answer(detail()))
+    render(<SwapDetail listingId="7" />)
+    await screen.findByText("Proceeds to")
+    expect(document.body.textContent).not.toContain("US$")
+  })
+
+  it("never puts a dollar figure into the sentence the buyer confirms", async () => {
+    Q.value = FRESH
+    W.account = OTHER
+    const d = detail()
+    d.listing.asks = [xrdAsk("100")]
+    F.apiFetch.mockResolvedValue(answer(d))
+    render(<SwapDetail listingId="7" />)
+    fireEvent.click(await screen.findByRole("button", { name: "Fill" }))
+    // "You send exactly <ask> from <account>. You receive the NFT …": the line the buyer acts on.
+    const sentence = (await screen.findByText(/You receive the NFT/)).textContent ?? ""
+    expect(sentence).toContain("You send exactly")
+    expect(sentence).not.toContain("US$")
+  })
+})
+
+describe("short addresses", () => {
+  const writeText = vi.fn()
+  beforeEach(() => {
+    writeText.mockReset()
+    writeText.mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+  })
+
+  it("shows every address on the listing page in the short form, with the full value in the title and on the Dashboard link", async () => {
+    F.apiFetch.mockResolvedValue(answer(detail()))
+    render(<SwapDetail listingId="7" />)
+    await screen.findByText("Proceeds to")
+    for (const full of [SELLER, ASSET, "component_rdx1swap"]) {
+      const link = screen.getAllByTitle(full)[0]
+      expect(link).toHaveTextContent(shortAddress(full))
+      expect(link).toHaveAttribute("href", expect.stringContaining(full))
+    }
+    // Nothing prints a raw address in the page text (it is all in title / href / copy).
+    expect(document.body.textContent).not.toContain(SELLER)
+    expect(document.body.textContent).not.toContain(ASSET)
+  })
+
+  it("keeps the collection's FULL address in the Fill confirmation, where the buyer compares it before signing", async () => {
+    W.account = OTHER
+    F.apiFetch.mockResolvedValue(answer(detail()))
+    render(<SwapDetail listingId="7" />)
+    fireEvent.click((await screen.findAllByRole("button", { name: "Fill with this" }))[0])
+    const sentence = (await screen.findByText(/You receive the NFT/)).textContent ?? ""
+    expect(sentence).toContain(ASSET)
+    expect(sentence).toContain(OTHER)
+  })
+
+  it("copies the FULL address, not the short one", async () => {
+    F.apiFetch.mockResolvedValue(answer(detail()))
+    render(<SwapDetail listingId="7" />)
+    await screen.findByText("Proceeds to")
+    const row = screen.getByText("Proceeds to").parentElement as HTMLElement
+    fireEvent.click(within(row).getByRole("button", { name: "Copy address" }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(SELLER))
   })
 })

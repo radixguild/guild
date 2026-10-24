@@ -45,6 +45,7 @@ import {
   SwapStatusBadge,
   TxDoneLine,
   TxErrorLine,
+  UsdApprox,
   useSwapTx,
   utcStamp,
   type SwapTx,
@@ -114,7 +115,10 @@ function AskBlock({ ask, view }: { ask: SwapAsk; view: SwapDetailView }) {
   if (ask.kind === "fungible") {
     return (
       <div className="min-w-0">
-        <p className="font-semibold tabular-nums">{askText(ask, view.resources)}</p>
+        <p className="font-semibold tabular-nums">
+          {askText(ask, view.resources)}
+          <UsdApprox ask={ask} />
+        </p>
         <p className="text-xs text-muted-foreground">
           Exactly this amount of <AddressLink address={ask.resource} />
         </p>
@@ -208,7 +212,7 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
             <p>
               You send exactly <strong>{askText(l.asks[picked], view.resources)}</strong> from{" "}
               <span className="font-mono text-xs break-all">{tx.account}</span>. You receive the NFT {l.assetId} of{" "}
-              <AddressLink address={l.assetResource} /> in the same transaction.
+              <AddressLink address={l.assetResource} full /> in the same transaction.
             </p>
             <label className="flex items-start gap-2 text-xs">
               <input
@@ -425,9 +429,11 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
 
   if (load.state === "loading") {
     return (
-      <div className="space-y-3">
+      <div className="space-y-3" aria-busy="true">
         <h1 className="sr-only">{DETAIL_COPY.pageHeading}</h1>
-        {waiting && <p className="text-xs text-muted-foreground" role="status">{DETAIL_COPY.waiting}</p>}
+        <p className="text-sm text-muted-foreground" role="status">
+          {waiting ? DETAIL_COPY.waiting : DETAIL_COPY.loading}
+        </p>
         <Skeleton className="h-80 w-full rounded-xl" />
       </div>
     )
@@ -498,6 +504,7 @@ export function SwapDetail({ listingId, justListed = false }: { listingId: strin
             {filled && (
               <Row label="Filled with">
                 {askText(filled, view.resources)}
+                <UsdApprox ask={filled} />
                 <span className="text-muted-foreground">
                   {" "}
                   · proceeds {l.proceedsWithdrawn ? "withdrawn to the account this listing pays" : "waiting to be withdrawn"}

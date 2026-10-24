@@ -23,7 +23,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { Select } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { askSummary, nftParts, NftImage, relativeTime, SwapStatusBadge } from "./swap-bits"
+import { AskSummary, nftParts, NftImage, relativeTime, SwapStatusBadge } from "./swap-bits"
 
 const FILTERS: { key: SwapFilter; label: string }[] = [
   { key: "open", label: "Open" },
@@ -50,6 +50,23 @@ function facetsOf(board: SwapBoardView): Facets {
 /** A read that has not answered by then counts as failed ("Try again"),
  *  not a skeleton forever. */
 const READ_TIMEOUT_MS = 20_000
+
+/** What the board shows while its listings are read: a line that says so, over
+ *  the card-shaped skeletons. Also the Suspense fallback on /swaps. */
+export function BoardLoading() {
+  return (
+    <div className="space-y-3" aria-busy="true">
+      <p className="text-sm text-muted-foreground" role="status">
+        {BOARD_COPY.loading}
+      </p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {Array.from({ length: 4 }, (_, i) => (
+          <Skeleton key={i} className="aspect-[3/4] w-full rounded-xl" />
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function SwapCard({ l, board }: { l: SwapListingView; board: SwapBoardView }) {
   // Name first, then "Collection #id"; a listing's own number is the last line.
@@ -79,7 +96,9 @@ function SwapCard({ l, board }: { l: SwapListingView; board: SwapBoardView }) {
               {line}
             </p>
           )}
-          <p className="text-sm font-semibold tabular-nums">{askSummary(l.asks, board.resources)}</p>
+          <p className="text-sm font-semibold tabular-nums">
+            <AskSummary asks={l.asks} resources={board.resources} />
+          </p>
           <p className="text-xs text-muted-foreground">
             Listing {l.listingId} ·{" "}
             {l.status === "open"
@@ -216,6 +235,8 @@ export function SwapBoard() {
   // A filtered answer from a truncated read covers only the newest listings;
   // an empty one must not read as "none exist".
   const empty = load.state === "ok" && load.board.listings.length === 0
+  // The plain board: open listings, nobody's account, no collection chosen.
+  const openBoard = filter === "open" && !mine && !collection
   const partial =
     load.state === "ok" && load.board.truncated && (mine || filter !== "all" || collection !== "" || sort !== "newest")
 
@@ -307,13 +328,7 @@ export function SwapBoard() {
         )}
       </div>
 
-      {load.state === "loading" && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {Array.from({ length: 4 }, (_, i) => (
-            <Skeleton key={i} className="aspect-[3/4] w-full rounded-xl" />
-          ))}
-        </div>
-      )}
+      {load.state === "loading" && <BoardLoading />}
 
       {load.state === "failed" && (
         <p className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive" role="alert">
@@ -333,12 +348,22 @@ export function SwapBoard() {
             <p className="rounded-lg border p-4 text-sm" role="status">
               {BOARD_COPY.truncatedFiltered(SWAP_SCAN_CAP)}
             </p>
-          ) : empty ? (
+          ) : empty && openBoard ? (
+            // No open listing at all: say what a swap is and how to list one,
+            // with the link, so the page is never a bare "nothing here".
             <EmptyState
               icon={<Images />}
-              title={filter === "open" && !mine && !collection ? BOARD_COPY.empty.open : BOARD_COPY.empty.other}
-              description={BOARD_COPY.emptyHint}
+              title={BOARD_COPY.empty.open}
+              description={`${BOARD_COPY.emptyWhat} ${BOARD_COPY.emptyHint}`}
+              action={
+                <Link href="/swaps/list" className={cn(buttonVariants({ size: "sm" }), "no-underline")}>
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  {BOARD_COPY.listCta}
+                </Link>
+              }
             />
+          ) : empty ? (
+            <EmptyState icon={<Images />} title={BOARD_COPY.empty.other} description={BOARD_COPY.emptyHint} />
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {load.board.listings.map((l) => (
