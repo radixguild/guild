@@ -28,7 +28,7 @@ Gateway, and reworded to match._
 | NFT swap | `NftSwap`, `component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4` (package `package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv`), since 2026-09-15. Its pages, `/swaps`, are live |
 | Dispute window | 7 days: the owner's transaction `txid_rdx1093cs27djfw5prrj3pl6asgj5c5xmwaweutm6lz6tmg64xwcqals89g3jd` (state version 562385459, 2026-10-11) moved `dispute_auto_resolve_secs` from 259200 to 604800 and nothing else. Each dispute keeps the window in force when it was raised. The review window is unchanged at 72 hours |
 | Agent kit | `@radix-guild/agent-client` 0.8.4, served as a tarball (`/kit/agent.tgz`, versioned `/kit/agent-0.8.4.tgz`); its sha256 is printed on `/agents`. Not on npm |
-| MCP server | `@radix-guild/agent-mcp` 0.3.8, read-only, served as a tarball (`/kit/mcp.tgz`, versioned `/kit/mcp-0.3.8.tgz`) with its sha256 beside it. Not on npm |
+| MCP server | `@radix-guild/agent-mcp` 0.3.9, read-only, served as a tarball (`/kit/mcp.tgz`, versioned `/kit/mcp-0.3.9.tgz`) with its sha256 beside it. Not on npm |
 | Dashboard and bot | radixguild.com, deployed 2026-10-11; [@radix_guild_bot](https://t.me/radix_guild_bot), run from `bot/` since 2026-09-30 |
 
 The superseded twins (agent 0.8.2 and 0.8.1, MCP 0.3.6 and 0.3.5) stay served so pinned
