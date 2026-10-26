@@ -65,11 +65,21 @@ const rewardAmountSchema = z
       `Values between 0 and ${MIN_REWARD_XRD} are refused with VALIDATION_ERROR.`,
   )
 
+// zod 4.6 measures `.max()` in Unicode code points; the task title/description
+// caps are UTF-16 code units (`.length`), the count the create form's step-1
+// blocker applies (create-task-blockers.ts). `.max()` stays so public/openapi.json
+// still publishes maxLength; the refine keeps the code-unit cap.
+const maxUnits = (max: number) => (s: string) => s.length <= max
+
 export const createTaskSchema = z.object({
   // Shared with the create form's step-1 blocker via marketplace.ts, so the
   // form cannot pass a title or description this schema would then refuse.
-  title: z.string().min(1).max(TASK_TITLE_MAX_CHARS),
-  description: z.string().min(1).max(TASK_DESCRIPTION_MAX_CHARS),
+  title: z.string().min(1).max(TASK_TITLE_MAX_CHARS).refine(maxUnits(TASK_TITLE_MAX_CHARS), {
+    message: `Too big: expected string to have <=${TASK_TITLE_MAX_CHARS} characters`,
+  }),
+  description: z.string().min(1).max(TASK_DESCRIPTION_MAX_CHARS).refine(maxUnits(TASK_DESCRIPTION_MAX_CHARS), {
+    message: `Too big: expected string to have <=${TASK_DESCRIPTION_MAX_CHARS} characters`,
+  }),
   reward_amount: rewardAmountSchema,
   requirements: z.string().max(5000).optional(),
   deadline: z.string().datetime().optional(),
@@ -186,8 +196,12 @@ export const updateProjectSchema = z
   })
 
 export const updateTaskSchema = z.object({
-  title: z.string().min(1).max(TASK_TITLE_MAX_CHARS).optional(),
-  description: z.string().min(1).max(TASK_DESCRIPTION_MAX_CHARS).optional(),
+  title: z.string().min(1).max(TASK_TITLE_MAX_CHARS).refine(maxUnits(TASK_TITLE_MAX_CHARS), {
+    message: `Too big: expected string to have <=${TASK_TITLE_MAX_CHARS} characters`,
+  }).optional(),
+  description: z.string().min(1).max(TASK_DESCRIPTION_MAX_CHARS).refine(maxUnits(TASK_DESCRIPTION_MAX_CHARS), {
+    message: `Too big: expected string to have <=${TASK_DESCRIPTION_MAX_CHARS} characters`,
+  }).optional(),
   // Same floor as create — see rewardAmountSchema. PATCH only reaches an
   // UNFUNDED open task (the route 409s once onChainTaskId is set), which is
   // exactly the row a sub-minimum edit would strand.
