@@ -8,9 +8,10 @@
  *    insurance, badge, agent flag, worker …last8, the clock for that state);
  *  - several transitions between two runs arrive as ONE message naming them,
  *    and a re-claim by the SAME badge after an expiry is still two events;
- *  - review reminders: 24h and 2h once each; "lapsed" every run for 24h past
- *    the deadline, then every 6h, until the task leaves Submitted; a refused
- *    reminder is retried, never recorded as sent;
+ *  - review reminders: 24h and 2h once each; "lapsed" at the deadline, then at
+ *    +1h, +6h, +24h and every 24h after that (never two inside an hour, however
+ *    often the pager runs), until the task leaves Submitted; a refused reminder
+ *    is retried, never recorded as sent;
  *  - the first run seeds WITHOUT paging transitions — only a Submitted task's
  *    clock (the chain-14 case) is paged;
  *  - losing the state file is a loud RECOVERY from its backup; losing both is a
@@ -57,6 +58,7 @@ const {
   EXIT,
   HEALTH_ALERT,
   LAPSED_REPEAT,
+  lapsedStepAt,
   REVIEW_STAGES,
   TELEGRAM_MAX_CHARS,
   ChainReadError,
@@ -832,36 +834,140 @@ describe.skipIf(PRIV.skip)("review-deadline reminders", () => {
     expect(r.sent[0]).toContain("anyone can call release_after_review_timeout now and the submitter is paid")
   })
 
-  it("'lapsed' repeats every run for 24h past the deadline, then every 6h, and stops when the task leaves Submitted", async () => {
+  it("24 hours of 5-minute ticks past the deadline send exactly 4 'lapsed' pages — lapse, +1h, +6h, +24h — and the resolution once", async () => {
     const world = await seeded([[1, submitted()]], [[1, 41]])
-    await tick(world, DUE - HOUR)
-    const pages: number[] = []
-    for (let k = 0; k <= 59; k++) {
-      const r = await tick(world, DUE + 60 + k * 1800)
-      pages.push(r.sent.length)
-      if (k === 1) expect(r.sent[0]).toMatch(/LAPSED .* \(repeat\)/)
+    await tick(world, DUE - HOUR) // 2h reminder
+    const pageTicks: number[] = []
+    const texts: string[] = []
+    for (let k = 0; k <= 288; k++) {
+      const r = await tick(world, DUE + 60 + k * 300)
+      expect(r.sent.length).toBeLessThanOrEqual(1)
+      if (r.sent.length === 1) {
+        pageTicks.push(k)
+        texts.push(r.sent[0])
+      }
     }
-    // k = 0..47: t < DUE + 24h → every run. k = 48..58: 6h not yet up since k = 47. k = 59: 6h since k = 47.
-    expect(pages.slice(0, 48)).toEqual(Array(48).fill(1))
-    expect(pages.slice(48, 59)).toEqual(Array(11).fill(0))
-    expect(pages[59]).toBe(1)
-    // A manual re-run inside the same slot does not double-page (25-min floor).
-    expect((await tick(world, DUE + 60 + 59 * 1800 + 600)).sent).toEqual([])
-    // Settled: the transition is paged once, and the lapsed repeats stop.
+    // First tick past each offset: DUE+1m, DUE+1h1m, DUE+6h1m, DUE+24h1m.
+    expect(pageTicks).toEqual([0, 12, 72, 288])
+    expect(texts[0]).toMatch(/^🔴 REVIEW WINDOW LAPSED 1m ago — board #41 · chain 1\n/)
+    expect(texts[0]).not.toContain("(repeat)")
+    for (const t of texts.slice(1)) expect(t).toMatch(/^🔴 REVIEW WINDOW LAPSED .* \(repeat\) — board #41 · chain 1\n/)
+    // The message says what it does — and no longer promises a page every run.
+    expect(texts[0]).toContain("Reminders at +1h, +6h and +24h after the deadline, then every 24h — it stops when the task is approved, disputed or released.")
+    expect(texts[3]).toContain("Repeats every 24h — it stops when the task is approved, disputed or released.")
+    for (const t of texts) expect(t).not.toContain("every run")
+    // Settled: the transition is paged ONCE, and the lapsed reminders stop.
     world.tasks.set(1, { ...submitted(), state: "Released" })
-    expect((await tick(world, DUE + 31 * HOUR)).sent).toEqual([expect.stringMatching(/^✅ RELEASED/)])
+    const released: string[] = []
+    for (let k = 0; k < 24; k++) released.push(...(await tick(world, DUE + 24 * HOUR + 600 + k * 300)).sent)
+    expect(released).toEqual([expect.stringMatching(/^✅ RELEASED/)])
     expect((await tick(world, DUE + 40 * HOUR)).sent).toEqual([])
-    expect(LAPSED_REPEAT).toEqual({ hotWindowMs: 24 * 3600_000, hotEveryMs: 25 * 60_000, coldEveryMs: 6 * 3600_000 - 5 * 60_000 })
   })
 
-  it("the 6-hourly repeat lands on its slot even when this run started later into its slot than the last one", async () => {
-    // Runs start 0–40 s into a */30 slot. An exact 6h interval measured from a
-    // run that started 40 s in would skip the slot 6h later if that run started 5 s in.
+  it("24 hours of the real */30 cron runs send exactly 4 'lapsed' pages — one recipient, one message per step", async () => {
+    const world = await seeded([[1, submitted()]], [[1, 41]])
+    await tick(world, DUE - HOUR)
+    const pageTicks: number[] = []
+    for (let k = 0; k <= 48; k++) {
+      const r = await tick(world, DUE + 60 + k * 1800)
+      expect(r.sent.length).toBeLessThanOrEqual(1)
+      expect(r.sendOpts.every((o) => o.silent === false)).toBe(true)
+      if (r.sent.length === 1) pageTicks.push(k)
+    }
+    expect(pageTicks).toEqual([0, 2, 12, 48]) // lapse, +1h, +6h, +24h
+  })
+
+  it("the page count does not depend on how often the pager runs — 1-minute ticks send the same 2 pages in the first 70 minutes", async () => {
+    const world = await seeded([[1, submitted()]], [[1, 41]])
+    await tick(world, DUE - HOUR)
+    const pageTicks: number[] = []
+    for (let k = 0; k <= 70; k++) {
+      if ((await tick(world, DUE + 60 + k * 60)).sent.length > 0) pageTicks.push(k)
+    }
+    expect(pageTicks).toEqual([0, 60])
+  })
+
+  it("after the first day 'lapsed' is one page per 24h — 10 pages in a week at the real */30 cadence — and stops when the task leaves Submitted", async () => {
+    const world = await seeded([[1, submitted()]], [[1, 41]])
+    await tick(world, DUE - HOUR)
+    const pageTicks: number[] = []
+    for (let k = 0; k <= 336; k++) {
+      const r = await tick(world, DUE + 60 + k * 1800)
+      expect(r.sent.length).toBeLessThanOrEqual(1)
+      if (r.sent.length === 1) pageTicks.push(k)
+    }
+    // +0, +1h, +6h, +24h, +48h, … +168h.
+    expect(pageTicks).toEqual([0, 2, 12, 48, 96, 144, 192, 240, 288, 336])
+    world.tasks.set(1, { ...submitted(), state: "Released" })
+    expect((await tick(world, DUE + 8 * 24 * HOUR)).sent).toEqual([expect.stringMatching(/^✅ RELEASED/)])
+    expect((await tick(world, DUE + 9 * 24 * HOUR)).sent).toEqual([])
+    expect(LAPSED_REPEAT).toEqual({
+      scheduleMs: [0, 3600_000, 6 * 3600_000, 24 * 3600_000],
+      thenEveryMs: 24 * 3600_000,
+      minGapMs: 3600_000,
+    })
+  })
+
+  it("lapsedStepAt: -1 before the deadline, then the index of the latest scheduled step reached", () => {
+    const H = 3600_000
+    expect([-1, 0, H - 1, H, 6 * H - 1, 6 * H, 24 * H - 1, 24 * H, 48 * H - 1, 48 * H, 72 * H].map(lapsedStepAt)).toEqual([
+      -1, 0, 0, 1, 1, 2, 2, 3, 3, 4, 5,
+    ])
+  })
+
+  it("never two 'lapsed' pages inside an hour, even when the schedule has moved on", async () => {
+    const world = await seeded([[1, submitted()]], [[1, 41]])
+    await tick(world, DUE - HOUR)
+    // First seen late in step 0 (50 minutes past the deadline)…
+    expect((await tick(world, DUE + 50 * 60)).sent).toHaveLength(1)
+    // …the +1h step is reached 10 minutes later, but the last page is only 10 minutes old.
+    expect((await tick(world, DUE + 60 * 60)).sent).toEqual([])
+    expect((await tick(world, DUE + 105 * 60)).sent).toEqual([])
+    expect((await tick(world, DUE + 110 * 60)).sent).toEqual([expect.stringMatching(/LAPSED .* \(repeat\)/)])
+  })
+
+  it("a pager that was down sends ONE page for the steps it missed, then waits for the next step", async () => {
+    const world = await seeded([[1, submitted()]], [[1, 41]])
+    await tick(world, DUE - HOUR)
+    expect((await tick(world, DUE + 60)).sent).toHaveLength(1)
+    // Down for 30h: the +1h, +6h and +24h steps all passed — one page, not three.
+    expect((await tick(world, DUE + 30 * HOUR)).sent).toEqual([expect.stringMatching(/LAPSED 1d 6h ago \(repeat\)/)])
+    expect((await tick(world, DUE + 31 * HOUR)).sent).toEqual([])
+    expect((await tick(world, DUE + 47 * HOUR)).sent).toEqual([])
+    expect((await tick(world, DUE + 48 * HOUR + 60)).sent).toHaveLength(1)
+  })
+
+  it("a state file written under the old every-run rule is honored — no burst of pages after the deploy", async () => {
+    const world = await seeded([[1, submitted()]], [[1, 41]])
+    await tick(world, DUE - HOUR)
+    const s = readState()
+    // The old rule had paged at DUE+23h and recorded only `lapsedAt`.
+    s.tasks["1"].sent = ["24h", "2h", "lapsed"]
+    s.tasks["1"].lapsedAt = (DUE + 23 * HOUR) * 1000
+    writeState(s)
+    expect((await tick(world, DUE + 23 * HOUR + 1800)).sent).toEqual([])
+    expect((await tick(world, DUE + 24 * HOUR - 60)).sent).toEqual([])
+    expect((await tick(world, DUE + 24 * HOUR + 60)).sent).toEqual([expect.stringMatching(/LAPSED .* \(repeat\)/)])
+    expect((await tick(world, DUE + 25 * HOUR)).sent).toEqual([])
+  })
+
+  it("a lapsed page Telegram refused is retried next run, then the schedule carries on from the delivered one", async () => {
+    const world = await seeded([[1, submitted()]], [[1, 41]])
+    await tick(world, DUE - HOUR)
+    const refused = await tick(world, DUE + 60, { sendOk: false })
+    expect(refused.code).toBe(EXIT.UNDELIVERED)
+    expect((await tick(world, DUE + 360)).sent).toEqual([expect.stringMatching(/^🔴 REVIEW WINDOW LAPSED 6m ago — /)])
+    expect((await tick(world, DUE + 660)).sent).toEqual([])
+  })
+
+  it("the daily repeat lands on its slot even when the seed run started later into its slot than the next one", async () => {
+    // Runs start 0–40 s into a */30 slot. The schedule is measured from the DEADLINE,
+    // not from the last page, so a late-starting seed run cannot push the next page a slot out.
     const world = makeWorld([[1, lapsedLongAgo()]], [[1, 41]])
     world.nowMs = (T0 + 40) * 1000
-    expect((await run(world)).sent).toHaveLength(1) // seed page, lapsedAt = T0 + 40 s
-    const r = await tick(world, T0 + 6 * HOUR + 5)
-    expect(r.sent).toEqual([expect.stringMatching(/LAPSED .* \(repeat\)/)])
+    expect((await run(world)).sent).toHaveLength(1) // seed page, 5d0h past the deadline
+    // Step 8 (+144h) is T0 + 24h; the next day's slot starts 5 s in.
+    expect((await tick(world, T0 + 24 * HOUR + 5)).sent).toEqual([expect.stringMatching(/LAPSED .* \(repeat\)/)])
   })
 
   it("a stage skipped over (the pager was down) is not sent late — only the most urgent one", async () => {
@@ -916,15 +1022,16 @@ describe.skipIf(PRIV.skip)("first run", () => {
     expect(readState(backupPathFor(statePathIn()))).toEqual(state)
   })
 
-  it("the chain-14 case: a Submitted task already past its review deadline gets ONE 'already lapsed' message, then the 6h cadence", async () => {
+  it("the chain-14 case: a Submitted task already past its review deadline gets ONE 'already lapsed' message, then one a day", async () => {
     const world = makeWorld([[1, open()], [2, lapsedLongAgo()]], [[2, 78]])
     const r = await run(world)
     expect(r.sent).toHaveLength(1)
     expect(r.sent[0]).toMatch(/^🔴 REVIEW WINDOW LAPSED 5d 0h ago — board #78 · chain 2\n/)
     expect(r.sent[0]).toContain("(first seen when this pager was seeded — the submission itself was not observed live)")
-    expect(r.sent[0]).toContain("Repeats every 6h — it stops when the task is approved, disputed or released.")
+    expect(r.sent[0]).toContain("Repeats every 24h — it stops when the task is approved, disputed or released.")
     expect((await tick(world, T0 + 1800)).sent).toEqual([])
-    expect((await tick(world, T0 + 6 * HOUR)).sent).toEqual([expect.stringMatching(/LAPSED .* \(repeat\)/)])
+    expect((await tick(world, T0 + 6 * HOUR)).sent).toEqual([])
+    expect((await tick(world, T0 + 24 * HOUR + 60)).sent).toEqual([expect.stringMatching(/LAPSED .* \(repeat\)/)])
   })
 
   it("a Submitted task inside the 24h window at seed gets one message for that stage, then the next stage later", async () => {
