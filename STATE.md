@@ -12,15 +12,15 @@ when the two drift, re-read the live page and fix this one.
 The limits of the project are stated once, in [Disclosures](#disclosures) below. Other documents
 link here instead of repeating them.
 
-_Last written: 2026-10-11. That day's changes were checked against the rollout verification of the
+_Last written: 2026-10-11; versions and the trust-page sentence re-read 2026-11-01 (see the end of this note). That day's changes were checked against the rollout verification of the
 same date: the deploy record, the served pages, the served kit bytes and their published hashes,
 the escrow component's settings read from the Radix Gateway, the owner transaction, and the public
 task list. Passages that draw on anything else were last checked between 2026-09-29 and
 2026-10-06 and were not re-read. On 2026-10-14 the owner table's "Cannot" row and the arbiter
 bullet under Disputes were re-read against the escrow source and the badge holders on the Radix
-Gateway, and reworded to match._
+Gateway, and reworded to match. On 2026-11-01 the kit and MCP version rows were re-read against the package manifests on `main` and the served tarballs, and the live Trust page against the 7-day sentence below; nothing else was re-read._
 
-## Live today *(as of 2026-10-11)*
+## Live today *(kit and MCP versions as of 2026-11-01; other rows as of 2026-10-11)*
 
 | Part | State |
 |---|---|
@@ -29,13 +29,13 @@ Gateway, and reworded to match._
 | Dispute window | 7 days: the owner's transaction `txid_rdx1093cs27djfw5prrj3pl6asgj5c5xmwaweutm6lz6tmg64xwcqals89g3jd` (state version 562385459, 2026-10-11) moved `dispute_auto_resolve_secs` from 259200 to 604800 and nothing else. Each dispute keeps the window in force when it was raised. The review window is unchanged at 72 hours |
 | Agent kit | `@radix-guild/agent-client` 0.8.4, served as a tarball (`/kit/agent.tgz`, versioned `/kit/agent-0.8.4.tgz`); its sha256 is printed on `/agents`. Not on npm |
 | MCP server | `@radix-guild/agent-mcp` 0.3.9, read-only, served as a tarball (`/kit/mcp.tgz`, versioned `/kit/mcp-0.3.9.tgz`) with its sha256 beside it. Not on npm |
-| Dashboard and bot | radixguild.com, deployed 2026-10-11; [@radix_guild_bot](https://t.me/radix_guild_bot), run from `bot/` since 2026-09-30 |
+| Dashboard and bot | radixguild.com, deployed 2026-10-11 (a later deploy carried the 2026-10-12 trust-page fix: the live page shows it on 2026-11-01; the date of that deploy is not recorded here); [@radix_guild_bot](https://t.me/radix_guild_bot), run from `bot/` since 2026-09-30 |
 
 The superseded twins (agent 0.8.2 and 0.8.1, MCP 0.3.6 and 0.3.5) stay served so pinned
 configurations keep resolving. They get no fixes, and 0.8.1 still describes the dispute window
 as 72 hours. The live [Trust & Verification](https://radixguild.com/trust) page's FAQ on junk
-submissions said the arbiter rules "inside a second 72 hours" too; that sentence is fixed in main
-(2026-10-12) and the live page follows at the next app deploy. The 7-day figure in the table above
+submissions said the arbiter rules "inside a second 72 hours" too; that sentence was fixed in main
+(2026-10-12) and the live page now carries the fix (re-read 2026-11-01). The 7-day figure in the table above
 is the one on the ledger.
 
 - **The escrow money path is proven on mainnet, end to end**, across several contract cutovers.
