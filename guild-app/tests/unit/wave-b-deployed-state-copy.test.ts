@@ -242,7 +242,9 @@ describe("/auditor-guide's pull auth-pattern note matches what lib.rs does", () 
     const ownerMethods = [...authBlock.matchAll(/^\s+([a-z_]+) => restrict_to: \[OWNER\];/gm)].map((m) => m[1])
 
     it("names every restrict_to: [OWNER] method in lib.rs", () => {
-      expect(claim1).toContain('claim: "The owner badge cannot withdraw a task\'s reward, insurance or live claim bond."')
+      expect(claim1).toContain(
+        'claim: "The owner badge cannot withdraw a task\'s reward or insurance, and reaches live claim bonds only through the expiry settings."',
+      )
       // The arbiter's reach and the trusted-role framing sit beside it, not elsewhere.
       expect(claim1).toMatch(/arbiter badge sits in the same operator wallet/)
       expect(claim1).toMatch(/Both badges are trusted roles today/)
