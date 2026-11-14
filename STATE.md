@@ -106,6 +106,17 @@ This section is the one place the project's limits are stated in full. The READM
   escrow's settings (see below); the arbiter badge rules disputes. The stated aim is to hand the
   admin badge to the Radix DAO once that DAO is formed — an intention, not a commitment, with no
   date and no arrangement with the DAO behind it.
+- **Some owner settings have no upper bound (found 2026-10-13; contract fix not shipped).** Four
+  timing settings are stored as whole seconds and turned into a signed number when used, with no
+  upper bound and no overflow check: the expiry grace, both submit deadlines, and the
+  dispute-resolve window. A value of 2^63 seconds or more turns negative. The expiry grace is read
+  at the moment a claim is expired, so on that setting a bad value reaches claims already in
+  flight: they could be ended before their deadline, and their claim bonds forfeited (part to
+  whoever ends the claim, the rest to a vault only the operator can withdraw). The other three
+  reach only later steps: a claim taken afterwards could start already overdue, and a dispute
+  raised afterwards could settle by its default at once. Every change emits a public on-chain
+  event, so a bad value is visible. A fix needs a new contract package and a migration; no date is
+  set.
 - **Independent.** Not backed by, endorsed by, or affiliated with the Radix Foundation, RDX Works
   or the Radix DAO.
 
@@ -118,7 +129,7 @@ on the site itself.
 | | |
 |---|---|
 | **Can** | Change twelve settings through ten owner-only calls (the claim bond percentage, floor and cap, the review window, the arbiter-fee cap, the minimum insurance fraction a poster must fund, both submit deadlines, the dispute-resolve window and default split, the expiry grace period, and the expired-claim bounty share) — most take effect only for steps taken after the change; two reach claims already in flight (the grace window after a claim deadline, and the share of a forfeited bond paid to whoever ends it). Add or freeze an accepted token (freezing stops new tasks; it touches nothing already in flight). Collect bonds that have already been forfeited. Every change is a public on-chain event. Separately, the operator holds the badge that mints arbiter badges, so it can issue more of them, each assigned to one account (see "Disputes," below). |
-| **Cannot** | Withdraw a task's live reward or claim bond, reverse a settlement, redirect a payment to a different account, pause the contract outright (freezing only stops *new* tasks), move a deadline that has already started, or stop a specific account from calling the contract directly. Outside a dispute, nobody, the operator included, can reach into escrow and take a reward or a live claim bond early; on a disputed task the arbiter's ruling decides the split, and the operator holds the only arbiter badge (see "Disputes," below). Both badges are trusted roles today. |
+| **Cannot** | Withdraw a task's live reward or claim bond directly, reverse a settlement, redirect a payment to a different account, pause the contract outright (freezing only stops *new* tasks), move a review or dispute deadline once it has started, or stop a specific account from calling the contract directly. Outside a dispute, nobody, the operator included, can reach into escrow and take a reward or a live claim bond early; on a disputed task the arbiter's ruling decides the split, and the operator holds the only arbiter badge (see "Disputes," below). Both badges are trusted roles today. One owner setting does reach claims in flight: the expiry grace has no upper bound and can wrap negative, so a misused owner badge could end live claims early and collect their bonds (see "Disclosures," above). |
 
 Off-chain, the operator can take the site down or roll it back, suspend an account's access to
 the *site*, and stop new tasks from being funded through it — none of which reaches the chain: a
@@ -140,11 +151,14 @@ suspended account can still submit a raw transaction the contract accepts.
   the chain asserts this and reverts otherwise. It cannot honestly check the *poster*, because the
   poster address is a caller-supplied field at task creation, not a verified identity; a poster-side check would be
   defeated by a decoy address for the price of one transaction. In practice, an arbiter who
-  funded a task may still rule on it as poster — they cannot steal by doing so (settlement pays
-  only the accounts pinned at claim and funding, plus any funded arbiter fee, which is 0% on
-  tasks funded through the app), but they can rule in their own favour. The one arbiter badge
-  that exists today is held by the operator, who also funds tasks here, so this is a real
-  limit, not a hypothetical one.
+  funded a task may still rule on it as poster. The worker check also compares only one account,
+  so an arbiter who claims a task through a different account they control is not caught by it,
+  and `resolve_dispute` has no minimum wait after a dispute is raised: that arbiter could claim,
+  submit, dispute and rule in one transaction, paying the task's reward and insurance to their
+  second account before the poster can respond. Closing it (a check on the claiming badge, and a
+  minimum wait before a ruling) needs a new contract package. The one arbiter badge that exists
+  today is held by the operator, who also funds tasks here, so this is a real limit, not a
+  hypothetical one.
 - **Two disputes have settled to date**, both between accounts the operator controls, and both
   are readable on the ledger — an auto-resolve on a now-retired escrow component (2026-08-26,
   an internal probe) and an arbiter ruling on the live component (2026-09-14). On 2026-10-11 the

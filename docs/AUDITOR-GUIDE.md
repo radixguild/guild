@@ -85,7 +85,8 @@ and the owner-only `withdraw_forfeited_bonds`.
 
 ## 2. The trust claims, and how to check each one
 
-1. **"The owner badge cannot withdraw a task's reward, insurance or live claim bond."** The
+1. **"The owner badge cannot withdraw a task's reward or insurance, and reaches live claim bonds
+   only through the expiry settings."** The
    owner badge has no method over task vaults. Everything it can do, all fifteen
    `restrict_to: [OWNER]` methods:
    - **Tokens:** `add_accepted_token`, `remove_accepted_token`, `freeze_token`,
@@ -99,16 +100,21 @@ and the owner-only `withdraw_forfeited_bonds`.
      `set_review_window_secs` (submission); `set_dispute_auto_resolve_secs`,
      `set_dispute_auto_resolve_default` (dispute raised).
    - **Two parameters read live by `expire_claim`, so a change DOES reach claims already in
-     flight:** `set_expire_grace_secs` (no upper bound — the grace after a missed deadline
-     could be cut to zero) and `set_expire_bounty_pct` (0–1 of the forfeited bond to the
-     caller; the rest to the owner's vault).
+     flight:** `set_expire_grace_secs` (no upper bound and no overflow check: a value of 2^63
+     or more turns negative, which lets claims be ended before their deadline) and
+     `set_expire_bounty_pct` (0–1 of the forfeited bond to the caller; the rest to the owner's
+     vault).
+   - The two submit-deadline setters and `set_dispute_auto_resolve_secs` have the same
+     unchecked conversion; they reach only later claims and disputes.
    - Every one of these calls emits a public on-chain event.
    - **The arbiter badge is a separate power, held in the same operator wallet.** On a disputed
      task, `resolve_dispute` decides how the reward, the insurance and the worker's claim bond
      split between poster and worker; it pays no one else beyond the arbiter fee set on the task
      (0 on tasks funded through this app). Its one identity check refuses a ruling when the
      account the badge is assigned to is the task's worker account; it does not check the
-     poster. Both badges are trusted roles today, and the aim is to hand the admin badge to the
+     poster. It compares only that one account, and there is no minimum wait between
+     `raise_dispute` and `resolve_dispute`, so an arbiter claiming through a second account
+     could claim, submit, dispute and rule in one transaction. Both badges are trusted roles today, and the aim is to hand the admin badge to the
      Radix DAO once the DAO is formed, with no date set.
 
    ⚠️ *(corrected 2026-10-14)* This claim read "The platform cannot move escrowed funds." The

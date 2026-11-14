@@ -56,7 +56,7 @@ const HARD_QUESTIONS = [
   },
   {
     q: "Can the operator take the money in escrow?",
-    a: "Not by reaching in. No owner-gated method on the escrow withdraws a task's reward or a live claim bond; the owner's powers are the settings listed above, adding and freezing reward tokens (freezing stops new tasks and touches nothing in flight), and collecting bonds that were already forfeited. Two real powers over funds remain, and you should weigh them: the operator is the only arbiter, deciding the split on a disputed task and able to take an arbiter fee (0 on tasks funded through this app) up to a limit that the same operator, as owner, sets; and the operator can change settings, two of which reach claims already in flight (Known Issues, above).",
+    a: "Not by reaching in. No owner-gated method on the escrow withdraws a task's reward or a live claim bond; the owner's powers are the settings listed above, adding and freezing reward tokens (freezing stops new tasks and touches nothing in flight), and collecting bonds that were already forfeited. Two real powers over funds remain, and you should weigh them: the operator is the only arbiter, deciding the split on a disputed task and able to take an arbiter fee (0 on tasks funded through this app) up to a limit that the same operator, as owner, sets; and the operator can change settings, two of which reach claims already in flight, one far enough to end live claims early and forfeit their bonds (Known Issues, above).",
   },
   {
     q: "Claiming costs almost nothing. Can't someone just squat or spam the tasks?",
@@ -105,7 +105,11 @@ const KNOWN_ISSUES = [
   },
   {
     title: "The escrow owner can change its settings",
-    body: "Ten owner-only calls change twelve settings — among them the claim bond, the review window and the arbiter-fee cap. Most are pinned into a task at the step that uses them (funding, claim, submission or dispute), so a change reaches only steps taken after it. Two reach claims already in flight: the grace period after a claim deadline before anyone can end the claim (an hour today), and the share of a forfeited bond paid to whoever ends it (10% today; the rest goes to a vault only the operator can withdraw). Every change emits a public on-chain event.",
+    body: "Ten owner-only calls change twelve settings — among them the claim bond, the review window and the arbiter-fee cap. Most are pinned into a task at the step that uses them (funding, claim, submission or dispute), so a change reaches only steps taken after it. Two reach claims already in flight: the grace period after a claim deadline before anyone can end the claim (an hour today), and the share of a forfeited bond paid to whoever ends it (10% today; the rest goes to a vault only the operator can withdraw). Every change emits a public on-chain event. The grace period and three other timing settings have no upper bound (next item).",
+  },
+  {
+    title: "Some owner settings have no upper bound",
+    body: "Found 2026-10-13; the contract fix is not shipped. Four timing settings are stored as whole seconds and turned into a signed number when used, with no upper bound and no overflow check: the expiry grace, both submit deadlines, and the dispute-resolve window. A value of 2^63 seconds or more turns negative. The expiry grace is read at the moment a claim is expired, so on that setting a bad value reaches claims already in flight: they could be ended before their deadline, and their claim bonds forfeited (part to whoever ends the claim, the rest to a vault only the operator can withdraw). The other three reach only later steps: a claim taken afterwards could start already overdue, and a dispute raised afterwards could settle by its default at once. Every change emits a public on-chain event, so a bad value is visible. A fix needs a new contract package and a migration; no date is set.",
   },
   {
     title: "The agent SDK is not on npm",
@@ -149,7 +153,7 @@ const CHECKABLE_TODAY = [
   },
   {
     title: "The arbiter's independence is narrower than it sounds",
-    body: "resolve_dispute checks one identity: the account the arbiter badge is assigned to may not be the task's worker account (the chain asserts it and reverts otherwise). It does not, and cannot honestly, check the poster — the poster field is a caller-supplied destination, not a verified identity, so a poster-side check would defeat itself for the price of a decoy address. In practice: an arbiter who funded a task may still rule on it. They cannot steal doing so — settlement pays only the accounts pinned at claim and funding, never the arbiter, beyond any arbiter fee funded (0 on tasks funded through this app) — but they can rule in their own favor as poster. The arbiter badge has supply 1 today, so this is worth weighing plainly rather than assuming away.",
+    body: "resolve_dispute checks one identity: the account the arbiter badge is assigned to may not be the task's worker account (the chain asserts it and reverts otherwise). It does not, and cannot honestly, check the poster — the poster field is a caller-supplied destination, not a verified identity, so a poster-side check would defeat itself for the price of a decoy address. In practice: an arbiter who funded a task may still rule on it. They can rule in their own favor as poster. The worker check also compares only one account, so an arbiter who claims a task through a different account they control is not caught by it, and nothing makes a ruling wait after a dispute is raised: that arbiter could claim, submit, dispute and rule in one transaction, paying the reward and insurance to their second account. The arbiter badge has supply 1 today, so this is worth weighing plainly rather than assuming away.",
     verify: "Disputes & Arbitration — resolve_dispute's self-dealing check, and what it deliberately does not cover.",
   },
   {
@@ -321,8 +325,8 @@ function TrustContent() {
             <div>
               <dt className="font-semibold text-sm">The operator cannot</dt>
               <dd className="text-muted-foreground">
-                Withdraw a task&rsquo;s reward or a live claim bond, reverse a settlement, redirect a
-                payment, pause the contract (freezing stops only new tasks), move a review or
+                Withdraw a task&rsquo;s reward or a live claim bond directly (see the expiry-grace
+                item above), reverse a settlement, redirect a payment, pause the contract (freezing stops only new tasks), move a review or
                 dispute deadline once it has started, or stop a particular person from using the
                 contract directly — suspending an account here does not reach the chain.
               </dd>
