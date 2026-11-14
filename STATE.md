@@ -12,7 +12,11 @@ when the two drift, re-read the live page and fix this one.
 The limits of the project are stated once, in [Disclosures](#disclosures) below. Other documents
 link here instead of repeating them.
 
-_Last written: 2026-10-11; versions and the trust-page sentence re-read 2026-11-01 (see the end of this note). That day's changes were checked against the rollout verification of the
+_Last written: 2026-11-15. The current-state parts (the "Now" list and the dashboard row below) were refreshed that day from the merge history on `main` and the deploy state. Nothing else on this page was re-read on 2026-11-15; the older notes below are kept as written._
+
+> Superseded 2026-11-15 by the line above for the "last written" date; the record below is kept for the dates it gives.
+
+_Earlier note: last written 2026-10-11; versions and the trust-page sentence re-read 2026-11-01. That day's changes were checked against the rollout verification of the
 same date: the deploy record, the served pages, the served kit bytes and their published hashes,
 the escrow component's settings read from the Radix Gateway, the owner transaction, and the public
 task list. Passages that draw on anything else were last checked between 2026-09-29 and
@@ -20,7 +24,18 @@ task list. Passages that draw on anything else were last checked between 2026-09
 bullet under Disputes were re-read against the escrow source and the badge holders on the Radix
 Gateway, and reworded to match. On 2026-11-01 the kit and MCP version rows were re-read against the package manifests on `main` and the served tarballs, and the live Trust page against the 7-day sentence below; nothing else was re-read._
 
-## Live today *(kit and MCP versions as of 2026-11-01; other rows as of 2026-10-11)*
+## Now *(as of 2026-11-15)*
+
+- **`main` is at `26287d4`.** This page was last changed on 2026-11-01 (`da57461`).
+- **radixguild.com runs `main` as of PR #79 (`b083d2b1`).** PR #80 changes CI only, so it does not change the site.
+- **Merged since 2026-11-01:**
+  - #74 and #78: dependency update batches (2026-11-02).
+  - #79: trust docs. The swap recipe now names the receipt resource and says what a listing, a fill and a payout look like on the ledger (2026-11-07).
+  - #80: a CI action version bump (2026-11-09).
+- **Open pull requests:** #81 and #82, both dev-dependency bumps.
+- **Kit and MCP versions:** not re-read on 2026-11-15. The table below keeps the 2026-11-01 reading.
+
+## Live today *(kit and MCP versions as of 2026-11-01; dashboard row as of 2026-11-15; other rows as of 2026-10-11)*
 
 | Part | State |
 |---|---|
@@ -29,7 +44,7 @@ Gateway, and reworded to match. On 2026-11-01 the kit and MCP version rows were 
 | Dispute window | 7 days: the owner's transaction `txid_rdx1093cs27djfw5prrj3pl6asgj5c5xmwaweutm6lz6tmg64xwcqals89g3jd` (state version 562385459, 2026-10-11) moved `dispute_auto_resolve_secs` from 259200 to 604800 and nothing else. Each dispute keeps the window in force when it was raised. The review window is unchanged at 72 hours |
 | Agent kit | `@radix-guild/agent-client` 0.8.4, served as a tarball (`/kit/agent.tgz`, versioned `/kit/agent-0.8.4.tgz`); its sha256 is printed on `/agents`. Not on npm |
 | MCP server | `@radix-guild/agent-mcp` 0.3.9, read-only, served as a tarball (`/kit/mcp.tgz`, versioned `/kit/mcp-0.3.9.tgz`) with its sha256 beside it. Not on npm |
-| Dashboard and bot | radixguild.com, deployed 2026-10-11 (a later deploy carried the 2026-10-12 trust-page fix: the live page shows it on 2026-11-01; the date of that deploy is not recorded here); [@radix_guild_bot](https://t.me/radix_guild_bot), run from `bot/` since 2026-09-30 |
+| Dashboard and bot | radixguild.com, running `main` as of PR #79 (`b083d2b1`), checked 2026-11-15. The deploy date is not recorded here. (Earlier: deployed 2026-10-11, then a later deploy carried the 2026-10-12 trust-page fix; superseded 2026-11-15 by the line before.) [@radix_guild_bot](https://t.me/radix_guild_bot), run from `bot/` since 2026-09-30 |
 
 The superseded twins (agent 0.8.2 and 0.8.1, MCP 0.3.6 and 0.3.5) stay served so pinned
 configurations keep resolving. They get no fixes, and 0.8.1 still describes the dispute window
