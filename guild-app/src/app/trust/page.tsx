@@ -325,8 +325,8 @@ function TrustContent() {
             <div>
               <dt className="font-semibold text-sm">The operator cannot</dt>
               <dd className="text-muted-foreground">
-                Withdraw a task&rsquo;s reward or a live claim bond, reverse a settlement, redirect a
-                payment, pause the contract (freezing stops only new tasks), move a review or
+                Withdraw a task&rsquo;s reward or a live claim bond directly (see the expiry-grace
+                item above), reverse a settlement, redirect a payment, pause the contract (freezing stops only new tasks), move a review or
                 dispute deadline once it has started, or stop a particular person from using the
                 contract directly — suspending an account here does not reach the chain.
               </dd>
