@@ -116,6 +116,34 @@ jobs:
             escrow/scrypto/guild-marketplace-escrow/target/wasm32-unknown-unknown/release/guild_marketplace_escrow.wasm
             escrow/scrypto/guild-marketplace-escrow/target/wasm32-unknown-unknown/release/guild_marketplace_escrow.rpd
 
+  # The escrow vNext package (13 Oct findings F-001..F-005, N-1, L-2, I-1).
+  # Its own job, not a step in the escrow job above, so that job, its check
+  # name and its artifact stay byte-identical: the live package's CI record
+  # is unchanged by v2's existence. Same toolchain, cache shape and timeout.
+  scrypto-escrow-v2:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@ffaa7fb73f2b6e3c49bc425913220fa3d71c3ee5 # 1.92.0
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2 (2.9.3)
+        with:
+          workspaces: escrow/scrypto/guild-marketplace-escrow-v2 -> target
+      - run: cargo build --locked --release --target wasm32-unknown-unknown
+        working-directory: escrow/scrypto/guild-marketplace-escrow-v2
+      - run: cargo test --locked
+        working-directory: escrow/scrypto/guild-marketplace-escrow-v2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: guild-marketplace-escrow-v2-wasm
+          path: |
+            escrow/scrypto/guild-marketplace-escrow-v2/target/wasm32-unknown-unknown/release/guild_marketplace_escrow_v2.wasm
+            escrow/scrypto/guild-marketplace-escrow-v2/target/wasm32-unknown-unknown/release/guild_marketplace_escrow_v2.rpd
+
   # The badge-manager and agent-badge-controller blueprints had no CI at all
   # until this job: never built, never tested, anywhere. Their tests use the
   # scrypto-test ledger simulator, which cannot run on a Mac (CLAUDE.md), so
@@ -176,7 +204,7 @@ jobs:
   gate:
     name: scrypto gate
     if: always()
-    needs: [changes, scrypto, scrypto-badges]
+    needs: [changes, scrypto, scrypto-escrow-v2, scrypto-badges]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
