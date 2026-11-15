@@ -1,6 +1,9 @@
 use guild_marketplace_escrow_v2::{
     ArbiterBadgeData, EntitledParty,
     AcceptedTokenConfig, AutoResolveDefault, DisputeParty, DisputeRuling, TaskInfo, TaskState,
+    DISPUTE_MIN_RESOLVE_WAIT_SECS_PLACEHOLDER, EscrowConfig, MAX_DISPUTE_AUTO_RESOLVE_SECS,
+    MAX_DISPUTE_RESOLVE_WAIT_SECS, MAX_EXPIRE_GRACE_SECS, MAX_SUBMIT_DEADLINE_SECS,
+    MIN_DISPUTE_RESOLVE_WAIT_SECS, MIN_SUBMIT_DEADLINE_SECS,
 };
 use scrypto_test::prelude::*;
 
@@ -29,6 +32,10 @@ const REVIEW_WINDOW_SECS: u64 = 259_200;
 /// on-chain leg), and a zero brief would let the zero-evidence and
 /// wrong-brief rejection tests shadow each other.
 const WORK_BRIEF: Hash = Hash([0xB1; 32]);
+/// v2 (F-001): the arbiter's minimum wait after `raise_dispute`. The fixture
+/// uses the source's PLACEHOLDER constant on purpose, so the suite follows
+/// whatever value ruling R2 writes there.
+const RESOLVE_WAIT_SECS: u64 = DISPUTE_MIN_RESOLVE_WAIT_SECS_PLACEHOLDER;
 
 struct Fixture {
     ledger: DefaultLedgerSimulator,
@@ -247,6 +254,7 @@ fn setup_fixture(
                 claim_bond_cap,
                 Decimal::from_str(EXPIRE_BOUNTY_PCT).unwrap(),
                 REVIEW_WINDOW_SECS,
+                RESOLVE_WAIT_SECS,
             ),
         )
         .call_method(
@@ -712,6 +720,7 @@ fn test_instantiate_rejects_invalid_max_arbiter_fee_pct() {
                 dec!("5"),
                 dec!("0.1"),
                 REVIEW_WINDOW_SECS,
+                RESOLVE_WAIT_SECS,
             ),
         )
         .build();
@@ -764,6 +773,7 @@ fn test_instantiate_rejects_cap_below_floor() {
                 dec!("0.5"), // … cap 0.5 — inverted on purpose
                 dec!("0.1"),
                 REVIEW_WINDOW_SECS,
+                RESOLVE_WAIT_SECS,
             ),
         )
         .build();
@@ -1416,6 +1426,20 @@ fn resolve_dispute_helper(
     task_id: u64,
     ruling: DisputeRuling,
 ) -> TransactionReceipt {
+    // v2 (F-001): a ruling is refused until RESOLVE_WAIT_SECS after the raise.
+    // Every v1 test that rules does so as the arbiter would in practice:
+    // after the wait. The wait ITSELF is tested by
+    // `test_u2a_*` via `resolve_dispute_now`, which does not advance.
+    advance_time_by_secs(&mut f.ledger, (RESOLVE_WAIT_SECS as i64) + 1);
+    resolve_dispute_now(f, task_id, ruling)
+}
+
+/// `resolve_dispute` with NO time advance — for the F-001 wait tests.
+fn resolve_dispute_now(
+    f: &mut Fixture,
+    task_id: u64,
+    ruling: DisputeRuling,
+) -> TransactionReceipt {
     let arbiter_nf_id = NonFungibleLocalId::integer(1);
     let manifest = ManifestBuilder::new()
         .lock_fee_from_faucet()
@@ -1738,8 +1762,9 @@ fn test_auto_resolve_dispute_favor_raiser_worker() {
     );
 
     // ⚠️ THIS ASSERTION USED TO READ (110, 0), AND IT WAS DEFENDING A HOLE.
-    // On AUTO-resolve nobody judged, so the ruling governs the REWARD only and
-    // the insurance premium returns to the poster who paid it. The worker
+    // On AUTO-resolve nobody judged, so the ruling governs the reward (and the
+    // bond, W5) but NOT the insurance: the premium returns to the poster who
+    // paid it. The worker
     // therefore collects exactly what `approve_and_release` pays — see
     // `test_disputing_never_out_earns_being_approved`, which asserts that
     // relationship directly rather than restating these constants.
@@ -1938,7 +1963,8 @@ fn test_auto_resolve_dispute_split_evenly() {
         dec!("0")
     );
     // ⚠️ WAS (55, 55) — the insurance used to be split too. On AUTO-resolve the
-    // ruling now governs the REWARD only (50/50 of 100), and the poster's 10
+    // ruling governs the reward (50/50 of 100) and the bond, not the
+    // insurance, and the poster's 10
     // insurance premium comes back to them as part of the remainder: 50 / 60.
     // The arbiter-ruled 50/50 case is unchanged and still splits both legs, at
     // test_resolve_dispute_split_50_50 — the two differ precisely because one of
@@ -1994,9 +2020,11 @@ fn test_auto_resolve_dispute_when_not_disputed_rejects() {
 
 /// The guard's one job: an arbiter badge ASSIGNED TO THE WORKER'S ACCOUNT
 /// cannot rule on that worker's dispute. worker_account is the only party
-/// identity the comparison can honestly cover — it is named by the claimer in
-/// the call that stakes their own bond, and every worker-side payout lands
-/// there, so a decoy is self-defeating.
+/// identity the comparison can cover — it is named by the claimer in the call
+/// that stakes their own bond, and every worker-side payout lands there.
+/// v2 comment fix (guild#84 review L2): v1 said "so a decoy is
+/// self-defeating". It is not: an arbiter's second account is a decoy they
+/// control (F-001). See the U-2(a) tests for what v2 adds.
 #[test]
 fn test_resolve_rejects_an_arbiter_badge_assigned_to_the_worker() {
     let mut f = setup_with_arbiter_assigned_to(ArbiterAssignee::TheWorker);
@@ -2819,6 +2847,7 @@ fn test_instantiate_rejects_out_of_bounds_review_window() {
                 dec!("5"),
                 dec!("0.1"),
                 0u64,
+                RESOLVE_WAIT_SECS,
             ),
         )
         .build();
@@ -3195,7 +3224,10 @@ fn test_instantiate_signature_matches_the_signed_sheet() {
     // arg shape the deploy manifest must match. Stated rather than claimed,
     // because overclaiming what a guard proves is what review caught in the
     // FIRST version of this very test.
-    const SIGNED_ARGS: [(&str, &str); 15] = [
+    // v2: sixteen. `dispute_min_resolve_wait_secs` (F-001) is appended LAST,
+    // so the first fifteen keep v1's positional order. The private sheet's
+    // Wave B table has no v2 row yet; the public tree pins the source here.
+    const SIGNED_ARGS: [(&str, &str); 16] = [
         ("worker_badge_resource", "ResourceAddress"),
         ("arbiter_badge_resource", "ResourceAddress"),
         ("agent_badge_resource", "Option<ResourceAddress>"),
@@ -3211,6 +3243,7 @@ fn test_instantiate_signature_matches_the_signed_sheet() {
         ("claim_bond_cap", "Decimal"),
         ("expire_bounty_pct", "Decimal"),
         ("review_window_secs", "u64"),
+        ("dispute_min_resolve_wait_secs", "u64"),
     ];
 
     const HEAD: &str = "pub fn instantiate(";
@@ -4770,6 +4803,7 @@ fn test_dispute_terms_are_pinned_at_raise_and_a_later_setter_cannot_move_them() 
     // FALSIFIER: revert auto_resolve_dispute to read self.* instead of the
     // task's pinned fields and this test fails — the owner's mid-dispute switch
     // to ReturnToPoster would take effect and the worker would receive 0.
+    const SHORT_WINDOW: u64 = RESOLVE_WAIT_SECS + 1;
     let mut f = setup_with_default(AutoResolveDefault::SplitEvenly);
     let token = f.reward_token;
     add_token_to_whitelist(&mut f, token, dec!("10"));
@@ -4784,7 +4818,9 @@ fn test_dispute_terms_are_pinned_at_raise_and_a_later_setter_cannot_move_them() 
             "set_dispute_auto_resolve_default",
             manifest_args!(AutoResolveDefault::ReturnToPoster),
         )
-        .call_method(f.escrow, "set_dispute_auto_resolve_secs", manifest_args!(60u64))
+        // v2: the shortest window the bounds allow (it must stay longer than
+        // the arbiter's minimum wait). v1 used 60s, which v2 refuses.
+        .call_method(f.escrow, "set_dispute_auto_resolve_secs", manifest_args!(SHORT_WINDOW))
         .build();
     f.ledger
         .execute_manifest(
@@ -4793,8 +4829,8 @@ fn test_dispute_terms_are_pinned_at_raise_and_a_later_setter_cannot_move_them() 
         )
         .expect_commit_success();
 
-    // The shortened window must NOT apply: at 61s the pinned 14d has not run.
-    advance_time_by_secs(&mut f.ledger, 61);
+    // The shortened window must NOT apply: past it, the pinned 14d has not run.
+    advance_time_by_secs(&mut f.ledger, (SHORT_WINDOW as i64) + 1);
     auto_resolve_dispute(&mut f, 1).expect_commit_failure();
 
     // At the PINNED window it resolves — under the PINNED ruling, not the new one.
@@ -4866,4 +4902,455 @@ fn test_submit_task_returns_nothing() {
          this test again. Got:\n  {}",
         signature.trim()
     );
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// v2 — the 13 Oct findings, each with a ledger test (U-2 a/b, F-003, L-2) and
+// two source scrapes. Names start `test_u2*`, `test_f003_*`, `test_l2_*`,
+// `test_v2_*` so the v2 surface is greppable.
+// ════════════════════════════════════════════════════════════════════════════
+
+fn owner_set_u64(f: &mut Fixture, method: &str, value: u64) -> TransactionReceipt {
+    let manifest = owner_proof_manifest(f)
+        .call_method(f.escrow, method, manifest_args!(value))
+        .build();
+    f.ledger.execute_manifest(
+        manifest,
+        vec![NonFungibleGlobalId::from_public_key(&f.owner_pk)],
+    )
+}
+
+fn fetch_config(f: &mut Fixture) -> EscrowConfig {
+    f.ledger
+        .call_method(f.escrow, "get_config", manifest_args!())
+        .expect_commit_success()
+        .output(1)
+}
+
+// ── U-2(a) / F-001 ──────────────────────────────────────────────────────────
+
+/// U-2(a). The 13 Oct F-001 transaction, verbatim in shape: ONE manifest,
+/// signed by the arbiter and by a second account the arbiter controls (the
+/// fixture's worker account plays that account: it holds a member badge and
+/// no arbiter badge). It claims naming the second account as worker, submits,
+/// raises and rules PayWorker. v1 committed this. v2 refuses it at the ruling,
+/// on the minimum wait, and the whole transaction reverts.
+#[test]
+fn test_u2a_same_tx_claim_submit_raise_resolve_by_the_arbiter_is_refused() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    create_task(&mut f, dec!("100"), dec!("10"), dec!("0.1")).expect_commit_success();
+    let bond = f.claim_bond;
+
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .create_proof_from_account_of_non_fungibles(
+            f.worker_account,
+            f.worker_badge,
+            vec![NonFungibleLocalId::integer(1)],
+        )
+        .pop_from_auth_zone("claim_proof")
+        .withdraw_from_account(f.worker_account, f.reward_token, bond)
+        .take_from_worktop(f.reward_token, bond, "bond")
+        .call_method_with_name_lookup(f.escrow, "claim_task", |lookup| {
+            (1u64, f.worker_account, lookup.proof("claim_proof"), lookup.bucket("bond"))
+        })
+        .take_all_from_worktop(f.claim_receipt_resource, "claim_receipt")
+        .call_method_with_name_lookup(f.escrow, "submit_task", |lookup| {
+            (1u64, lookup.bucket("claim_receipt"), Hash([1u8; 32]), WORK_BRIEF)
+        })
+        .create_proof_from_account_of_non_fungibles(
+            f.worker_account,
+            f.worker_badge,
+            vec![NonFungibleLocalId::integer(1)],
+        )
+        .pop_from_auth_zone("raise_proof")
+        .call_method_with_name_lookup(f.escrow, "raise_dispute", |lookup| {
+            (1u64, lookup.proof("raise_proof"), None::<Hash>)
+        })
+        .create_proof_from_account_of_non_fungibles(
+            f.arbiter_account,
+            f.arbiter_badge,
+            indexset![NonFungibleLocalId::integer(1)],
+        )
+        .pop_from_auth_zone("arbiter_proof")
+        .call_method_with_name_lookup(f.escrow, "resolve_dispute", |lookup| {
+            (1u64, lookup.proof("arbiter_proof"), DisputeRuling::PayWorker)
+        })
+        .call_method(
+            f.arbiter_account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    let receipt = f.ledger.execute_manifest(
+        manifest,
+        vec![
+            NonFungibleGlobalId::from_public_key(&f.worker_pk),
+            NonFungibleGlobalId::from_public_key(&f.arbiter_pk),
+        ],
+    );
+    receipt.expect_commit_failure_containing_error(
+        "the minimum wait since raise_dispute has not passed",
+    );
+    assert_eq!(
+        fetch_task(&mut f, 1).state,
+        TaskState::Open,
+        "the whole transaction reverted: no claim, no submit, no dispute"
+    );
+}
+
+/// U-2(a), across transactions: the ruling is refused right after the raise
+/// and half-way through the wait, and accepted once the wait has passed.
+/// Proves the wait is a gate on the ruling, not a ban on it.
+#[test]
+fn test_u2a_ruling_is_refused_until_the_minimum_wait_has_passed() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    full_submit(&mut f, dec!("100"), dec!("10"), dec!("0.1"));
+    raise_dispute_as_poster(&mut f, 1, None).expect_commit_success();
+
+    resolve_dispute_now(&mut f, 1, DisputeRuling::PayWorker).expect_commit_failure_containing_error(
+        "the minimum wait since raise_dispute has not passed",
+    );
+
+    let half = (RESOLVE_WAIT_SECS as i64) / 2;
+    advance_time_by_secs(&mut f.ledger, half);
+    resolve_dispute_now(&mut f, 1, DisputeRuling::PayWorker).expect_commit_failure_containing_error(
+        "the minimum wait since raise_dispute has not passed",
+    );
+
+    advance_time_by_secs(&mut f.ledger, (RESOLVE_WAIT_SECS as i64) - half + 1);
+    resolve_dispute_now(&mut f, 1, DisputeRuling::PayWorker).expect_commit_success();
+    assert_eq!(fetch_task(&mut f, 1).state, TaskState::Released);
+}
+
+/// F-001 claim-badge check, ruling side. The arbiter's OWN account holds the
+/// member badge the task was claimed with, while the claim names a different
+/// account as worker (so the v1 `assigned_account != worker_account` guard
+/// passes). v2 refuses the ruling. The dispute is not bricked: the
+/// permissionless auto path still settles it.
+#[test]
+fn test_u2a_arbiter_account_holding_the_claim_badge_cannot_rule() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    create_task(&mut f, dec!("100"), dec!("10"), dec!("0.1")).expect_commit_success();
+
+    // Member badge #2 moves to the arbiter's account.
+    let move_badge = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .withdraw_non_fungibles_from_account(
+            f.worker_account,
+            f.worker_badge,
+            indexset![NonFungibleLocalId::integer(2)],
+        )
+        .try_deposit_entire_worktop_or_abort(f.arbiter_account, None)
+        .build();
+    f.ledger
+        .execute_manifest(move_badge, vec![NonFungibleGlobalId::from_public_key(&f.worker_pk)])
+        .expect_commit_success();
+
+    // Claimed WITH that badge, naming the worker account as payee.
+    let bond = f.claim_bond;
+    let claim = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .create_proof_from_account_of_non_fungibles(
+            f.arbiter_account,
+            f.worker_badge,
+            vec![NonFungibleLocalId::integer(2)],
+        )
+        .pop_from_auth_zone("claim_proof")
+        .withdraw_from_account(f.worker_account, f.reward_token, bond)
+        .take_from_worktop(f.reward_token, bond, "bond")
+        .call_method_with_name_lookup(f.escrow, "claim_task", |lookup| {
+            (1u64, f.worker_account, lookup.proof("claim_proof"), lookup.bucket("bond"))
+        })
+        .call_method(
+            f.worker_account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    f.ledger
+        .execute_manifest(
+            claim,
+            vec![
+                NonFungibleGlobalId::from_public_key(&f.worker_pk),
+                NonFungibleGlobalId::from_public_key(&f.arbiter_pk),
+            ],
+        )
+        .expect_commit_success();
+    submit_task(&mut f, 1, 1).expect_commit_success();
+    raise_dispute_as_poster(&mut f, 1, None).expect_commit_success();
+
+    resolve_dispute_helper(&mut f, 1, DisputeRuling::PayWorker).expect_commit_failure_containing_error(
+        "self-dealing: the arbiter's account holds this task's claim badge",
+    );
+
+    advance_time_by_secs(&mut f.ledger, 1_209_601);
+    auto_resolve_dispute(&mut f, 1).expect_commit_success();
+}
+
+/// F-001 claim-badge check, claim side: an account that holds an arbiter
+/// badge cannot be named as a task's worker.
+#[test]
+fn test_u2a_account_holding_an_arbiter_badge_cannot_claim() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    create_task(&mut f, dec!("100"), dec!("10"), dec!("0.1")).expect_commit_success();
+
+    let bond = f.claim_bond;
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .create_proof_from_account_of_non_fungibles(
+            f.worker_account,
+            f.worker_badge,
+            vec![NonFungibleLocalId::integer(1)],
+        )
+        .pop_from_auth_zone("claim_proof")
+        .withdraw_from_account(f.worker_account, f.reward_token, bond)
+        .take_from_worktop(f.reward_token, bond, "bond")
+        .call_method_with_name_lookup(f.escrow, "claim_task", |lookup| {
+            (1u64, f.arbiter_account, lookup.proof("claim_proof"), lookup.bucket("bond"))
+        })
+        .call_method(
+            f.worker_account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    f.ledger
+        .execute_manifest(manifest, vec![NonFungibleGlobalId::from_public_key(&f.worker_pk)])
+        .expect_commit_failure_containing_error("an account holding an arbiter badge cannot claim a task");
+    assert_eq!(fetch_task(&mut f, 1).state, TaskState::Open);
+}
+
+// ── U-2(b) / F-002, F-003, N-1, L-2 ─────────────────────────────────────────
+
+/// U-2(b). `u64::MAX` (v1's `as i64` gave −1), 2^63 (the first value that
+/// turned negative) and 2^63 − 1 (no wrap, but `checked_add` overflowed:
+/// F-003's second failure mode) through EVERY timing setter. Each is refused
+/// with the shared validator's message, and the config is unchanged after.
+#[test]
+fn test_u2b_u64_max_through_every_timing_setter_is_refused() {
+    let mut f = setup();
+    let cases: [(&str, &str); 4] = [
+        ("set_dispute_auto_resolve_secs", "dispute_auto_resolve_secs must be between 1 and 90 days"),
+        ("set_expire_grace_secs", "expire_grace_secs must be at most 24h"),
+        ("set_human_submit_deadline_secs", "human_submit_deadline_secs must be between 1 hour and 90 days"),
+        ("set_agent_submit_deadline_secs", "agent_submit_deadline_secs must be between 1 hour and 90 days"),
+    ];
+    let hostile: [u64; 3] = [u64::MAX, 1u64 << 63, (1u64 << 63) - 1];
+    for (method, msg) in cases {
+        for value in hostile {
+            owner_set_u64(&mut f, method, value).expect_commit_failure_containing_error(msg);
+        }
+    }
+
+    let cfg = fetch_config(&mut f);
+    assert_eq!(cfg.dispute_auto_resolve_secs, 1_209_600);
+    assert_eq!(cfg.expire_grace_secs, EXPIRE_GRACE_SECS);
+    assert_eq!(cfg.human_submit_deadline_secs, HUMAN_DEADLINE_SECS);
+    assert_eq!(cfg.agent_submit_deadline_secs, AGENT_DEADLINE_SECS);
+    assert_eq!(cfg.dispute_min_resolve_wait_secs, RESOLVE_WAIT_SECS);
+}
+
+/// U-2(b), the edges: one past each bound is refused, the bound itself is
+/// accepted. Without this, "refuse everything" would pass the test above.
+#[test]
+fn test_u2b_every_timing_setter_accepts_its_bounds_and_refuses_one_past() {
+    let mut f = setup();
+
+    owner_set_u64(&mut f, "set_dispute_auto_resolve_secs", MAX_DISPUTE_AUTO_RESOLVE_SECS + 1)
+        .expect_commit_failure_containing_error("dispute_auto_resolve_secs must be between 1 and 90 days");
+    owner_set_u64(&mut f, "set_dispute_auto_resolve_secs", MAX_DISPUTE_AUTO_RESOLVE_SECS)
+        .expect_commit_success();
+    // The window must stay LONGER than the arbiter's wait (cross-field check).
+    owner_set_u64(&mut f, "set_dispute_auto_resolve_secs", RESOLVE_WAIT_SECS)
+        .expect_commit_failure_containing_error(
+            "dispute_min_resolve_wait_secs must be shorter than dispute_auto_resolve_secs",
+        );
+    owner_set_u64(&mut f, "set_dispute_auto_resolve_secs", RESOLVE_WAIT_SECS + 1)
+        .expect_commit_success();
+
+    owner_set_u64(&mut f, "set_expire_grace_secs", MAX_EXPIRE_GRACE_SECS + 1)
+        .expect_commit_failure_containing_error("expire_grace_secs must be at most 24h");
+    owner_set_u64(&mut f, "set_expire_grace_secs", MAX_EXPIRE_GRACE_SECS).expect_commit_success();
+    owner_set_u64(&mut f, "set_expire_grace_secs", 0).expect_commit_success();
+
+    for method in ["set_human_submit_deadline_secs", "set_agent_submit_deadline_secs"] {
+        owner_set_u64(&mut f, method, MIN_SUBMIT_DEADLINE_SECS - 1)
+            .expect_commit_failure_containing_error("must be between 1 hour and 90 days");
+        owner_set_u64(&mut f, method, MAX_SUBMIT_DEADLINE_SECS + 1)
+            .expect_commit_failure_containing_error("must be between 1 hour and 90 days");
+        owner_set_u64(&mut f, method, MIN_SUBMIT_DEADLINE_SECS).expect_commit_success();
+        owner_set_u64(&mut f, method, MAX_SUBMIT_DEADLINE_SECS).expect_commit_success();
+    }
+}
+
+/// L-2: the fee-ceiling setter now has `instantiate`'s bound (0.5), not 1.0.
+#[test]
+fn test_l2_max_arbiter_fee_pct_setter_matches_instantiate() {
+    let mut f = setup();
+    let set = |f: &mut Fixture, pct: Decimal| {
+        let manifest = owner_proof_manifest(f)
+            .call_method(f.escrow, "set_max_arbiter_fee_pct", manifest_args!(pct))
+            .build();
+        f.ledger.execute_manifest(
+            manifest,
+            vec![NonFungibleGlobalId::from_public_key(&f.owner_pk)],
+        )
+    };
+    set(&mut f, dec!("0.51")).expect_commit_failure_containing_error("max_arbiter_fee_pct must be in [0, 0.5]");
+    set(&mut f, dec!("1")).expect_commit_failure_containing_error("max_arbiter_fee_pct must be in [0, 0.5]");
+    set(&mut f, dec!("0.5")).expect_commit_success();
+    set(&mut f, dec!("0")).expect_commit_success();
+}
+
+/// U-2(b) at `instantiate`: v1's instantiate checked only `> 0` on three of
+/// the timing args. Each hostile value is refused at birth, the new wait is
+/// bounded both ways and must be shorter than the auto-resolve window, and a
+/// valid set (the control) instantiates.
+#[test]
+fn test_u2b_instantiate_refuses_out_of_range_timing() {
+    let mut ledger = LedgerSimulatorBuilder::new().build();
+    let (owner_pk, _, owner_account) = ledger.new_allocated_account();
+    let package_address = ledger.compile_and_publish(this_package!());
+    let worker_badge = ledger.create_non_fungible_resource(owner_account);
+    let arbiter_badge = ledger.create_non_fungible_resource(owner_account);
+
+    // (human, agent, auto_resolve, grace, wait)
+    let ok: (u64, u64, u64, u64, u64) =
+        (HUMAN_DEADLINE_SECS, AGENT_DEADLINE_SECS, 1_209_600, EXPIRE_GRACE_SECS, RESOLVE_WAIT_SECS);
+    let mut run = |t: (u64, u64, u64, u64, u64)| {
+        let manifest = ManifestBuilder::new()
+            .lock_fee_from_faucet()
+            .call_function(
+                package_address,
+                "Escrow",
+                "instantiate",
+                manifest_args!(
+                    worker_badge,
+                    arbiter_badge,
+                    None::<ResourceAddress>,
+                    dec!("0.1"),
+                    t.0,
+                    t.1,
+                    t.2,
+                    t.3,
+                    AutoResolveDefault::SplitEvenly,
+                    dec!("0.05"),
+                    dec!("0.1"),
+                    dec!("0.5"),
+                    dec!("5"),
+                    dec!("0.1"),
+                    REVIEW_WINDOW_SECS,
+                    t.4,
+                ),
+            )
+            .call_method(owner_account, "deposit_batch", manifest_args!(ManifestExpression::EntireWorktop))
+            .build();
+        ledger.execute_manifest(manifest, vec![NonFungibleGlobalId::from_public_key(&owner_pk)])
+    };
+
+    run((u64::MAX, ok.1, ok.2, ok.3, ok.4))
+        .expect_commit_failure_containing_error("human_submit_deadline_secs must be between 1 hour and 90 days");
+    run((ok.0, u64::MAX, ok.2, ok.3, ok.4))
+        .expect_commit_failure_containing_error("agent_submit_deadline_secs must be between 1 hour and 90 days");
+    run((ok.0, ok.1, u64::MAX, ok.3, ok.4))
+        .expect_commit_failure_containing_error("dispute_auto_resolve_secs must be between 1 and 90 days");
+    run((ok.0, ok.1, ok.2, u64::MAX, ok.4))
+        .expect_commit_failure_containing_error("expire_grace_secs must be at most 24h");
+    run((ok.0, ok.1, ok.2, ok.3, u64::MAX))
+        .expect_commit_failure_containing_error("dispute_min_resolve_wait_secs must be between 1 hour and 7 days");
+    run((ok.0, ok.1, ok.2, ok.3, 0))
+        .expect_commit_failure_containing_error("dispute_min_resolve_wait_secs must be between 1 hour and 7 days");
+    run((ok.0, ok.1, ok.2, ok.3, MIN_DISPUTE_RESOLVE_WAIT_SECS - 1))
+        .expect_commit_failure_containing_error("dispute_min_resolve_wait_secs must be between 1 hour and 7 days");
+    run((ok.0, ok.1, ok.2, ok.3, MAX_DISPUTE_RESOLVE_WAIT_SECS + 1))
+        .expect_commit_failure_containing_error("dispute_min_resolve_wait_secs must be between 1 hour and 7 days");
+    run((ok.0, ok.1, MAX_DISPUTE_RESOLVE_WAIT_SECS, ok.3, MAX_DISPUTE_RESOLVE_WAIT_SECS))
+        .expect_commit_failure_containing_error(
+            "dispute_min_resolve_wait_secs must be shorter than dispute_auto_resolve_secs",
+        );
+    run(ok).expect_commit_success();
+}
+
+// ── F-003: the grace is pinned at claim ─────────────────────────────────────
+
+/// F-003. v1 read `expire_grace_secs` live in `expire_claim`, so the owner
+/// badge could make a claim in flight expirable early. v2 pins it at claim:
+/// cutting the grace to 0 after the claim does not open `expire_claim` before
+/// the pinned grace has run, and a claim taken AFTER the change pins the new
+/// value.
+#[test]
+fn test_f003_owner_grace_change_does_not_reach_a_claim_in_flight() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    create_task(&mut f, dec!("100"), dec!("10"), dec!("0.1")).expect_commit_success();
+    claim_task(&mut f, 1).expect_commit_success();
+    assert_eq!(fetch_task(&mut f, 1).claim_expire_grace_secs, Some(EXPIRE_GRACE_SECS));
+
+    owner_set_u64(&mut f, "set_expire_grace_secs", 0).expect_commit_success();
+
+    // Past the deadline, inside the PINNED grace: v1 would expire it here.
+    advance_time_by_secs(&mut f.ledger, (HUMAN_DEADLINE_SECS as i64) + 1);
+    expire_claim(&mut f, 1)
+        .expect_commit_failure_containing_error("claim deadline + grace window has not passed yet");
+
+    advance_time_by_secs(&mut f.ledger, EXPIRE_GRACE_SECS as i64);
+    expire_claim(&mut f, 1).expect_commit_success();
+    assert_eq!(fetch_task(&mut f, 1).claim_expire_grace_secs, None);
+
+    claim_task(&mut f, 1).expect_commit_success();
+    assert_eq!(fetch_task(&mut f, 1).claim_expire_grace_secs, Some(0));
+}
+
+// ── source scrapes (run without the ledger) ─────────────────────────────────
+
+/// F-002/F-003/N-1, second line: no `u64 → i64` `as` cast is left in the
+/// blueprint's code. Comments are stripped first; the four v1 sites now go
+/// through `instant_plus_secs` (`i64::try_from`).
+#[test]
+fn test_v2_no_unchecked_cast_to_i64_in_source() {
+    const SRC: &str = include_str!("../src/lib.rs");
+    let offenders: Vec<(usize, &str)> = SRC
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| l.split("//").next().unwrap_or("").contains("as i64"))
+        .map(|(i, l)| (i + 1, l.trim()))
+        .collect();
+    assert!(offenders.is_empty(), "unchecked `as i64` casts in src/lib.rs: {offenders:?}");
+}
+
+/// The setter half of "every setter calls the same validator as
+/// `instantiate`": each bounded setter's body names its `check_*` function,
+/// and `instantiate` names every one of them too.
+#[test]
+fn test_v2_setters_and_instantiate_share_one_validator_per_value() {
+    const SRC: &str = include_str!("../src/lib.rs");
+    let body_of = |head: &str| -> &str {
+        let start = SRC.find(head).unwrap_or_else(|| panic!("missing `{head}`"));
+        let rest = &SRC[start..];
+        let end = rest[1..].find("\n        pub fn ").map(|e| e + 1).unwrap_or(rest.len());
+        &rest[..end]
+    };
+    let pairs = [
+        ("pub fn set_dispute_auto_resolve_secs(", "check_dispute_timing("),
+        ("pub fn set_human_submit_deadline_secs(", "check_submit_deadline_secs("),
+        ("pub fn set_agent_submit_deadline_secs(", "check_submit_deadline_secs("),
+        ("pub fn set_expire_grace_secs(", "check_expire_grace_secs("),
+        ("pub fn set_max_arbiter_fee_pct(", "check_max_arbiter_fee_pct("),
+    ];
+    let instantiate = body_of("pub fn instantiate(");
+    for (setter, check) in pairs {
+        assert!(body_of(setter).contains(check), "`{setter}` does not call `{check}`");
+        assert!(instantiate.contains(check), "`instantiate` does not call `{check}`");
+    }
 }

@@ -663,30 +663,65 @@ fn test_cancel_after_filled_reverts() {
 
 // ── extend_listing ───────────────────────────────────────────────────────────
 
+/// v2 (13 Oct I-1): an extension resets the expiry to `now + 30 days`, the
+/// ceiling `list` enforces — never further. v1 added 30 days per call with no
+/// cap (this test used to assert +60 days after two calls). A second call at
+/// the same moment, or two calls in one transaction, are refused; a call a
+/// day later moves the ceiling by that day.
 #[test]
-fn test_extend_listing_pushes_expiry_by_30_days() {
+fn test_extend_listing_resets_to_the_30_day_ceiling_and_no_further() {
+    const DAY: i64 = 24 * 60 * 60;
     let mut f = setup();
     let now = current_instant(&mut f);
-    let expiry = Instant::new(now.seconds_since_unix_epoch + 7 * 24 * 60 * 60);
+    let expiry = Instant::new(now.seconds_since_unix_epoch + 7 * DAY);
     let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
     list_asset(&mut f, 1, asks, expiry).expect_commit_success();
 
     extend_listing(&mut f, 1).expect_commit_success();
-
-    let listing = fetch_listing(&mut f, 1);
     assert_eq!(
-        listing.expires_at.seconds_since_unix_epoch,
-        expiry.seconds_since_unix_epoch + 30 * 24 * 60 * 60,
-        "extend adds exactly 30 days from the PRIOR expires_at when that is still in the future"
+        fetch_listing(&mut f, 1).expires_at.seconds_since_unix_epoch,
+        now.seconds_since_unix_epoch + 30 * DAY,
+        "extend sets the expiry to now + 30 days"
     );
 
-    // A second extension is still allowed — the S2 ceiling only bounds
-    // `list`, never `extend_listing`.
-    extend_listing(&mut f, 1).expect_commit_success();
-    let listing = fetch_listing(&mut f, 1);
+    extend_listing(&mut f, 1)
+        .expect_commit_failure_containing_error("listing already expires at the 30-day ceiling");
+
+    // A day later: two extensions in ONE transaction (v1 reached +60 days this
+    // way). The second call fails, so the whole transaction reverts.
+    advance_time_by_secs(&mut f.ledger, DAY);
+    let id = NonFungibleLocalId::integer(1);
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .create_proof_from_account_of_non_fungibles(
+            f.seller_account,
+            f.listing_receipt_resource,
+            indexset![id.clone()],
+        )
+        .pop_from_auth_zone("receipt_a")
+        .call_method_with_name_lookup(f.swap, "extend_listing", |lookup| (lookup.proof("receipt_a"),))
+        .create_proof_from_account_of_non_fungibles(
+            f.seller_account,
+            f.listing_receipt_resource,
+            indexset![id],
+        )
+        .pop_from_auth_zone("receipt_b")
+        .call_method_with_name_lookup(f.swap, "extend_listing", |lookup| (lookup.proof("receipt_b"),))
+        .build();
+    f.ledger
+        .execute_manifest(manifest, vec![NonFungibleGlobalId::from_public_key(&f.seller_pk)])
+        .expect_commit_failure_containing_error("listing already expires at the 30-day ceiling");
     assert_eq!(
-        listing.expires_at.seconds_since_unix_epoch,
-        expiry.seconds_since_unix_epoch + 60 * 24 * 60 * 60
+        fetch_listing(&mut f, 1).expires_at.seconds_since_unix_epoch,
+        now.seconds_since_unix_epoch + 30 * DAY,
+        "the reverted double extension moved nothing"
+    );
+
+    extend_listing(&mut f, 1).expect_commit_success();
+    assert_eq!(
+        fetch_listing(&mut f, 1).expires_at.seconds_since_unix_epoch,
+        now.seconds_since_unix_epoch + DAY + 30 * DAY,
+        "a day later the ceiling has moved by that day, and no more"
     );
 }
 
@@ -883,4 +918,93 @@ fn test_nft_swap_instantiate_takes_no_parameters() {
          royalty-admin + internal-minter badges, exactly like the escrow) but found: {:?}",
         params
     );
+}
+
+
+// ── v2 (13 Oct F-005): recall-then-fill, and the recorded roles ─────────────
+
+/// U-2(c). The asset's issuer recalls the listed NFT out of the component's
+/// asset vault while the listing is Listed. v1's `fill` then took the buyer's
+/// full payment and returned an empty bucket. v2 refuses the fill (the buyer
+/// keeps their tokens), and the seller can still close the hollow listing.
+#[test]
+fn test_u2c_recall_then_fill_is_refused() {
+    let mut f = setup();
+    let recallable = f.ledger.create_non_fungible_resource_with_roles(
+        NonFungibleResourceRoles {
+            recall_roles: recall_roles! {
+                recaller => rule!(allow_all);
+                recaller_updater => rule!(deny_all);
+            },
+            ..Default::default()
+        },
+        f.seller_account,
+    );
+    f.asset_resource = recallable;
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+    let listing = fetch_listing(&mut f, 1);
+    assert!(listing.asset_recallable, "a recall role that is not deny_all is recorded");
+    assert!(!listing.asset_burnable);
+
+    // The recall, straight from the component's vault.
+    let vaults = f.ledger.get_component_vaults(f.swap, recallable);
+    assert_eq!(vaults.len(), 1, "exactly one vault holds the listed NFT");
+    let recall = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .recall_non_fungibles(
+            InternalAddress::new_or_panic(vaults[0].0),
+            [NonFungibleLocalId::integer(1)],
+        )
+        .try_deposit_entire_worktop_or_abort(f.owner_account, None)
+        .build();
+    f.ledger.execute_manifest(recall, vec![]).expect_commit_success();
+
+    let buyer_before = f.ledger.get_component_balance(f.buyer_account, f.payment_token);
+    fill_with_fungible(&mut f, 1, 0, dec!("100"))
+        .expect_commit_failure_containing_error("the listed NFT is no longer in escrow");
+    assert_eq!(
+        f.ledger.get_component_balance(f.buyer_account, f.payment_token),
+        buyer_before,
+        "the buyer paid nothing"
+    );
+    assert_eq!(fetch_listing(&mut f, 1).state, ListingState::Listed);
+    assert!(fetch_proceeds(&mut f, 1).is_none());
+
+    // A hollow listing cannot be extended (conservation), but can be closed.
+    extend_listing(&mut f, 1)
+        .expect_commit_failure_containing_error("conservation: a Listed listing must hold exactly its asset");
+    cancel_listing(&mut f, 1).expect_commit_success();
+    assert_eq!(fetch_listing(&mut f, 1).state, ListingState::Cancelled);
+}
+
+/// F-005 record: an NFT created with no recall or burn roles reads as locked
+/// (radix-engine defaults both roles and their updaters to deny_all), and a
+/// burnable one is recorded as burnable.
+#[test]
+fn test_v2_list_records_recall_and_burn_roles() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks.clone(), expiry).expect_commit_success();
+    let plain = fetch_listing(&mut f, 1);
+    assert!(!plain.asset_recallable, "the fixture NFT has no recall role");
+    assert!(!plain.asset_burnable, "the fixture NFT has no burn role");
+
+    let burnable = f.ledger.create_non_fungible_resource_with_roles(
+        NonFungibleResourceRoles {
+            burn_roles: burn_roles! {
+                burner => rule!(allow_all);
+                burner_updater => rule!(deny_all);
+            },
+            ..Default::default()
+        },
+        f.seller_account,
+    );
+    f.asset_resource = burnable;
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+    let listing = fetch_listing(&mut f, 2);
+    assert!(listing.asset_burnable);
+    assert!(!listing.asset_recallable);
 }

@@ -6,6 +6,94 @@ use scrypto::prelude::*;
 // implements and which rulings it follows.
 pub mod nft_swap;
 
+// ── v2: timing bounds, ONE source for `instantiate` AND every setter ─────────
+//
+// v2 exists because the v1 setters did not re-apply `instantiate`'s checks
+// (13 Oct findings F-002, F-003, N-1, L-2), and two v1 `instantiate` checks
+// had no upper bound either. Each timing value below now has one validator,
+// called from `instantiate` and from its setter, so the two cannot drift
+// apart again. Every upper bound is far below `i64::MAX`, so the u64 → i64
+// conversion at each use site cannot wrap; the conversions use
+// `i64::try_from` anyway, so an out-of-range value reverts instead of
+// turning negative.
+//
+// The bound VALUES are engineering choices that contain the deployed and
+// test values with room either side. They are review items, not rulings.
+
+/// Claim submit deadline (human and agent), seconds: 1 hour to 90 days.
+pub const MIN_SUBMIT_DEADLINE_SECS: u64 = 3_600;
+pub const MAX_SUBMIT_DEADLINE_SECS: u64 = 7_776_000;
+/// Dispute auto-resolve window, seconds: 1 day to 90 days. It must also stay
+/// above the arbiter's minimum wait (see `check_dispute_timing`).
+pub const MIN_DISPUTE_AUTO_RESOLVE_SECS: u64 = 86_400;
+pub const MAX_DISPUTE_AUTO_RESOLVE_SECS: u64 = 7_776_000;
+/// Expire grace window, seconds: 0 to 24 hours (v1 `instantiate`'s bound;
+/// v1's setter had none).
+pub const MAX_EXPIRE_GRACE_SECS: u64 = 86_400;
+/// F-001: the minimum time between `raise_dispute` and `resolve_dispute`,
+/// seconds: 1 hour to 7 days. Write-once at `instantiate` (no setter).
+pub const MIN_DISPUTE_RESOLVE_WAIT_SECS: u64 = 3_600;
+pub const MAX_DISPUTE_RESOLVE_WAIT_SECS: u64 = 604_800;
+/// 🔴 PLACEHOLDER, NOT A RULING. The value for `dispute_min_resolve_wait_secs`
+/// is the owner's call (completion plan ruling R2, open on 15 Nov 2026). The
+/// tests and any example manifest use this constant; a deploy must replace
+/// it with the ruled value. 24 hours is only a midpoint that fits the bounds.
+pub const DISPUTE_MIN_RESOLVE_WAIT_SECS_PLACEHOLDER: u64 = 86_400;
+fn check_submit_deadline_secs(name: &str, secs: u64) {
+    assert!(
+        (MIN_SUBMIT_DEADLINE_SECS..=MAX_SUBMIT_DEADLINE_SECS).contains(&secs),
+        "{name} must be between 1 hour and 90 days"
+    );
+}
+
+fn check_expire_grace_secs(secs: u64) {
+    // D-P3: zero is a legitimate configuration (it restores the old
+    // first-to-commit behaviour), so there is no lower bound.
+    assert!(
+        secs <= MAX_EXPIRE_GRACE_SECS,
+        "expire_grace_secs must be at most 24h — a longer window strands the poster"
+    );
+}
+
+/// The auto-resolve window and the arbiter's minimum wait, checked together.
+/// The wait must be strictly shorter than the window: otherwise the arbiter
+/// could never rule before anyone may trigger the default ruling.
+fn check_dispute_timing(auto_resolve_secs: u64, min_resolve_wait_secs: u64) {
+    assert!(
+        (MIN_DISPUTE_AUTO_RESOLVE_SECS..=MAX_DISPUTE_AUTO_RESOLVE_SECS).contains(&auto_resolve_secs),
+        "dispute_auto_resolve_secs must be between 1 and 90 days"
+    );
+    assert!(
+        (MIN_DISPUTE_RESOLVE_WAIT_SECS..=MAX_DISPUTE_RESOLVE_WAIT_SECS)
+            .contains(&min_resolve_wait_secs),
+        "dispute_min_resolve_wait_secs must be between 1 hour and 7 days"
+    );
+    assert!(
+        min_resolve_wait_secs < auto_resolve_secs,
+        "dispute_min_resolve_wait_secs must be shorter than dispute_auto_resolve_secs"
+    );
+}
+
+/// L-2: v1's setter allowed up to 1.0 while `instantiate` capped at 0.5.
+fn check_max_arbiter_fee_pct(pct: Decimal) {
+    assert!(
+        pct >= Decimal::ZERO && pct <= dec!("0.5"),
+        "max_arbiter_fee_pct must be in [0, 0.5]"
+    );
+}
+
+/// `instant + secs`, with the u64 → i64 conversion CHECKED. v1 used
+/// `secs as i64`, which turns any value ≥ 2^63 negative (F-002, F-003, N-1).
+/// The bounds above already keep every stored value far from that; this is
+/// the second line, so a future unbounded value reverts instead of wrapping.
+fn instant_plus_secs(instant: Instant, secs: u64, what: &str) -> i64 {
+    let secs = i64::try_from(secs).unwrap_or_else(|_| panic!("{what}: seconds exceed i64"));
+    instant
+        .seconds_since_unix_epoch
+        .checked_add(secs)
+        .unwrap_or_else(|| panic!("{what}: overflow"))
+}
+
 // ── Config view + state types ────────────────────────────────────────────────
 
 #[derive(ScryptoSbor, Clone, Debug, PartialEq)]
@@ -190,6 +278,14 @@ pub struct TaskInfo {
     pub poster_entitled: Decimal,
     pub worker_bond_entitled: Decimal,
     pub poster_bond_entitled: Decimal,
+    /// v2 (F-003): the expire grace window AS IT STOOD when this claim was
+    /// taken, pinned at `claim_task` and read by `expire_claim`. v1 read the
+    /// grace live, so one owner setter call could make every claim already
+    /// in flight expirable at once (and, with a wrapped value, the bond
+    /// forfeit to the caller and the house). `Some` while a claim is live,
+    /// `None` otherwise. Appended at the END of the struct so field-name
+    /// readers of the v1 shape keep working.
+    pub claim_expire_grace_secs: Option<u64>,
 }
 
 /// Which party a withdrawal belongs to. Carried on WithdrawalEvent so the
@@ -283,6 +379,9 @@ pub struct EscrowConfig {
     /// view hides makes every off-chain reader re-derive it from events.
     pub expire_bounty_pct: Decimal,
     pub review_window_secs: u64,
+    /// v2 (F-001): the minimum time between `raise_dispute` and
+    /// `resolve_dispute`. Write-once at `instantiate`.
+    pub dispute_min_resolve_wait_secs: u64,
 }
 
 // ── Events ───────────────────────────────────────────────────────────────────
@@ -374,6 +473,10 @@ pub struct TaskClaimedEvent {
     pub claimer_badge_id: NonFungibleLocalId,
     pub is_agent: bool,
     pub claim_deadline: Instant,
+    /// v2 (F-003): the grace pinned onto this claim. `expire_claim` opens at
+    /// `claim_deadline + expire_grace_secs`, readable from the ledger alone.
+    /// Additive field (watchers parse events by field name).
+    pub expire_grace_secs: u64,
 }
 
 #[derive(ScryptoSbor, ScryptoEvent)]
@@ -466,6 +569,9 @@ pub struct DisputeRaisedEvent {
     /// not moved. `Some` on every dispute raised since the pin shipped.
     pub dispute_auto_resolve_secs: Option<u64>,
     pub dispute_auto_resolve_default: Option<AutoResolveDefault>,
+    /// v2 (F-001): the earliest moment `resolve_dispute` will accept a
+    /// ruling (`disputed_at + dispute_min_resolve_wait_secs`). Additive field.
+    pub resolvable_from: Instant,
 }
 
 #[derive(ScryptoSbor, ScryptoEvent)]
@@ -645,6 +751,10 @@ mod guild_marketplace_escrow {
         /// separate future decision (intent-settlement design), not a value
         /// this dial may reach by accident.
         review_window_secs: u64,
+        /// v2 (F-001): minimum seconds between `raise_dispute` and
+        /// `resolve_dispute`. Write-once (no setter): the arbiter's earliest
+        /// ruling time is part of the deal both sides entered.
+        dispute_min_resolve_wait_secs: u64,
 
         // Task storage
         tasks: KeyValueStore<u64, TaskInfo>,
@@ -714,27 +824,27 @@ mod guild_marketplace_escrow {
             claim_bond_cap: Decimal,
             expire_bounty_pct: Decimal,
             review_window_secs: u64,
+            // v2 (F-001). Appended LAST so the first fifteen positional
+            // arguments keep v1's order. Value = owner ruling R2; see
+            // DISPUTE_MIN_RESOLVE_WAIT_SECS_PLACEHOLDER.
+            dispute_min_resolve_wait_secs: u64,
         ) -> (Global<Escrow>, Bucket, Bucket) {
             // Param validation
-            assert!(
-                max_arbiter_fee_pct >= Decimal::ZERO && max_arbiter_fee_pct <= dec!("0.5"),
-                "max_arbiter_fee_pct must be in [0, 0.5]"
-            );
+            // v2: every timing/fee check below is the SAME function its
+            // setter calls (see the bounds block at the top of this file).
+            check_max_arbiter_fee_pct(max_arbiter_fee_pct);
             assert!(
                 min_insurance_fraction >= Decimal::ZERO && min_insurance_fraction <= dec!("1"),
                 "min_insurance_fraction must be in [0, 1]"
             );
-            assert!(human_submit_deadline_secs > 0, "human_submit_deadline_secs must be positive");
-            assert!(agent_submit_deadline_secs > 0, "agent_submit_deadline_secs must be positive");
-            assert!(dispute_auto_resolve_secs > 0, "dispute_auto_resolve_secs must be positive");
-            // D-P3: zero is a legitimate configuration (it restores the old
-            // first-to-commit behaviour), so this is deliberately not `> 0`.
-            // The default is 3600; the safety argument is the grace window's
-            // existence at instantiation, not a runtime floor.
-            assert!(
-                expire_grace_secs <= 86_400,
-                "expire_grace_secs must be at most 24h — a longer window strands the poster"
-            );
+            check_submit_deadline_secs("human_submit_deadline_secs", human_submit_deadline_secs);
+            check_submit_deadline_secs("agent_submit_deadline_secs", agent_submit_deadline_secs);
+            check_dispute_timing(dispute_auto_resolve_secs, dispute_min_resolve_wait_secs);
+            // D-P3: zero is a legitimate grace (it restores the old
+            // first-to-commit behaviour), so the floor is 0. The default is
+            // 3600; the safety argument is the grace window's existence at
+            // instantiation, not a runtime floor.
+            check_expire_grace_secs(expire_grace_secs);
             assert!(
                 claim_bond_pct >= Decimal::ZERO && claim_bond_pct <= Decimal::ONE,
                 "claim_bond_pct must be between 0 and 1"
@@ -864,6 +974,7 @@ mod guild_marketplace_escrow {
                 claim_bond_cap,
                 expire_bounty_pct,
                 review_window_secs,
+                dispute_min_resolve_wait_secs,
                 tasks: KeyValueStore::new(),
                 task_reward_vaults: KeyValueStore::new(),
                 task_insurance_vaults: KeyValueStore::new(),
@@ -1084,10 +1195,21 @@ mod guild_marketplace_escrow {
         // must ride a swap; TUNABLE VALUES ship as placeholders and are corrected
         // by one signed owner transaction. These setters are what make that true.
         //
-        // Every setter re-applies the SAME validation `instantiate` applies, so a
-        // later tune can never reach a state a fresh deploy would have rejected.
+        // Every setter calls the SAME validator `instantiate` calls (the
+        // `check_*` functions at the top of this file), so a later tune can
+        // never reach a state a fresh deploy would have rejected.
+        //
+        // ⚠️ v1 CLAIMED this and it was FALSE for five setters (13 Oct findings
+        // F-002, F-003, N-1, L-2): `set_expire_grace_secs` had no check at all,
+        // `set_max_arbiter_fee_pct` allowed 1.0 against `instantiate`'s 0.5,
+        // and the auto-resolve and both submit-deadline setters (like
+        // `instantiate` itself) had no upper bound, so a value ≥ 2^63 turned
+        // negative at its `as i64` use. v2 makes the claim true by sharing one
+        // function per value instead of restating the check twice.
+        //
         // None of them touches a vault, a task, or a settlement — they are pure
-        // config writes, which is what keeps them out of the audit's hot path.
+        // config writes. Whether a config write can still reach a commitment
+        // already made is the separate question below.
         //
         // ⚠️ NON-RETROACTIVITY IS A PROPERTY OF THE STATE SHAPE, NOT OF THESE
         // METHODS — and this comment asserted it before it was true.
@@ -1109,11 +1231,13 @@ mod guild_marketplace_escrow {
         // Known and accepted, and this list is meant to be EXHAUSTIVE — if you
         // add a live-read setter, add it here in the same change:
         //
-        // 1. `expire_grace_secs`, read live in `expire_claim`. It shifts a
-        //    deadline by an hour and cannot change who is paid, so it is a
-        //    timing nuisance rather than a settlement change — but it IS the
-        //    same class, and it is listed here rather than left for someone to
-        //    rediscover.
+        // 1. (REMOVED in v2.) `expire_grace_secs` used to be listed here as
+        //    "a timing nuisance … cannot change who is paid". That was wrong
+        //    (13 Oct F-003): `expire_claim` read it live, so one setter call
+        //    could make every claim in flight expirable at once and send each
+        //    bond to the caller's bounty and the house vault. v2 pins it onto
+        //    the task at `claim_task` (`claim_expire_grace_secs`), so it is no
+        //    longer a live read and no longer belongs on this list.
         //
         // 2. `expire_bounty_pct`, read live in `expire_claim` (the
         //    `forfeited_amount * self.expire_bounty_pct` bounty split). Added to
@@ -1207,8 +1331,11 @@ mod guild_marketplace_escrow {
             Runtime::emit_event(DisputeAutoResolveDefaultUpdatedEvent { default });
         }
 
+        /// Governs disputes raised AFTER the call: the window is pinned onto
+        /// the task at `raise_dispute`. Same validator as `instantiate`,
+        /// including "stays longer than the arbiter's minimum wait".
         pub fn set_dispute_auto_resolve_secs(&mut self, secs: u64) {
-            assert!(secs > 0, "dispute_auto_resolve_secs must be positive");
+            check_dispute_timing(secs, self.dispute_min_resolve_wait_secs);
             self.dispute_auto_resolve_secs = secs;
             Runtime::emit_event(DisputeAutoResolveSecsUpdatedEvent { secs });
         }
@@ -1220,14 +1347,16 @@ mod guild_marketplace_escrow {
         // the gate an exception — and it is better anyway. A combined setter
         // means you cannot tune one deadline without restating the other, which
         // is the opposite of "make it easy to set".
+        // Both govern claims taken AFTER the call: the deadline is computed
+        // and stored at `claim_task`. Same validator as `instantiate` (N-1).
         pub fn set_human_submit_deadline_secs(&mut self, secs: u64) {
-            assert!(secs > 0, "human_submit_deadline_secs must be positive");
+            check_submit_deadline_secs("human_submit_deadline_secs", secs);
             self.human_submit_deadline_secs = secs;
             Runtime::emit_event(HumanSubmitDeadlineUpdatedEvent { secs });
         }
 
         pub fn set_agent_submit_deadline_secs(&mut self, secs: u64) {
-            assert!(secs > 0, "agent_submit_deadline_secs must be positive");
+            check_submit_deadline_secs("agent_submit_deadline_secs", secs);
             self.agent_submit_deadline_secs = secs;
             Runtime::emit_event(AgentSubmitDeadlineUpdatedEvent { secs });
         }
@@ -1241,16 +1370,20 @@ mod guild_marketplace_escrow {
             Runtime::emit_event(MinInsuranceFractionUpdatedEvent { fraction });
         }
 
+        /// Governs tasks created AFTER the call (the poster picks the fee at
+        /// `create_task`, under this ceiling). Same validator as
+        /// `instantiate` (L-2: v1's setter allowed up to 1.0).
         pub fn set_max_arbiter_fee_pct(&mut self, pct: Decimal) {
-            assert!(
-                pct >= Decimal::ZERO && pct <= Decimal::ONE,
-                "max_arbiter_fee_pct must be between 0 and 1"
-            );
+            check_max_arbiter_fee_pct(pct);
             self.max_arbiter_fee_pct = pct;
             Runtime::emit_event(MaxArbiterFeePctUpdatedEvent { pct });
         }
 
+        /// Governs claims taken AFTER the call: v2 pins the grace onto the
+        /// task at `claim_task` (F-003). Same validator as `instantiate`
+        /// (v1's setter had no check at all).
         pub fn set_expire_grace_secs(&mut self, secs: u64) {
+            check_expire_grace_secs(secs);
             self.expire_grace_secs = secs;
             Runtime::emit_event(ExpireGraceSecsUpdatedEvent { secs });
         }
@@ -1395,6 +1528,7 @@ mod guild_marketplace_escrow {
                 poster_entitled: Decimal::ZERO,
                 worker_bond_entitled: Decimal::ZERO,
                 poster_bond_entitled: Decimal::ZERO,
+                claim_expire_grace_secs: None,
             };
             let poster_addr = info.poster;
             self.tasks.insert(task_id, info);
@@ -1530,6 +1664,21 @@ mod guild_marketplace_escrow {
                 "worker must be a global account address"
             );
 
+            // v2 (F-001, claimant side): an account that holds an arbiter
+            // badge may not be named as a task's worker. This is the
+            // claim-time half of the claim-badge check; `resolve_dispute`
+            // carries the other half. It stops the arbiter's OWN account (or
+            // any account holding an arbiter badge) from claiming. It cannot
+            // stop an arbiter from claiming through a second account that
+            // holds no badge: no ledger can tell that two accounts share an
+            // owner. The minimum wait in `resolve_dispute` is what makes that
+            // route slow and visible instead of one silent transaction.
+            let worker_global: Global<Account> = worker.into();
+            assert!(
+                worker_global.balance(self.arbiter_badge_resource) == Decimal::ZERO,
+                "an account holding an arbiter badge cannot claim a task"
+            );
+
             // ── The bond: same token as the reward, proportional to it ──────
             //
             // W4-mech. Denominating the bond in `task.reward_token` is what
@@ -1600,11 +1749,12 @@ mod guild_marketplace_escrow {
             } else {
                 self.human_submit_deadline_secs
             };
-            let claim_deadline = Instant::new(
-                now.seconds_since_unix_epoch
-                    .checked_add(deadline_secs as i64)
-                    .expect("claim deadline overflow"),
-            );
+            let claim_deadline =
+                Instant::new(instant_plus_secs(now, deadline_secs, "claim deadline"));
+            // v2 (F-003): pin the grace NOW. `expire_claim` reads this pin,
+            // never live config, so a later `set_expire_grace_secs` cannot
+            // move the expiry of a claim already taken.
+            let pinned_grace = self.expire_grace_secs;
 
             // Reserve a fresh claim_receipt id so a re-claim after expire
             // doesn't collide with an orphan still in the previous worker's
@@ -1625,6 +1775,7 @@ mod guild_marketplace_escrow {
             task.claimer_is_agent = is_agent;
             task.current_claim_receipt_id = Some(claim_receipt_id);
             task.worker_account = Some(worker_addr_for_task);
+            task.claim_expire_grace_secs = Some(pinned_grace);
             drop(task);
 
             // Take claim bond into per-task vault. Re-claim path replaces the
@@ -1660,6 +1811,7 @@ mod guild_marketplace_escrow {
                 claimer_badge_id,
                 is_agent,
                 claim_deadline,
+                expire_grace_secs: pinned_grace,
             });
 
             claim_receipt
@@ -1723,19 +1875,19 @@ mod guild_marketplace_escrow {
         /// to the poster, ever** — asserted directly by
         /// `test_expired_bond_leaves_the_poster_nothing_to_withdraw`.
         pub fn expire_claim(&mut self, task_id: u64) -> Bucket {
-            let grace = self.expire_grace_secs;
             {
                 let mut task = self.tasks.get_mut(&task_id).expect("task not found");
                 assert_eq!(task.state, TaskState::Claimed, "task must be Claimed to expire");
 
+                // v2 (F-003): the grace PINNED at claim_task, not live config.
+                let grace = task
+                    .claim_expire_grace_secs
+                    .expect("Claimed task must carry its pinned grace");
                 let now = Clock::current_time_rounded_to_seconds();
                 let deadline = task.claim_deadline.expect("Claimed must have deadline");
                 assert!(
                     now.seconds_since_unix_epoch
-                        >= deadline
-                            .seconds_since_unix_epoch
-                            .checked_add(grace as i64)
-                            .expect("expire grace window overflow"),
+                        >= instant_plus_secs(deadline, grace, "expire grace window"),
                     "claim deadline + grace window has not passed yet"
                 );
 
@@ -1746,6 +1898,7 @@ mod guild_marketplace_escrow {
                 task.claimer_is_agent = false;
                 task.current_claim_receipt_id = None;
                 task.worker_account = None;
+                task.claim_expire_grace_secs = None;
             }
 
             // Forfeit claim_bond -> caller bounty + operator vault (DB-4,
@@ -1954,12 +2107,11 @@ mod guild_marketplace_escrow {
             // W2: pin the review deadline NOW, from the config value in force
             // at submit — the same non-retroactivity discipline as the dispute
             // terms and the bond amount. After it, release is permissionless.
-            let review_deadline = Instant::new(
-                submitted_at
-                    .seconds_since_unix_epoch
-                    .checked_add(self.review_window_secs as i64)
-                    .expect("review deadline overflow"),
-            );
+            let review_deadline = Instant::new(instant_plus_secs(
+                submitted_at,
+                self.review_window_secs,
+                "review deadline",
+            ));
             task.state = TaskState::Submitted;
             task.submit_evidence_hash = Some(evidence_hash);
             task.submitted_at = Some(submitted_at);
@@ -2231,12 +2383,22 @@ mod guild_marketplace_escrow {
             task.dispute_evidence_hash = evidence_hash;
             drop(task);
 
+            // v2 (F-001): the arbiter's earliest ruling time. The wait is
+            // write-once config, so no pin is needed; it is emitted so both
+            // parties can see the date from the ledger alone.
+            let resolvable_from = Instant::new(instant_plus_secs(
+                now,
+                self.dispute_min_resolve_wait_secs,
+                "dispute resolve wait",
+            ));
+
             Runtime::emit_event(DisputeRaisedEvent {
                 task_id,
                 raised_by,
                 dispute_evidence_hash: evidence_hash,
                 dispute_auto_resolve_secs: Some(pinned_window),
                 dispute_auto_resolve_default: Some(pinned_default),
+                resolvable_from,
             });
         }
 
@@ -2282,9 +2444,11 @@ mod guild_marketplace_escrow {
             // are `require(owner_badge)`, not `deny_all`, so the operator can mint a
             // replacement unit to recover from a lost badge. Pinning a specific unit
             // or account would break that recovery path — the one path an arbiter
-            // badge, being non-transferable, actually needs. What stops self-dealing
-            // is not identity-of-unit but the `arbiter_account != worker_account`
-            // assertion below (L6(c)). Do not "fix" this into a Pattern 2 pin.
+            // badge, being non-transferable, actually needs. What limits
+            // self-dealing is not identity-of-unit but the checks below: the
+            // minimum wait since `raise_dispute` (v2, F-001), the
+            // `arbiter_account != worker_account` assertion (L6(c)) and the
+            // claim-badge check (v2, F-001). Do not "fix" this into a Pattern 2 pin.
             assert_eq!(
                 arbiter_badge.resource_address(),
                 self.arbiter_badge_resource,
@@ -2316,27 +2480,53 @@ mod guild_marketplace_escrow {
                 );
             }
 
-            let mut task = self.tasks.get_mut(&task_id).expect("task not found");
-            assert_eq!(
-                task.state,
-                TaskState::Disputed,
-                "task must be Disputed to resolve"
-            );
-
-            // Validate worker_account exists (Disputed tasks must have one)
-            let worker_account = task
-                .worker_account
-                .expect("Disputed task must have worker_account");
+            // Read what the guards need under a SHORT read borrow. The
+            // claim-badge check below calls the arbiter's account, and no
+            // other component is called while this method holds the task
+            // entry for writing (the `get_mut` further down).
+            let (worker_account, claimer_resource, claimer_badge_id) = {
+                let task = self.tasks.get(&task_id).expect("task not found");
+                assert_eq!(
+                    task.state,
+                    TaskState::Disputed,
+                    "task must be Disputed to resolve"
+                );
+                // Validate worker_account exists (Disputed tasks must have one)
+                let worker_account = task
+                    .worker_account
+                    .expect("Disputed task must have worker_account");
+                let claimer_resource = if task.claimer_is_agent {
+                    self.agent_badge_resource
+                        .expect("claimer_is_agent but no agent_badge_resource configured")
+                } else {
+                    self.worker_badge_resource
+                };
+                let claimer_badge_id = task
+                    .claimer_badge_id
+                    .clone()
+                    .expect("Disputed task must have claimer_badge_id");
+                (worker_account, claimer_resource, claimer_badge_id)
+            };
 
             // ── The self-dealing guard, in its NARROW form (L6 ruled (c),
             // 2026-08-30) ─────────────────────────────────────────────────────
             //
             // The arbiter may not rule on a dispute whose WORKER they are.
             // `worker_account` is the only party identity this comparison can
-            // honestly cover: the claimer names it in the same call that
-            // stakes their own bond, and every worker-side payout lands there
-            // — so evading this guard means sending your own winnings to an
-            // account you do not control, which is self-defeating.
+            // cover: the claimer names it in the same call that stakes their
+            // own bond, and every worker-side payout lands there.
+            //
+            // ⚠️ CORRECTED in v2 (guild#84 review L2). v1 said evading this
+            // guard "means sending your own winnings to an account you do not
+            // control, which is self-defeating". That is false: an arbiter who
+            // controls a SECOND account names it as the worker, and the payout
+            // lands in an account they DO control (13 Oct F-001). This
+            // comparison only catches an arbiter who claims from the very
+            // account their badge is assigned to. v2 adds the claim-badge
+            // checks (below and in `claim_task`) and the minimum wait (below);
+            // the second-account route stays open on-chain, because a ledger
+            // cannot tell that two accounts share an owner. It is a trust
+            // placed in the arbiter, and the honesty copy must say so.
             //
             // ⚠️ DELIBERATELY NOT COMPARED: `task.poster`. It is a
             // caller-supplied parameter bound to nothing (M5) — a decoy
@@ -2346,12 +2536,64 @@ mod guild_marketplace_escrow {
             // analysis, and the reason L6 was ruled (c): poster is a payout
             // destination, not an identity). Poster-side self-dealing is OPEN
             // BY DESIGN and must be stated in the honesty copy, never claimed
-            // closed. An arbiter-poster still cannot STEAL — settlement
-            // credits only pinned accounts — they can only rule in a dispute
-            // they funded.
+            // closed.
+            //
+            // ⚠️ CORRECTED in v2 (guild#84 review L2). v1 said "An
+            // arbiter-poster still cannot STEAL — settlement credits only
+            // pinned accounts". Settlement does credit only the pinned
+            // accounts, but an arbiter who is also the poster can rule
+            // RefundPoster on a dispute over work that was done, so the
+            // reward and the worker's bond go to an account the arbiter
+            // controls. That is a ruling, not a redirect, and it is the same
+            // trust in the arbiter as the worker-side route above.
             assert!(
                 arbiter_account != worker_account,
                 "self-dealing: the arbiter badge is assigned to this task's worker account"
+            );
+
+            // v2 (F-001): the claim-badge check, ruling side. The account the
+            // arbiter badge is assigned to may not hold the badge this task
+            // was CLAIMED with (`claimer_badge_id`, the credential that
+            // withdraws the worker's share). Like the comparison above, it
+            // catches the arbiter acting as claimant through their own
+            // account, whatever account they named as worker; it cannot see a
+            // claim badge held in a second account.
+            assert!(
+                arbiter_account
+                    .as_node_id()
+                    .entity_type()
+                    .is_some_and(|t| t.is_global_account()),
+                "arbiter badge's assigned_account must be a global account"
+            );
+            let arbiter_global: Global<Account> = arbiter_account.into();
+            assert!(
+                !arbiter_global.has_non_fungible(claimer_resource, claimer_badge_id),
+                "self-dealing: the arbiter's account holds this task's claim badge"
+            );
+
+            let mut task = self.tasks.get_mut(&task_id).expect("task not found");
+
+            // ── v2 (F-001): a minimum wait between raise and ruling ──────────
+            //
+            // v1 checked only `state == Disputed`, so ONE transaction signed by
+            // the arbiter could claim (naming a second account as worker),
+            // submit, raise and rule PayWorker — the poster never had a block
+            // in which to see it. The wait makes every ruling at least
+            // `dispute_min_resolve_wait_secs` after the raise: never in the
+            // raising transaction, and visible on the ledger (DisputeRaised
+            // carries `resolvable_from`) for that long before any ruling.
+            // `auto_resolve_dispute` has its own, longer window and is not
+            // affected (`check_dispute_timing` keeps wait < window).
+            let disputed_at = task.disputed_at.expect("Disputed must have disputed_at");
+            let now = Clock::current_time_rounded_to_seconds();
+            assert!(
+                now.seconds_since_unix_epoch
+                    >= instant_plus_secs(
+                        disputed_at,
+                        self.dispute_min_resolve_wait_secs,
+                        "dispute resolve wait"
+                    ),
+                "the minimum wait since raise_dispute has not passed — the arbiter cannot rule yet"
             );
 
             let arbiter_fee_pct = task.arbiter_fee_pct;
@@ -2461,11 +2703,13 @@ mod guild_marketplace_escrow {
         }
 
         /// Public, time-gated. No auth — anyone may trigger after window.
-        /// After dispute_auto_resolve_secs has elapsed since raise_dispute,
-        /// applies the dispute_auto_resolve_default ruling.
+        /// After the window PINNED at raise_dispute has elapsed, applies the
+        /// default ruling pinned at the same moment.
         /// No arbiter fee is taken (no arbiter performed work).
-        /// Worker + poster buckets are returned to the caller, who routes them
-        /// via the transaction manifest (F-003: avoids try_deposit_or_abort).
+        /// v2 comment fix: v1's doc here still said the worker and poster
+        /// buckets "are returned to the caller", which was the pre-PULL
+        /// behaviour. Under PULL both shares are CREDITED to the pinned
+        /// accounts and the caller receives nothing.
         /// PULL: returns nothing. Stays `PUBLIC` — and under pull that is now
         /// safe, which is the point. Permissionless triggering is *required*
         /// (either party could otherwise stall the timeout forever), and it used
@@ -2501,10 +2745,7 @@ mod guild_marketplace_escrow {
                     task.disputed_at.expect("Disputed must have disputed_at");
                 assert!(
                     now.seconds_since_unix_epoch
-                        >= disputed_at
-                            .seconds_since_unix_epoch
-                            .checked_add(auto_window as i64)
-                            .expect("auto-resolve window overflow"),
+                        >= instant_plus_secs(disputed_at, auto_window, "auto-resolve window"),
                     "dispute auto-resolve window has not elapsed"
                 );
                 let raised_by = task
@@ -2558,10 +2799,21 @@ mod guild_marketplace_escrow {
                 .map(|v| v.amount())
                 .unwrap_or(Decimal::ZERO);
 
-            // AUTO-resolve: NOBODY judged. The ruling governs the REWARD only;
-            // the insurance premium goes back to the poster who paid it. This is
-            // what stops disputing from out-earning honest completion — see the
-            // block on `credit_split_for_parties`. That guarantee is
+            // AUTO-resolve: NOBODY judged. The default ruling governs the
+            // REWARD and the worker's CLAIM BOND (the bond follows
+            // `reward_ruling` in `credit_split_for_parties`); the insurance
+            // premium goes back to the poster who paid it.
+            //
+            // ⚠️ CORRECTED in v2 (13 Oct F-004). v1 said "The ruling governs
+            // the REWARD only". The code has always split the bond by the same
+            // ruling: under `SplitEvenly` half the worker's bond goes to the
+            // poster; under `ReturnToPoster`, and under either raiser-based
+            // default when it rules for the poster, all of it does. The
+            // insurance guarantee below is unchanged.
+            //
+            // Returning the insurance to the poster is what stops disputing
+            // from out-earning honest completion — see the block on
+            // `credit_split_for_parties`. That guarantee is
             // default-INDEPENDENT: it holds for every `AutoResolveDefault`
             // variant, which is the whole reason it is worth having.
             //
@@ -3463,6 +3715,7 @@ mod guild_marketplace_escrow {
                 claim_bond_cap: self.claim_bond_cap,
                 expire_bounty_pct: self.expire_bounty_pct,
                 review_window_secs: self.review_window_secs,
+                dispute_min_resolve_wait_secs: self.dispute_min_resolve_wait_secs,
             }
         }
 

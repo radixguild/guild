@@ -18,9 +18,18 @@ use scrypto::prelude::*;
 //         alternative they fill).
 //   S2  — expiry is MANDATORY (this reverses the doc's S2a "optional,
 //         default none" recommendation). `list` asserts `expires_at` is in
-//         the future and at most 30 days out; `extend_listing` adds exactly
-//         30 days per call and carries its OWN royalty entry, separate from
-//         `fill`'s.
+//         the future and at most 30 days out; `extend_listing` carries its
+//         OWN royalty entry, separate from `fill`'s. v2 (13 Oct I-1): an
+//         extension now sets the expiry to `now + 30 days`, the same ceiling
+//         `list` enforces; v1 added 30 days per call with no cap, so N calls
+//         reached N × 30 days out.
+//
+// v2 (13 Oct F-005): `fill` asserts the listed NFT is still in the asset
+// vault before it pays anything out. v1 returned whatever the vault held, so
+// after an issuer recalled the NFT a buyer could pay the full ask for an
+// empty bucket. `list` also RECORDS whether the asset's resource can be
+// recalled or burned (a role that is not locked to `deny_all`), on the
+// listing and in `ListedEvent`, so a front-end can warn before anyone fills.
 //   S3a — `fill` and `extend_listing` both start their royalty at `Xrd(0)`,
 //         `updatable`; every other method is `Free, locked`.
 //   S4a — same custody shape as the escrow: owner badge is the royalty
@@ -73,6 +82,16 @@ pub struct Listing {
     /// `state == Filled`.
     pub filled_with: Option<u8>,
     pub proceeds_withdrawn: bool,
+    /// v2 (F-005): `true` unless the asset resource's `recaller` AND
+    /// `recaller_updater` roles both read `deny_all` at `list` time. A
+    /// recallable NFT can be taken out of the asset vault by its issuer;
+    /// `fill` refuses if that happened, and this flag lets a front-end warn
+    /// before a buyer tries. Appended at the END of the struct.
+    pub asset_recallable: bool,
+    /// v2 (F-005): the same reading for `burner` / `burner_updater`.
+    /// Recorded for disclosure: a vault's contents can only be burned by the
+    /// component that owns the vault, so this is not a path out of escrow.
+    pub asset_burnable: bool,
 }
 
 /// The seller's credential — required to `cancel`, `extend_listing` and
@@ -90,9 +109,8 @@ pub struct ListingReceiptData {
 #[derive(ScryptoSbor, Clone, Debug, PartialEq)]
 pub struct NftSwapConfig {
     pub listing_receipt_resource: ResourceAddress,
-    /// The S2 ceiling `list` enforces on `expires_at`, in seconds. Also the
-    /// exact amount `extend_listing` adds per call — see the constant's own
-    /// comment for why one number serves both.
+    /// The S2 ceiling `list` enforces on `expires_at`, in seconds. v2: also
+    /// the horizon `extend_listing` resets to (`expires_at = now + this`).
     pub max_listing_horizon_secs: u64,
     pub extension_secs: u64,
 }
@@ -114,6 +132,9 @@ pub struct ListedEvent {
     pub asset_id: NonFungibleLocalId,
     pub asks: Vec<Ask>,
     pub expires_at: Instant,
+    /// v2 (F-005): see `Listing::asset_recallable`. Additive fields.
+    pub asset_recallable: bool,
+    pub asset_burnable: bool,
 }
 
 /// No `buyer` field, unlike the design note's sketch (§4 row for `fill`).
@@ -379,6 +400,16 @@ mod nft_swap_blueprint {
             let asset_resource = asset.resource_address();
             let asset_id = asset.non_fungible_local_id();
 
+            // v2 (F-005): RECORD, do not refuse. Refusing would bar every
+            // collection that keeps a recall role from the venue; the buyer's
+            // protection is the presence check in `fill`, and this reading
+            // is the disclosure that goes with it.
+            let asset_rm = ResourceManager::from(asset_resource);
+            let asset_recallable =
+                !Self::role_locked_deny_all(&asset_rm, RECALLER_ROLE, RECALLER_UPDATER_ROLE);
+            let asset_burnable =
+                !Self::role_locked_deny_all(&asset_rm, BURNER_ROLE, BURNER_UPDATER_ROLE);
+
             self.asset_vaults.insert(listing_id, Vault::with_bucket(asset.into()));
 
             self.listings.insert(
@@ -393,6 +424,8 @@ mod nft_swap_blueprint {
                     state: ListingState::Listed,
                     filled_with: None,
                     proceeds_withdrawn: false,
+                    asset_recallable,
+                    asset_burnable,
                 },
             );
 
@@ -414,6 +447,8 @@ mod nft_swap_blueprint {
                 asset_id,
                 asks,
                 expires_at,
+                asset_recallable,
+                asset_burnable,
             });
 
             self.assert_conservation(listing_id);
@@ -431,7 +466,7 @@ mod nft_swap_blueprint {
         /// seller's account rules must never be able to abort a buyer's
         /// fill.
         pub fn fill(&mut self, listing_id: u64, alternative: u8, payment: Bucket) -> NonFungibleBucket {
-            let ask = {
+            let (ask, asset_id) = {
                 let listing = self.listings.get(&listing_id).expect("listing not found");
                 assert_eq!(listing.state, ListingState::Listed, "listing is not Listed");
                 let now = Clock::current_time_rounded_to_seconds();
@@ -441,8 +476,23 @@ mod nft_swap_blueprint {
                 );
                 let idx = alternative as usize;
                 assert!(idx < listing.asks.len(), "alternative index out of range");
-                listing.asks[idx].clone()
+                (listing.asks[idx].clone(), listing.asset_id.clone())
             };
+
+            // v2 (F-005): the listed NFT must still be in escrow BEFORE any
+            // payment is accepted. A recall by the asset's issuer empties the
+            // vault while the listing stays Listed; v1 then took the payment
+            // and returned an empty bucket.
+            {
+                let vault = self
+                    .asset_vaults
+                    .get(&listing_id)
+                    .expect("asset vault missing — list() pins it");
+                assert!(
+                    vault.as_non_fungible().contains_non_fungible(&asset_id),
+                    "the listed NFT is no longer in escrow (recalled?) — fill refused"
+                );
+            }
 
             match &ask {
                 Ask::Fungible { resource, amount } => {
@@ -472,12 +522,14 @@ mod nft_swap_blueprint {
                 listing.filled_with = Some(alternative);
             }
 
-            let asset_bucket = self
+            // v2: take exactly the listed NFT (its presence was asserted
+            // above), not "whatever the vault holds".
+            let asset: NonFungibleBucket = self
                 .asset_vaults
                 .get_mut(&listing_id)
                 .expect("asset vault missing — list() pins it")
-                .take_all();
-            let asset: NonFungibleBucket = asset_bucket.as_non_fungible();
+                .as_non_fungible()
+                .take_non_fungible(&asset_id);
 
             Runtime::emit_event(FilledEvent { listing_id, alternative, resource, amount });
 
@@ -513,13 +565,15 @@ mod nft_swap_blueprint {
             asset
         }
 
-        /// S2: pushes `expires_at` out by exactly 30 days from
-        /// `max(now, current expires_at)` — the `max` means an already-
-        /// expired-but-not-yet-cancelled Listed listing extends from NOW,
-        /// not from its stale deadline, so one call always buys a full 30
-        /// days of fillability rather than however much of the old window
-        /// happened to remain. `Listed` only: a Filled or Cancelled listing
-        /// has nothing left to extend. Carries its OWN royalty entry
+        /// S2, v2 (13 Oct I-1): sets `expires_at` to `now + 30 days`, the
+        /// same ceiling `list` enforces, so a listing never reaches further
+        /// ahead than a fresh listing could have been given. v1 added 30 days
+        /// to `max(now, expires_at)` with no cap, so repeated calls (even in
+        /// one transaction) reached N × 30 days out. Refuses when the new
+        /// expiry would not be later than the current one (nothing to
+        /// extend). An already-expired-but-not-yet-cancelled Listed listing
+        /// still extends from NOW. `Listed` only: a Filled or Cancelled
+        /// listing has nothing left to extend. Carries its OWN royalty entry
         /// (`extend_listing`), separate from `fill`'s — the ruling's whole
         /// point is that repeated free extensions would be a spam vector a
         /// shared dial with `fill` could not price independently.
@@ -530,14 +584,23 @@ mod nft_swap_blueprint {
             assert_eq!(listing.state, ListingState::Listed, "listing is not Listed");
 
             let now = Clock::current_time_rounded_to_seconds();
-            let base = now.seconds_since_unix_epoch.max(listing.expires_at.seconds_since_unix_epoch);
             let new_expiry = Instant::new(
-                base.checked_add(THIRTY_DAYS_SECS).expect("expiry extension overflow"),
+                now.seconds_since_unix_epoch
+                    .checked_add(MAX_LISTING_HORIZON_SECS)
+                    .expect("expiry extension overflow"),
+            );
+            assert!(
+                new_expiry.seconds_since_unix_epoch > listing.expires_at.seconds_since_unix_epoch,
+                "listing already expires at the 30-day ceiling — nothing to extend"
             );
             listing.expires_at = new_expiry;
             drop(listing);
 
             Runtime::emit_event(ExtendedEvent { listing_id, expires_at: new_expiry });
+            // v2: extending is a mutation like the others, so it re-checks
+            // conservation too. A listing whose NFT was recalled cannot be
+            // extended (it can still be cancelled).
+            self.assert_conservation(listing_id);
         }
 
         /// Pull the filled proceeds into the pinned seller account. Refuses
@@ -660,6 +723,18 @@ mod nft_swap_blueprint {
             }
         }
 
+        /// v2 (F-005): `true` iff BOTH the role and its updater read
+        /// `deny_all`, i.e. nobody holds the power now and nobody can be
+        /// given it later. Anything else (a rule, or `None`, which is how an
+        /// OWNER-delegated role reads) counts as "not locked" — the
+        /// conservative side for a disclosure flag. A resource created
+        /// without that role group gets `deny_all` for both by default
+        /// (radix-engine 1.3.1 resource role defaults), so it reads locked.
+        fn role_locked_deny_all(rm: &ResourceManager, role: &str, updater: &str) -> bool {
+            rm.get_role(role) == Some(AccessRule::DenyAll)
+                && rm.get_role(updater) == Some(AccessRule::DenyAll)
+        }
+
         /// Resolve a listing id from a receipt Proof, asserting its
         /// resource first. `skip_checking` is safe immediately after that
         /// assert, same pattern as `cancel_task`/`withdraw_poster` in the
@@ -716,6 +791,16 @@ mod nft_swap_blueprint {
                         Decimal::ONE,
                         "conservation: a Listed listing must hold exactly its asset"
                     );
+                    // v2 (F-005): exactly its asset BY ID, not merely one NFT.
+                    let holds_listed_id = self
+                        .asset_vaults
+                        .get(&listing_id)
+                        .map(|v| v.as_non_fungible().contains_non_fungible(&listing.asset_id))
+                        .unwrap_or(false);
+                    assert!(
+                        holds_listed_id,
+                        "conservation: a Listed listing must hold the NFT it listed"
+                    );
                     assert_eq!(
                         proceeds_amount,
                         Decimal::ZERO,
@@ -770,10 +855,10 @@ mod nft_swap_blueprint {
     }
 }
 
-/// S2's mandatory ceiling AND `extend_listing`'s per-call amount are both 30
-/// days, deliberately expressed as one constant: what `list` will accept
-/// outright is exactly what one `extend_listing` call adds, so a listing
-/// extended from any starting point never reaches further ahead than a
-/// fresh listing could have been given.
+/// S2's mandatory ceiling, 30 days. v2 (I-1): `extend_listing` resets the
+/// expiry to `now` plus this same ceiling, so a listing extended from any
+/// starting point never reaches further ahead than a fresh listing could have
+/// been given. v1's comment here claimed that property while the code added
+/// 30 days per call without a cap.
 const MAX_LISTING_HORIZON_SECS: i64 = THIRTY_DAYS_SECS;
 const THIRTY_DAYS_SECS: i64 = 30 * 24 * 60 * 60;
