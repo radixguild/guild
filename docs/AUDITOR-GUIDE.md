@@ -100,12 +100,14 @@ and the owner-only `withdraw_forfeited_bonds`.
      `set_review_window_secs` (submission); `set_dispute_auto_resolve_secs`,
      `set_dispute_auto_resolve_default` (dispute raised).
    - **Two parameters read live by `expire_claim`, so a change DOES reach claims already in
-     flight:** `set_expire_grace_secs` (no upper bound and no overflow check: a value of 2^63
-     or more turns negative, which lets claims be ended before their deadline) and
+     flight:** `set_expire_grace_secs` (no upper bound and an unchecked conversion: a value of 2^63
+     seconds, about 292 billion years, or more turns negative, which lets claims be ended
+     before their deadline) and
      `set_expire_bounty_pct` (0–1 of the forfeited bond to the caller; the rest to the owner's
      vault).
    - The two submit-deadline setters and `set_dispute_auto_resolve_secs` have the same
-     unchecked conversion; they reach only later claims and disputes.
+     unchecked conversion; they reach only later claims and disputes (a claim taken
+     afterwards could start already overdue, and its bond forfeited).
    - Every one of these calls emits a public on-chain event.
    - **The arbiter badge is a separate power, held in the same operator wallet.** On a disputed
      task, `resolve_dispute` decides how the reward, the insurance and the worker's claim bond

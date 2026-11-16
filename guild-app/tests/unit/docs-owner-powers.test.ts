@@ -134,6 +134,12 @@ describe("/docs: the owner-powers paragraph says what lib.rs shows", () => {
     expect(p).not.toMatch(/\b(immutable|unchangeable|cannot be changed|fixed forever)\b/i)
   })
 
+  it("carries both guild#84 disclosures: unbounded timing settings and the second-account arbiter route", () => {
+    const p = ownerParagraph()
+    expect(p).toMatch(/have no upper bound and an unchecked conversion to a signed number/)
+    expect(p).toMatch(/claim, submit, dispute and rule in one transaction/)
+  })
+
   it("keeps the arbiter's separate reach in view", () => {
     expect(ownerParagraph()).toMatch(/arbiter badge, held in the same wallet, is separate/)
   })

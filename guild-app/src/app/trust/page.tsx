@@ -109,7 +109,7 @@ const KNOWN_ISSUES = [
   },
   {
     title: "Some owner settings have no upper bound",
-    body: "Found 2026-10-13; the contract fix is not shipped. Four timing settings are stored as whole seconds and turned into a signed number when used, with no upper bound and no overflow check: the expiry grace, both submit deadlines, and the dispute-resolve window. A value of 2^63 seconds or more turns negative. The expiry grace is read at the moment a claim is expired, so on that setting a bad value reaches claims already in flight: they could be ended before their deadline, and their claim bonds forfeited (part to whoever ends the claim, the rest to a vault only the operator can withdraw). The other three reach only later steps: a claim taken afterwards could start already overdue, and a dispute raised afterwards could settle by its default at once. Every change emits a public on-chain event, so a bad value is visible. A fix needs a new contract package and a migration; no date is set.",
+    body: "Found 2026-10-13; the contract fix is not shipped. Four timing settings are stored as whole seconds and turned into a signed number when used, with no upper bound and an unchecked conversion: the expiry grace, both submit deadlines, and the dispute-resolve window. A value of 2^63 seconds (about 292 billion years) or more turns negative. The expiry grace is read at the moment a claim is expired, so on that setting a bad value reaches claims already in flight: they could be ended before their deadline, and their claim bonds forfeited (part to whoever ends the claim, the rest to a vault only the operator can withdraw). The other three reach only later steps: a claim taken afterwards could start already overdue, and its bond forfeited; a dispute raised afterwards could settle by its default at once. Every change emits a public on-chain event, so a bad value is visible. A fix needs a new contract package and a migration; no date is set.",
   },
   {
     title: "The agent SDK is not on npm",
@@ -325,8 +325,8 @@ function TrustContent() {
             <div>
               <dt className="font-semibold text-sm">The operator cannot</dt>
               <dd className="text-muted-foreground">
-                Withdraw a task&rsquo;s reward or a live claim bond directly (see the expiry-grace
-                item above), reverse a settlement, redirect a payment, pause the contract (freezing stops only new tasks), move a review or
+                Withdraw a task&rsquo;s reward or a live claim bond directly (see &ldquo;Some owner settings have no
+                upper bound&rdquo; above), reverse a settlement, redirect a payment, pause the contract (freezing stops only new tasks), move a review or
                 dispute deadline once it has started, or stop a particular person from using the
                 contract directly — suspending an account here does not reach the chain.
               </dd>
