@@ -108,12 +108,12 @@ This section is the one place the project's limits are stated in full. The READM
   date and no arrangement with the DAO behind it.
 - **Some owner settings have no upper bound (found 2026-10-13; contract fix not shipped).** Four
   timing settings are stored as whole seconds and turned into a signed number when used, with no
-  upper bound and no overflow check: the expiry grace, both submit deadlines, and the
-  dispute-resolve window. A value of 2^63 seconds or more turns negative. The expiry grace is read
+  upper bound and an unchecked conversion: the expiry grace, both submit deadlines, and the
+  dispute-resolve window. A value of 2^63 seconds (about 292 billion years) or more turns negative. The expiry grace is read
   at the moment a claim is expired, so on that setting a bad value reaches claims already in
   flight: they could be ended before their deadline, and their claim bonds forfeited (part to
   whoever ends the claim, the rest to a vault only the operator can withdraw). The other three
-  reach only later steps: a claim taken afterwards could start already overdue, and a dispute
+  reach only later steps: a claim taken afterwards could start already overdue, and its bond forfeited; a dispute
   raised afterwards could settle by its default at once. Every change emits a public on-chain
   event, so a bad value is visible. A fix needs a new contract package and a migration; no date is
   set.
