@@ -34,7 +34,7 @@ const REVIEW_WINDOW_SECS: u64 = 259_200;
 const WORK_BRIEF: Hash = Hash([0xB1; 32]);
 /// v2 (F-001): the arbiter's minimum wait after `raise_dispute`. The fixture
 /// uses the source's PLACEHOLDER constant on purpose, so the suite follows
-/// whatever value ruling R2 writes there.
+/// whatever value is written there.
 const RESOLVE_WAIT_SECS: u64 = DISPUTE_MIN_RESOLVE_WAIT_SECS_PLACEHOLDER;
 
 struct Fixture {

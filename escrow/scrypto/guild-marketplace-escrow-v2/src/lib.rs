@@ -34,10 +34,11 @@ pub const MAX_EXPIRE_GRACE_SECS: u64 = 86_400;
 /// seconds: 1 hour to 7 days. Write-once at `instantiate` (no setter).
 pub const MIN_DISPUTE_RESOLVE_WAIT_SECS: u64 = 3_600;
 pub const MAX_DISPUTE_RESOLVE_WAIT_SECS: u64 = 604_800;
-/// 🔴 PLACEHOLDER, NOT A RULING. The value for `dispute_min_resolve_wait_secs`
-/// is the owner's call (completion plan ruling R2, open on 15 Nov 2026). The
-/// tests and any example manifest use this constant; a deploy must replace
-/// it with the ruled value. 24 hours is only a midpoint that fits the bounds.
+/// 🔴 PLACEHOLDER, NOT A CHOSEN VALUE. `dispute_min_resolve_wait_secs` is an
+/// `instantiate` argument, so its value is chosen at deploy; none has been
+/// chosen. The tests and any example manifest use this constant; a deploy
+/// manifest must pass the chosen value. 24 hours is only a midpoint that fits
+/// the bounds.
 pub const DISPUTE_MIN_RESOLVE_WAIT_SECS_PLACEHOLDER: u64 = 86_400;
 fn check_submit_deadline_secs(name: &str, secs: u64) {
     assert!(
@@ -825,7 +826,7 @@ mod guild_marketplace_escrow {
             expire_bounty_pct: Decimal,
             review_window_secs: u64,
             // v2 (F-001). Appended LAST so the first fifteen positional
-            // arguments keep v1's order. Value = owner ruling R2; see
+            // arguments keep v1's order. Value is chosen at deploy; see
             // DISPUTE_MIN_RESOLVE_WAIT_SECS_PLACEHOLDER.
             dispute_min_resolve_wait_secs: u64,
         ) -> (Global<Escrow>, Bucket, Bucket) {
