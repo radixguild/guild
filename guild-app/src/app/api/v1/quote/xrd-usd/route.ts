@@ -63,6 +63,10 @@
  * moved the price in fifteen minutes, a CEX-derived rate is the better input
  * anyway.
  *
+ * 2026-11-19: the frozen ALERT (not the detector) now holds 15 min before it
+ * pages — Astrolescent's ~16-min update cadence made it raise and clear every
+ * cycle; see FROZEN_ALERT_DEBOUNCE_MS.
+ *
  * Design: docs/design/rfp-offers-2026-07-06.md Chunk A
  */
 
@@ -80,6 +84,15 @@ const ALERT_FROZEN = "quote-xrd-usd-frozen";
 const ALERT_STALE_SERVE = "quote-xrd-usd-stale";
 const ALERT_FAIL_CLOSED = "quote-xrd-usd-failclosed";
 
+/**
+ * How long the frozen-primary ALERT holds (alert-core `debounceMs`) before it
+ * pages. Astrolescent updates roughly every 16 minutes, just past the
+ * 15-minute detector, so without this the alert raised and cleared once per
+ * update. Alert only: serving still switches to CoinGecko at
+ * PRIMARY_FROZEN_AFTER_MS, so a 🔴 now means 30+ minutes unchanged.
+ */
+const FROZEN_ALERT_DEBOUNCE_MS = 15 * 60_000;
+
 /** Fire-and-forget: never blocks or throws into the request path. */
 function observe(key: string, condition: boolean, title: string, detail?: string): void {
   void (async () => {
@@ -95,6 +108,7 @@ function observe(key: string, condition: boolean, title: string, detail?: string
       title,
       detail,
       inhibitedBy: key === ALERT_FROZEN ? NETWORK_HALT_ALERT_KEY : undefined,
+      debounceMs: key === ALERT_FROZEN ? FROZEN_ALERT_DEBOUNCE_MS : undefined,
     });
   })().catch(() => {});
 }
