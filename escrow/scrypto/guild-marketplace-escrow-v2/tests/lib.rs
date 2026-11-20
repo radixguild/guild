@@ -5003,8 +5003,9 @@ fn test_u2a_same_tx_claim_submit_raise_resolve_by_the_arbiter_is_refused() {
 }
 
 /// U-2(a), across transactions: the ruling is refused right after the raise
-/// and half-way through the wait, and accepted once the wait has passed.
-/// Proves the wait is a gate on the ruling, not a ban on it.
+/// and half-way through the wait, and accepted at exactly the wait (the check
+/// is `>=`; a `>` would fail the last call). Proves the wait is a gate on the
+/// ruling, not a ban on it.
 #[test]
 fn test_u2a_ruling_is_refused_until_the_minimum_wait_has_passed() {
     let mut f = setup();
@@ -5023,80 +5024,51 @@ fn test_u2a_ruling_is_refused_until_the_minimum_wait_has_passed() {
         "the minimum wait since raise_dispute has not passed",
     );
 
-    advance_time_by_secs(&mut f.ledger, (RESOLVE_WAIT_SECS as i64) - half + 1);
+    // Exactly RESOLVE_WAIT_SECS after the raise.
+    advance_time_by_secs(&mut f.ledger, (RESOLVE_WAIT_SECS as i64) - half);
     resolve_dispute_now(&mut f, 1, DisputeRuling::PayWorker).expect_commit_success();
     assert_eq!(fetch_task(&mut f, 1).state, TaskState::Released);
 }
 
-/// F-001 claim-badge check, ruling side. The arbiter's OWN account holds the
-/// member badge the task was claimed with, while the claim names a different
-/// account as worker (so the v1 `assigned_account != worker_account` guard
-/// passes). v2 refuses the ruling. The dispute is not bricked: the
-/// permissionless auto path still settles it.
+/// PR review L-1: `resolve_dispute` does NOT check whether the arbiter's
+/// account holds the task's claim badge. A claimant who expects to lose
+/// deposits the badge the task was claimed with into the arbiter's account;
+/// once the wait has passed, the ruling still commits.
 #[test]
-fn test_u2a_arbiter_account_holding_the_claim_badge_cannot_rule() {
+fn test_u2a_ruling_succeeds_when_the_claimant_deposits_their_badge_with_the_arbiter() {
     let mut f = setup();
     let token = f.reward_token;
     add_token_to_whitelist(&mut f, token, dec!("10"));
-    create_task(&mut f, dec!("100"), dec!("10"), dec!("0.1")).expect_commit_success();
+    // Claimed from the worker account with member badge #1.
+    full_submit(&mut f, dec!("100"), dec!("10"), dec!("0.1"));
+    raise_dispute_as_poster(&mut f, 1, None).expect_commit_success();
 
-    // Member badge #2 moves to the arbiter's account.
+    // The claimant moves member badge #1 into the arbiter's account.
+    let arbiter_badges_before = f.ledger.get_component_balance(f.arbiter_account, f.worker_badge);
     let move_badge = ManifestBuilder::new()
         .lock_fee_from_faucet()
         .withdraw_non_fungibles_from_account(
             f.worker_account,
             f.worker_badge,
-            indexset![NonFungibleLocalId::integer(2)],
+            indexset![NonFungibleLocalId::integer(1)],
         )
         .try_deposit_entire_worktop_or_abort(f.arbiter_account, None)
         .build();
     f.ledger
         .execute_manifest(move_badge, vec![NonFungibleGlobalId::from_public_key(&f.worker_pk)])
         .expect_commit_success();
-
-    // Claimed WITH that badge, naming the worker account as payee.
-    let bond = f.claim_bond;
-    let claim = ManifestBuilder::new()
-        .lock_fee_from_faucet()
-        .create_proof_from_account_of_non_fungibles(
-            f.arbiter_account,
-            f.worker_badge,
-            vec![NonFungibleLocalId::integer(2)],
-        )
-        .pop_from_auth_zone("claim_proof")
-        .withdraw_from_account(f.worker_account, f.reward_token, bond)
-        .take_from_worktop(f.reward_token, bond, "bond")
-        .call_method_with_name_lookup(f.escrow, "claim_task", |lookup| {
-            (1u64, f.worker_account, lookup.proof("claim_proof"), lookup.bucket("bond"))
-        })
-        .call_method(
-            f.worker_account,
-            "deposit_batch",
-            manifest_args!(ManifestExpression::EntireWorktop),
-        )
-        .build();
-    f.ledger
-        .execute_manifest(
-            claim,
-            vec![
-                NonFungibleGlobalId::from_public_key(&f.worker_pk),
-                NonFungibleGlobalId::from_public_key(&f.arbiter_pk),
-            ],
-        )
-        .expect_commit_success();
-    submit_task(&mut f, 1, 1).expect_commit_success();
-    raise_dispute_as_poster(&mut f, 1, None).expect_commit_success();
-
-    resolve_dispute_helper(&mut f, 1, DisputeRuling::PayWorker).expect_commit_failure_containing_error(
-        "self-dealing: the arbiter's account holds this task's claim badge",
+    assert_eq!(
+        f.ledger.get_component_balance(f.arbiter_account, f.worker_badge) - arbiter_badges_before,
+        dec!("1"),
+        "the arbiter's account now holds the task's claim badge"
     );
 
-    advance_time_by_secs(&mut f.ledger, 1_209_601);
-    auto_resolve_dispute(&mut f, 1).expect_commit_success();
+    resolve_dispute_helper(&mut f, 1, DisputeRuling::RefundPoster).expect_commit_success();
+    assert_eq!(fetch_task(&mut f, 1).state, TaskState::Refunded);
 }
 
-/// F-001 claim-badge check, claim side: an account that holds an arbiter
-/// badge cannot be named as a task's worker.
+/// F-001 claim-side check: an account that holds an arbiter badge cannot be
+/// named as a task's worker.
 #[test]
 fn test_u2a_account_holding_an_arbiter_badge_cannot_claim() {
     let mut f = setup();

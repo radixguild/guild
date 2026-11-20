@@ -1666,14 +1666,13 @@ mod guild_marketplace_escrow {
             );
 
             // v2 (F-001, claimant side): an account that holds an arbiter
-            // badge may not be named as a task's worker. This is the
-            // claim-time half of the claim-badge check; `resolve_dispute`
-            // carries the other half. It stops the arbiter's OWN account (or
-            // any account holding an arbiter badge) from claiming. It cannot
-            // stop an arbiter from claiming through a second account that
-            // holds no badge: no ledger can tell that two accounts share an
-            // owner. The minimum wait in `resolve_dispute` is what makes that
-            // route slow and visible instead of one silent transaction.
+            // badge may not be named as a task's worker. It stops the
+            // arbiter's OWN account (or any account holding an arbiter badge)
+            // from claiming. It cannot stop an arbiter from claiming through a
+            // second account that holds no badge: no ledger can tell that two
+            // accounts share an owner. The minimum wait in `resolve_dispute`
+            // makes that route slower and visible on the ledger; it does not
+            // stop it.
             let worker_global: Global<Account> = worker.into();
             assert!(
                 worker_global.balance(self.arbiter_badge_resource) == Decimal::ZERO,
@@ -2447,9 +2446,10 @@ mod guild_marketplace_escrow {
             // or account would break that recovery path — the one path an arbiter
             // badge, being non-transferable, actually needs. What limits
             // self-dealing is not identity-of-unit but the checks below: the
-            // minimum wait since `raise_dispute` (v2, F-001), the
-            // `arbiter_account != worker_account` assertion (L6(c)) and the
-            // claim-badge check (v2, F-001). Do not "fix" this into a Pattern 2 pin.
+            // minimum wait since `raise_dispute` (v2, F-001) and the
+            // `arbiter_account != worker_account` assertion (L6(c)), plus
+            // `claim_task` refusing a worker account that holds an arbiter
+            // badge (v2, F-001). Do not "fix" this into a Pattern 2 pin.
             assert_eq!(
                 arbiter_badge.resource_address(),
                 self.arbiter_badge_resource,
@@ -2481,33 +2481,17 @@ mod guild_marketplace_escrow {
                 );
             }
 
-            // Read what the guards need under a SHORT read borrow. The
-            // claim-badge check below calls the arbiter's account, and no
-            // other component is called while this method holds the task
-            // entry for writing (the `get_mut` further down).
-            let (worker_account, claimer_resource, claimer_badge_id) = {
-                let task = self.tasks.get(&task_id).expect("task not found");
-                assert_eq!(
-                    task.state,
-                    TaskState::Disputed,
-                    "task must be Disputed to resolve"
-                );
-                // Validate worker_account exists (Disputed tasks must have one)
-                let worker_account = task
-                    .worker_account
-                    .expect("Disputed task must have worker_account");
-                let claimer_resource = if task.claimer_is_agent {
-                    self.agent_badge_resource
-                        .expect("claimer_is_agent but no agent_badge_resource configured")
-                } else {
-                    self.worker_badge_resource
-                };
-                let claimer_badge_id = task
-                    .claimer_badge_id
-                    .clone()
-                    .expect("Disputed task must have claimer_badge_id");
-                (worker_account, claimer_resource, claimer_badge_id)
-            };
+            let mut task = self.tasks.get_mut(&task_id).expect("task not found");
+            assert_eq!(
+                task.state,
+                TaskState::Disputed,
+                "task must be Disputed to resolve"
+            );
+
+            // Validate worker_account exists (Disputed tasks must have one)
+            let worker_account = task
+                .worker_account
+                .expect("Disputed task must have worker_account");
 
             // ── The self-dealing guard, in its NARROW form (L6 ruled (c),
             // 2026-08-30) ─────────────────────────────────────────────────────
@@ -2523,9 +2507,10 @@ mod guild_marketplace_escrow {
             // controls a SECOND account names it as the worker, and the payout
             // lands in an account they DO control (13 Oct F-001). This
             // comparison only catches an arbiter who claims from the very
-            // account their badge is assigned to. v2 adds the claim-badge
-            // checks (below and in `claim_task`) and the minimum wait (below);
-            // the second-account route stays open on-chain, because a ledger
+            // account their badge is assigned to. v2 adds a claim-side check
+            // (`claim_task` refuses a worker account that holds an arbiter
+            // badge) and the minimum wait (below); neither stops the
+            // second-account route. It stays open on-chain, because a ledger
             // cannot tell that two accounts share an owner. It is a trust
             // placed in the arbiter, and the honesty copy must say so.
             //
@@ -2552,27 +2537,14 @@ mod guild_marketplace_escrow {
                 "self-dealing: the arbiter badge is assigned to this task's worker account"
             );
 
-            // v2 (F-001): the claim-badge check, ruling side. The account the
-            // arbiter badge is assigned to may not hold the badge this task
-            // was CLAIMED with (`claimer_badge_id`, the credential that
-            // withdraws the worker's share). Like the comparison above, it
-            // catches the arbiter acting as claimant through their own
-            // account, whatever account they named as worker; it cannot see a
-            // claim badge held in a second account.
-            assert!(
-                arbiter_account
-                    .as_node_id()
-                    .entity_type()
-                    .is_some_and(|t| t.is_global_account()),
-                "arbiter badge's assigned_account must be a global account"
-            );
-            let arbiter_global: Global<Account> = arbiter_account.into();
-            assert!(
-                !arbiter_global.has_non_fungible(claimer_resource, claimer_badge_id),
-                "self-dealing: the arbiter's account holds this task's claim badge"
-            );
-
-            let mut task = self.tasks.get_mut(&task_id).expect("task not found");
+            // ⚠️ DELIBERATELY NOT CHECKED (v2, PR review L-1): whether the
+            // arbiter's account holds this task's claim badge. That state is
+            // the claimant's to create: a claimant expecting to lose could
+            // deposit their badge into the arbiter's account and make every
+            // ruling revert, while a self-dealing arbiter avoids the check
+            // with a fresh member badge in a second account. The test
+            // `test_u2a_ruling_succeeds_when_the_claimant_deposits_their_badge_with_the_arbiter`
+            // pins its absence.
 
             // ── v2 (F-001): a minimum wait between raise and ruling ──────────
             //

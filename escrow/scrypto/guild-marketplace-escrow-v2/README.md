@@ -18,7 +18,7 @@ change.
 
 | Finding | v1 behaviour | v2 change | Test |
 |---|---|---|---|
-| F-001 | `resolve_dispute` checked only `state == Disputed`. One transaction signed by the arbiter could claim (naming a second account as worker), submit, raise and rule. | A minimum wait between `raise_dispute` and `resolve_dispute` (`dispute_min_resolve_wait_secs`, a new last `instantiate` argument, 1 hour to 7 days, shorter than the auto-resolve window). `DisputeRaisedEvent.resolvable_from` shows the earliest ruling time. Claim-badge checks: an account holding an arbiter badge cannot be named as a worker, and the arbiter's assigned account may not hold the badge the task was claimed with. | `test_u2a_*` (4 tests) |
+| F-001 | `resolve_dispute` checked only `state == Disputed`. One transaction signed by the arbiter could claim (naming a second account as worker), submit, raise and rule. | A minimum wait between `raise_dispute` and `resolve_dispute` (`dispute_min_resolve_wait_secs`, a new last `instantiate` argument, 1 hour to 7 days, shorter than the auto-resolve window). `DisputeRaisedEvent.resolvable_from` shows the earliest ruling time. Claim-side check: `claim_task` refuses a worker account that holds an arbiter badge. Against an arbiter claiming through a second account, the wait slows the route and makes it visible on the ledger; it does not stop it (see below). There is no ruling-side badge check: the claimant could create that state and block every ruling. | `test_u2a_*` (4 tests) |
 | F-002 | `set_dispute_auto_resolve_secs` checked only `> 0`; the value was cast `as i64`, so ≥ 2^63 turned negative. | Bounded to 1–90 days in `instantiate` and the setter (one shared validator), and kept longer than the arbiter's wait. All four `u64 → i64` conversions use `i64::try_from`. | `test_u2b_*`, `test_v2_no_unchecked_cast_to_i64_in_source` |
 | F-003 | `set_expire_grace_secs` had no check, and `expire_claim` read the grace live, so one call could make every claim in flight expirable. | Bounded to 0–24 h in both places. The grace is pinned onto the task at `claim_task` (`TaskInfo.claim_expire_grace_secs`, also in `TaskClaimedEvent`); `expire_claim` reads the pin. | `test_f003_*`, `test_u2b_*` |
 | N-1 | Both submit-deadline setters checked only `> 0`, with the same cast. | Bounded to 1 hour – 90 days in both places. | `test_u2b_*` |
@@ -33,11 +33,11 @@ Comments the v1 source got wrong are corrected where they stand, each marked
 ## What v2 does not close
 
 - **An arbiter with a second account.** The ledger cannot tell that two
-  accounts share an owner. An arbiter who claims through an account that
-  holds no arbiter badge and no claim badge of theirs can still rule for it.
-  v2 makes that route take at least the minimum wait and puts the dispute on
-  the ledger for that long before any ruling. It remains a trust placed in
-  the arbiter.
+  accounts share an owner. An arbiter who claims through a second account
+  that holds no arbiter badge (any member badge will do) can still rule for
+  it. v2 makes that route take at least the minimum wait and puts the
+  dispute on the ledger for that long before any ruling. It remains a trust
+  placed in the arbiter.
 - **An arbiter who is also the poster** can rule `RefundPoster`. Settlement
   still credits only the accounts pinned at create and claim.
 - **NFT payments in a swap.** If a buyer pays with a recallable NFT, its
