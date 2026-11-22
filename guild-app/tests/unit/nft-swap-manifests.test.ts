@@ -42,7 +42,7 @@ describe("the builders reproduce the proving run", () => {
   it("list 1 — txid_rdx1hdkp85sp…gjq6", () => {
     const m = listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#1#", [
       { kind: "fungible", resource: XRD, amount: "1" },
-    ], 1790114665)
+    ], 1790114665, "locked-deny")
     expect(norm(m)).toBe(norm(proven("proving-run-list-1.rtm")))
   })
 
@@ -74,7 +74,7 @@ describe("shapes the proving run did not exercise", () => {
     const m = listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#2#", [
       { kind: "fungible", resource: XRD, amount: "5000.25" },
       NFT_ASK,
-    ], 1790114665)
+    ], 1790114665, "locked-deny")
     expect(m).toContain(
       `Array<Enum>(Enum<0u8>(Address("${XRD}"), Decimal("5000.25")), Enum<1u8>(Address("${RECEIPT}"), NonFungibleLocalId("<rare_7>")))`,
     )
@@ -198,7 +198,7 @@ describe("every builder compiles in the real Radix Engine Toolkit", () => {
     ["two alternatives", [XRD_ASK, NFT_ASK]],
     ["three mixed alternatives", [NFT_ASK, XRD_ASK, { kind: "fungible" as const, resource: THROWAWAY_NFT, amount: "1" }]],
   ])("list with %s: list(Address, Bucket, Array<Enum>, i64), one Enum per alternative in order", async (_n, asks) => {
-    const ins = await compile(listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#2#", asks, 1790114665))
+    const ins = await compile(listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#2#", asks, 1790114665, "locked-deny"))
     expect(outline(ins)).toEqual([
       "CallMethod withdraw_non_fungibles",
       "TakeNonFungiblesFromWorktop",
@@ -225,20 +225,20 @@ describe("the builders refuse what the chain would refuse, or worse, accept", ()
   const ok = { kind: "fungible" as const, resource: XRD, amount: "1" }
 
   it("no alternatives", () => {
-    expect(() => listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#1#", [], 1790114665)).toThrow(/at least one/)
+    expect(() => listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#1#", [], 1790114665, "locked-deny")).toThrow(/at least one/)
   })
 
   it.each(["0", "0.000", "-1", "1e3", "1.0000000000000000001", "", "1,000"])("amount %j", (amount) => {
     expect(() =>
-      listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#1#", [{ ...ok, amount }], 1790114665),
+      listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#1#", [{ ...ok, amount }], 1790114665, "locked-deny"),
     ).toThrow(/Invalid asks\[0\]\.amount/)
     expect(() => fillSwapManifest(SWAP, POSTER_2, 1, 0, { ...ok, amount }, THROWAWAY_NFT, "#1#")).toThrow(/Invalid ask\.amount/)
   })
 
   it("an injected address or local id never reaches the manifest text", () => {
     const evil = `${XRD}")\nCALL_METHOD Address("${POSTER_2}") "withdraw"`
-    expect(() => listSwapManifest(SWAP, GUILD_ADMIN_2, evil, "#1#", [ok], 1790114665)).toThrow(/Invalid resource_rdx/)
-    expect(() => listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, '#1#")', [ok], 1790114665)).toThrow(/assetId/)
+    expect(() => listSwapManifest(SWAP, GUILD_ADMIN_2, evil, "#1#", [ok], 1790114665, "locked-deny")).toThrow(/Invalid resource_rdx/)
+    expect(() => listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, '#1#")', [ok], 1790114665, "locked-deny")).toThrow(/assetId/)
     expect(() =>
       fillSwapManifest(SWAP, POSTER_2, 1, 0, { kind: "nonFungible", resource: RECEIPT, id: "<a>\n;" }, THROWAWAY_NFT, "#1#"),
     ).toThrow(/ask\.id/)
@@ -258,7 +258,20 @@ describe("the builders refuse what the chain would refuse, or worse, accept", ()
     expect(() => fillSwapManifest(SWAP, POSTER_2, 1, 256, ok, THROWAWAY_NFT, "#1#")).toThrow(/alternative/)
     expect(() => fillSwapManifest(SWAP, POSTER_2, 1, -1, ok, THROWAWAY_NFT, "#1#")).toThrow(/alternative/)
     expect(() => fillSwapManifest(SWAP, POSTER_2, 1, 0.5, ok, THROWAWAY_NFT, "#1#")).toThrow(/alternative/)
-    expect(() => listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#1#", [ok], 0)).toThrow(/expiresAt/)
+    expect(() => listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#1#", [ok], 0, "locked-deny")).toThrow(/expiresAt/)
     expect(() => cancelSwapManifest(SWAP, GUILD_ADMIN_2, RECEIPT, 1.5)).toThrow(/listingId/)
+  })
+})
+
+describe("listSwapManifest — recall guard", () => {
+  const ok = { kind: "fungible" as const, resource: XRD, amount: "1" }
+  it.each(["recallable", "unknown", undefined as unknown as "unknown"])(
+    "refuses to build for recall state %s",
+    (state) => {
+      expect(() => listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#1#", [ok], 1790114665, state)).toThrow(/Cannot list/)
+    },
+  )
+  it("builds for locked-deny", () => {
+    expect(listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#1#", [ok], 1790114665, "locked-deny")).toContain('"list"')
   })
 })

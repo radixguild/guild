@@ -42,6 +42,7 @@ import {
   fillSwapManifest,
   listSwapManifest,
   withdrawSwapProceedsManifest,
+  type RecallState,
   type SwapAsk,
 } from './manifests.js';
 import { describeCommitFailure, FEE_LOCK_XRD, signAndSubmitManifest, type TransactionStatus } from './tx.js';
@@ -304,6 +305,38 @@ export async function readResourceKind(config: GuildClientConfig, resource: stri
   return null;
 }
 
+/** A Main-module role's explicit rule type; 'none' = the entry is absent. */
+function roleRuleType(entries: any[], name: string): string {
+  const role = entries.find((r: any) => r?.role_key?.module === 'Main' && r?.role_key?.name === name);
+  if (!role) return 'none';
+  // 'Owner' = the role follows the resource's owner rule: not DenyAll.
+  if (role?.assignment?.resolution === 'Owner') return 'Owner';
+  const t = role?.assignment?.resolution === 'Explicit' ? role?.assignment?.explicit_rule?.type : null;
+  return typeof t === 'string' ? t : 'other';
+}
+
+/**
+ * Can the issuer recall this resource's NFTs? Same rule as guild-app's
+ * recallRule (src/lib/nft-swap-gateway.ts): `recaller` and `recaller_updater`
+ * both explicit DenyAll = 'locked-deny'; any other readable rule on either =
+ * 'recallable'; an absent or unreadable entry = 'unknown' (treated as not safe).
+ */
+export function recallRule(details: any): RecallState {
+  const entries = details?.role_assignments?.entries;
+  if (!Array.isArray(entries)) return 'unknown';
+  const recaller = roleRuleType(entries, 'recaller');
+  const updater = roleRuleType(entries, 'recaller_updater');
+  if (recaller === 'none' || updater === 'none') return 'unknown';
+  if (recaller === 'DenyAll' && updater === 'DenyAll') return 'locked-deny';
+  return recaller === 'other' || updater === 'other' ? 'unknown' : 'recallable';
+}
+
+/** The resource's RecallState from its role assignments; 'unknown' if unreadable. */
+export async function readResourceRecall(config: GuildClientConfig, resource: string): Promise<RecallState> {
+  const json = await post(config, '/state/entity/details', { addresses: [resource] });
+  return recallRule(json?.items?.[0]?.details);
+}
+
 /** The listing id a committed `list` created, from its ListedEvent (emitter-pinned). */
 export async function readListedListingId(config: GuildClientConfig, intentHash: string): Promise<number | null> {
   const json = await post(config, '/transaction/committed-details', { intent_hash: intentHash, opt_ins: { receipt_events: true } });
@@ -326,6 +359,7 @@ export interface SwapDeps {
   readSwapListing: typeof readSwapListing;
   readNftHolder: typeof readNftHolder;
   readResourceKind: typeof readResourceKind;
+  readResourceRecall: typeof readResourceRecall;
   readListedListingId: typeof readListedListingId;
   signAndSubmitManifest: typeof signAndSubmitManifest;
   describeCommitFailure: typeof describeCommitFailure;
@@ -336,6 +370,7 @@ const REAL_DEPS: SwapDeps = {
   readSwapListing,
   readNftHolder,
   readResourceKind,
+  readResourceRecall,
   readListedListingId,
   signAndSubmitManifest,
   describeCommitFailure,
@@ -474,6 +509,12 @@ export async function runListSwap(opts: ListSwapOptions): Promise<SwapLegResult>
     }
   }
 
+  // Only an NFT whose issuer cannot recall it may be listed here; a read that
+  // cannot say fails closed.
+  const recall = await deps.readResourceRecall(config, nft.resource);
+  if (recall === 'recallable') return refuse(`${nft.resource}: this collection's issuer can recall its NFTs, so it cannot be listed here`);
+  if (recall !== 'locked-deny') return refuse(`${nft.resource}: could not confirm whether this collection's issuer can recall its NFTs, so it cannot be listed here`);
+
   const account = identity?.address ?? DRYRUN_PLACEHOLDER_ACCOUNT;
   if (identity) {
     const holder = await deps.readNftHolder(config, nft.resource, nft.id);
@@ -484,7 +525,7 @@ export async function runListSwap(opts: ListSwapOptions): Promise<SwapLegResult>
   }
 
   const expiresAt = expiryForDays(state.ledgerNow, days);
-  const manifest = listSwapManifest(config.nftSwapComponent, account, nft.resource, nft.id, asks, expiresAt);
+  const manifest = listSwapManifest(config.nftSwapComponent, account, nft.resource, nft.id, asks, expiresAt, recall);
   log(`list ${nft.id} of ${nft.resource} for ${asks.map(askText).join(' OR ')}`);
   log(`expires ${new Date(expiresAt * 1000).toISOString()} (ledger clock + ${days} day${days === 1 ? '' : 's'}); proceeds will be paid to ${account}`);
   if (!live) {
@@ -562,6 +603,11 @@ export async function runFillSwap(opts: FillSwapOptions): Promise<SwapLegResult>
   const { state, listing } = read;
   const status = swapStatus(listing, state.ledgerNow);
   if (status !== 'open') return refuse(`listing ${listingId} is ${status} at the ledger clock — only an open listing can be filled`, { listingId });
+
+  // No fill of an NFT whose issuer can recall it; a read that cannot say fails closed.
+  const recall = await deps.readResourceRecall(config, listing.assetResource);
+  if (recall === 'recallable') return refuse(`${listing.assetResource}: this collection's issuer can recall its NFTs, so a fill is not offered for it`, { listingId });
+  if (recall !== 'locked-deny') return refuse(`${listing.assetResource}: could not confirm whether this collection's issuer can recall its NFTs, so a fill is not offered`, { listingId });
 
   let alt = opts.alternative;
   if (alt === undefined) {
