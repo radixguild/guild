@@ -968,6 +968,10 @@ CALL_METHOD
 
 /** One alternative a seller accepts (blueprint `Ask`). Amounts are exact
  *  decimal STRINGS. */
+/** Whether a resource's issuer can recall its NFTs (swap.ts readResourceRecall;
+ *  the same rule guild-app applies). Only "locked-deny" may be listed. */
+export type RecallState = 'locked-deny' | 'recallable' | 'unknown';
+
 export type SwapAsk =
   | { kind: 'fungible'; resource: string; amount: string }
   | { kind: 'nonFungible'; resource: string; id: string };
@@ -1015,7 +1019,8 @@ function depositAllTo(account: string): string {
 /** List one NFT. `seller` is the account the NFT leaves and the only account
  *  `withdraw_proceeds` will ever pay; the listing receipt comes back to it.
  *  `expiresAt` is unix seconds, at most 30 days after the LEDGER clock when
- *  the transaction executes (swap.ts expiryForDays). */
+ *  the transaction executes (swap.ts expiryForDays). `recall` is the asset
+ *  resource's RecallState; the builder refuses anything but "locked-deny". */
 export function listSwapManifest(
   swapComponent: string,
   seller: string,
@@ -1023,7 +1028,11 @@ export function listSwapManifest(
   assetId: string,
   asks: SwapAsk[],
   expiresAt: number,
+  recall: RecallState,
 ): string {
+  if (recall !== 'locked-deny') {
+    throw new Error("Cannot list: this collection's issuer can recall its NFTs, or that could not be confirmed");
+  }
   const c = validateAddress(swapComponent, 'component_rdx');
   const a = validateAddress(seller, 'account_rdx');
   const r = validateAddress(assetResource, 'resource_rdx');

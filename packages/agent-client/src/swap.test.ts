@@ -24,6 +24,8 @@ import {
   readListedListingId,
   readNftHolder,
   readResourceKind,
+  readResourceRecall,
+  recallRule,
   readSwapListing,
   readSwapState,
   swapStatus,
@@ -80,6 +82,7 @@ function deps(over: Partial<SwapDeps> & { read?: ListingRead; holder?: string | 
     readSwapListing: async () => over.read ?? { kind: 'ok', state: STATE, listing: listing() },
     readNftHolder: async () => ('holder' in over ? over.holder : SELLER),
     readResourceKind: async (_c, r) => (r === MAINNET_XRD ? { kind: 'fungible', divisibility: 18 } : { kind: 'nonFungible' }),
+    readResourceRecall: async () => 'locked-deny',
     readListedListingId: async () => 3,
     signAndSubmitManifest: async (m) => {
       signed.push(m);
@@ -445,6 +448,40 @@ describe('fill-swap', () => {
   });
 });
 
+describe('recallRule — same rule as guild-app', () => {
+  const role = (name: string, rule: string, resolution = 'Explicit') => ({
+    role_key: { module: 'Main', name },
+    assignment: resolution === 'Explicit' ? { explicit_rule: { type: rule }, resolution } : { resolution },
+  });
+  const details = (recaller: unknown, updater: unknown) => ({ role_assignments: { entries: [recaller, updater].filter(Boolean) } });
+  const cases: [string, unknown, string][] = [
+    ['DenyAll/DenyAll', details(role('recaller', 'DenyAll'), role('recaller_updater', 'DenyAll')), 'locked-deny'],
+    ['Protected recaller', details(role('recaller', 'Protected'), role('recaller_updater', 'DenyAll')), 'recallable'],
+    ['owner-rule recaller', details(role('recaller', '', 'Owner'), role('recaller_updater', 'DenyAll')), 'recallable'],
+    ['open updater', details(role('recaller', 'DenyAll'), role('recaller_updater', 'AllowAll')), 'recallable'],
+    ['no updater entry', details(role('recaller', 'DenyAll'), null), 'unknown'],
+    ['no recaller entry', details(null, role('recaller_updater', 'DenyAll')), 'unknown'],
+    ['no role data', {}, 'unknown'],
+  ];
+  test.each(cases)('%s', (_n, d, want) => {
+    expect(recallRule(d)).toBe(want);
+  });
+  test.skipIf(STANDALONE)('parity with guild-app/src/lib/nft-swap-gateway.ts', async () => {
+    const app = (await import('../../../guild-app/src/lib/nft-swap-gateway')) as { recallRule: (d: unknown) => string };
+    for (const [, d] of cases) expect(recallRule(d)).toBe(app.recallRule(d));
+  });
+  test('readResourceRecall reads it from the entity details', async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ items: [{ details: details(role('recaller', 'DenyAll'), role('recaller_updater', 'DenyAll')) }] }))) as typeof fetch;
+    try {
+      expect(await readResourceRecall(CONFIG, NFT)).toBe('locked-deny');
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+});
+
 describe('list-swap', () => {
   const nft = { resource: NFT, id: '#2#' };
   const xrd5000: SwapAsk = { kind: 'fungible', resource: MAINNET_XRD, amount: '5000' };
@@ -454,7 +491,19 @@ describe('list-swap', () => {
     const { d, signed } = deps({ holder: id.address });
     const r = await runListSwap({ nft, asks: [xrd5000], days: 7, live: false, identity: id, config: CONFIG, deps: d });
     expect(r.dryRun).toBe(true);
-    expect(r.manifest).toBe(listSwapManifest(SWAP, id.address, NFT, '#2#', [xrd5000], LEDGER + 7 * 86400));
+    expect(r.manifest).toBe(listSwapManifest(SWAP, id.address, NFT, '#2#', [xrd5000], LEDGER + 7 * 86400, 'locked-deny'));
+    expect(signed).toEqual([]);
+  });
+
+  test.each([
+    ['recallable', /issuer can recall its NFTs/],
+    ['unknown', /could not confirm whether this collection's issuer can recall/],
+  ] as const)('refuses a %s collection before building or signing anything', async (state, line) => {
+    const { d, signed } = deps({ readResourceRecall: async () => state });
+    const r = await runListSwap({ nft, asks: [xrd5000], days: 7, live: false, identity: null, config: CONFIG, deps: d });
+    expect(r.refused).toBe(true);
+    expect(r.message).toMatch(line);
+    expect(r.manifest).toBeUndefined();
     expect(signed).toEqual([]);
   });
 

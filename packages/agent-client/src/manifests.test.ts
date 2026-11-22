@@ -143,8 +143,8 @@ describe('NFT swap builders — parity with guild-app', () => {
 
   test('listSwapManifest — an AnyOf of both kinds', () => {
     const asks = [FUNGIBLE, NON_FUNGIBLE];
-    expectServerParity('listSwapManifest', clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#', asks, 1790114665), () =>
-      (server.listSwapManifest as unknown as typeof clientManifests.listSwapManifest)(SWAP, SELLER, NFT, '#2#', asks, 1790114665)
+    expectServerParity('listSwapManifest', clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#', asks, 1790114665, 'locked-deny'), () =>
+      (server.listSwapManifest as unknown as typeof clientManifests.listSwapManifest)(SWAP, SELLER, NFT, '#2#', asks, 1790114665, 'locked-deny')
     );
   });
 
@@ -238,10 +238,18 @@ CALL_METHOD
   });
 
   test('the client refuses the same inputs the app refuses', () => {
-    expect(() => clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#', [], 1790114665)).toThrow(/at least one/);
+    expect(() => clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#', [], 1790114665, 'locked-deny')).toThrow(/at least one/);
     expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 256, FUNGIBLE, NFT, '#2#')).toThrow(/alternative/);
     expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, { ...FUNGIBLE, amount: '0.0' }, NFT, '#2#')).toThrow(/ask\.amount/);
-    expect(() => clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#")', [FUNGIBLE], 1790114665)).toThrow(/assetId/);
+    expect(() => clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#")', [FUNGIBLE], 1790114665, 'locked-deny')).toThrow(/assetId/);
+    // Same refusal as the app's builder for an NFT whose issuer can recall it
+    // (or whose recall roles could not be read).
+    for (const state of ['recallable', 'unknown', undefined] as const) {
+      const call = (build: unknown) =>
+        (build as typeof clientManifests.listSwapManifest)(SWAP, SELLER, NFT, '#2#', [FUNGIBLE], 1790114665, state as never);
+      expect(() => call(clientManifests.listSwapManifest)).toThrow(/Cannot list/);
+      if (!STANDALONE) expect(() => call(server.listSwapManifest)).toThrow(/Cannot list/);
+    }
     // An injected listed-NFT address or id never reaches the manifest text.
     expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, FUNGIBLE, `${NFT}")`, '#2#')).toThrow(/Invalid resource_rdx/);
     expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, FUNGIBLE, NFT, '#2#")')).toThrow(/assetId/);
