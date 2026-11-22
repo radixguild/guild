@@ -315,6 +315,25 @@ describe("SwapDetail", () => {
     expect(screen.queryByText("not found")).toBeNull()
   })
 
+  it("shows the recall notice next to the Fill action, for every open listing", async () => {
+    F.apiFetch.mockResolvedValue(answer(detail()))
+    render(<SwapDetail listingId="7" />)
+    const notice = await screen.findByTestId("recall-notice")
+    expect(notice).toHaveTextContent(DETAIL_COPY.recallNotice)
+    // It sits inside the Fill card, with the asks, not in the page footer.
+    const card = notice.closest('[data-slot="card"]') as HTMLElement
+    expect(within(card).getByText(DETAIL_COPY.fillHeading)).toBeInTheDocument()
+    expect(within(card).getAllByRole("button", { name: /Fill with this/ }).length).toBeGreaterThan(0)
+  })
+
+  it("the recall notice says what the app guards and what it does not", () => {
+    const n = DETAIL_COPY.recallNotice
+    expect(n).toMatch(/made on this page fails/)
+    expect(n).toMatch(/outside this page/)
+    expect(n).toMatch(/v2 source and is not deployed/)
+    expect(n).not.toMatch(/\b(never|always|guarantee|safe)\b/i)
+  })
+
   it("labels the payee 'Proceeds to', with its caveat, and says 'pays your account' to it", async () => {
     F.apiFetch.mockResolvedValue(answer(detail()))
     render(<SwapDetail listingId="7" />)

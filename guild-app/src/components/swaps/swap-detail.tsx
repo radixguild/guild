@@ -32,6 +32,7 @@ import {
 import type { SwapFee } from "@/lib/nft-swap-gateway"
 import type { SwapDetailView } from "@/lib/nft-swap-service"
 import { DETAIL_COPY, WHAT_THIS_IS_NOT } from "@/content/swaps"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -172,6 +173,9 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
         <p className="text-muted-foreground">{DETAIL_COPY.fillIntro}</p>
+        <Alert data-testid="recall-notice">
+          <AlertDescription>{DETAIL_COPY.recallNotice}</AlertDescription>
+        </Alert>
         <ol className="space-y-2">
           {l.asks.map((ask, i) => (
             <li

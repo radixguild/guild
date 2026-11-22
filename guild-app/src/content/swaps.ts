@@ -132,6 +132,13 @@ export const DETAIL_COPY = {
   fillHeading: "Fill this listing",
   fillIntro:
     "Pick one of the seller's terms. You send exactly that, and the NFT comes to your account in the same transaction — or the transaction fails and only the network fee is spent.",
+  /** Finding F-005 on the live v1 component: `fill` takes the payment even when
+   *  the listed NFT was recalled out of it. This site's fill manifest asserts the
+   *  NFT arrives (fillSwapManifest); the v2 source fixes `fill` and is not
+   *  deployed (PR #88). Shown for every listing: the page does not read a
+   *  resource's recall role. */
+  recallNotice:
+    "A fill made on this page fails, and costs only the network fee, if the NFT is no longer in the listing. If an NFT's issuer can recall it, a fill built outside this page (another front end or a hand-written manifest) can pay for an NFT that is gone. The fix is in the v2 source and is not deployed.",
   fillConfirmCheck:
     "I compared the collection's resource address with the one its creator publishes, and I understand a fill cannot be undone.",
   fillNoWallet: "Connect your Radix Wallet to fill this listing.",
