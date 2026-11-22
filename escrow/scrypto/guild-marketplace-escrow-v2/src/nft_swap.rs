@@ -30,6 +30,10 @@ use scrypto::prelude::*;
 // empty bucket. `list` also RECORDS whether the asset's resource can be
 // recalled or burned (a role that is not locked to `deny_all`), on the
 // listing and in `ListedEvent`, so a front-end can warn before anyone fills.
+//
+// v2 (13 Oct F-008): `cancel` deposits the asset to the pinned seller account
+// instead of returning it to whoever presented the listing receipt. The
+// receipt stays a transferable trigger, but no longer a claim on the asset.
 //   S3a — `fill` and `extend_listing` both start their royalty at `Xrd(0)`,
 //         `updatable`; every other method is `Free, locked`.
 //   S4a — same custody shape as the escrow: owner badge is the royalty
@@ -63,7 +67,8 @@ pub enum ListingState {
 #[derive(ScryptoSbor, Clone)]
 pub struct Listing {
     /// Global account, pinned at `list` — the ONLY destination
-    /// `withdraw_proceeds` will ever pay. A caller-supplied payee is safe
+    /// `withdraw_proceeds` will ever pay, and (v2, F-008) the only
+    /// destination `cancel` returns the asset to. A caller-supplied payee is safe
     /// here for the same reason it is in the escrow's `create_task`: `list`
     /// consumes the seller's own asset in the same call that reads `seller`,
     /// so a wrong value can only misdirect the designator's own proceeds.
@@ -154,6 +159,10 @@ pub struct FilledEvent {
 #[derive(ScryptoSbor, ScryptoEvent)]
 pub struct CancelledEvent {
     pub listing_id: u64,
+    /// v2 (F-008): the pinned seller account the asset was deposited to.
+    /// Additive field. On a hollow listing (asset recalled) nothing was
+    /// deposited; the field still names the pin.
+    pub destination: ComponentAddress,
 }
 
 #[derive(ScryptoSbor, ScryptoEvent)]
@@ -540,29 +549,44 @@ mod nft_swap_blueprint {
 
         /// Cancel a `Listed` listing at ANY time, including after expiry —
         /// an expired listing is not fillable but its asset must never be
-        /// stranded, so cancel stays open regardless of the clock. Returns
-        /// the asset to whoever presents the listing receipt; the receipt
-        /// itself is not burned (retire it with `burn_listing_receipt`).
-        pub fn cancel(&mut self, receipt: Proof) -> NonFungibleBucket {
+        /// stranded, so cancel stays open regardless of the clock. The
+        /// receipt itself is not burned (retire it with
+        /// `burn_listing_receipt`).
+        ///
+        /// v2 (13 Oct F-008): the asset goes to the PINNED seller account
+        /// (`Listing.seller`), never to the caller. v1 returned it to
+        /// whoever presented the receipt, so a stolen, phished or resold
+        /// receipt yielded the NFT. Now the receipt holder can only trigger
+        /// the cancel; the asset lands where `withdraw_proceeds` would send
+        /// proceeds. If the seller's account refuses the deposit, the whole
+        /// call reverts and the listing stays `Listed` (still cancellable
+        /// once the seller lifts the rule) — same recovery shape as
+        /// `withdraw_proceeds`. A hollow listing (the NFT was recalled out of
+        /// the vault) deposits nothing, so a deposit rule cannot block it.
+        pub fn cancel(&mut self, receipt: Proof) {
             let listing_id = self.listing_id_from_receipt(receipt);
 
-            {
+            let seller = {
                 let mut listing = self.listings.get_mut(&listing_id).expect("listing not found");
                 assert_eq!(listing.state, ListingState::Listed, "listing is not Listed");
                 listing.state = ListingState::Cancelled;
-            }
+                listing.seller
+            };
 
             let asset_bucket = self
                 .asset_vaults
                 .get_mut(&listing_id)
                 .expect("asset vault missing — list() pins it")
                 .take_all();
-            let asset: NonFungibleBucket = asset_bucket.as_non_fungible();
+            if asset_bucket.amount() > Decimal::ZERO {
+                let mut account: Global<Account> = seller.into();
+                account.try_deposit_or_abort(asset_bucket, None);
+            } else {
+                asset_bucket.drop_empty();
+            }
 
-            Runtime::emit_event(CancelledEvent { listing_id });
+            Runtime::emit_event(CancelledEvent { listing_id, destination: seller });
             self.assert_conservation(listing_id);
-
-            asset
         }
 
         /// S2, v2 (13 Oct I-1): sets `expires_at` to `now + 30 days`, the

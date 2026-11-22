@@ -324,6 +324,65 @@ fn set_default_deposit_rule(
         .expect_commit_success();
 }
 
+/// Call a receipt-gated method (`cancel`, `extend_listing`,
+/// `withdraw_proceeds`) as ANY account, presenting a Proof of
+/// `receipt_resource` local id `local_id` from that account. Whatever the call
+/// returns is deposited back into the CALLER's account, so a test can see if a
+/// method hands anything to the caller rather than to the pinned seller.
+fn call_with_receipt_proof(
+    f: &mut Fixture,
+    method: &str,
+    receipt_resource: ResourceAddress,
+    local_id: u64,
+    account: ComponentAddress,
+    pk: Secp256k1PublicKey,
+) -> TransactionReceipt {
+    let id = NonFungibleLocalId::integer(local_id);
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .create_proof_from_account_of_non_fungibles(account, receipt_resource, indexset![id])
+        .pop_from_auth_zone("receipt")
+        .call_method_with_name_lookup(f.swap, method, |lookup| (lookup.proof("receipt"),))
+        .call_method(account, "deposit_batch", manifest_args!(ManifestExpression::EntireWorktop))
+        .build();
+    f.ledger
+        .execute_manifest(manifest, vec![NonFungibleGlobalId::from_public_key(&pk)])
+}
+
+/// Move the listing receipt for `listing_id` from the seller to `to` — the
+/// "receipt sold, phished or stolen" precondition for the F-008 tests.
+fn transfer_receipt(f: &mut Fixture, listing_id: u64, to: ComponentAddress) {
+    let id = NonFungibleLocalId::integer(listing_id);
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .withdraw_non_fungibles_from_account(f.seller_account, f.listing_receipt_resource, indexset![id])
+        .try_deposit_entire_worktop_or_abort(to, None)
+        .build();
+    f.ledger
+        .execute_manifest(manifest, vec![NonFungibleGlobalId::from_public_key(&f.seller_pk)])
+        .expect_commit_success();
+}
+
+/// A manifest that starts with a Proof of 1 `badge` from the owner account
+/// (the fixture deposits both instantiate badges there).
+fn badge_proof_manifest(f: &Fixture, badge: ResourceAddress) -> ManifestBuilder {
+    ManifestBuilder::new().lock_fee_from_faucet().call_method(
+        f.owner_account,
+        "create_proof_of_amount",
+        manifest_args!(badge, dec!("1")),
+    )
+}
+
+fn set_swap_royalty(f: &mut Fixture, badge: Option<ResourceAddress>, method: &str, amount: RoyaltyAmount) -> TransactionReceipt {
+    let builder = match badge {
+        Some(b) => badge_proof_manifest(f, b),
+        None => ManifestBuilder::new().lock_fee_from_faucet(),
+    };
+    let manifest = builder.set_component_royalty(f.swap, method, amount).build();
+    f.ledger
+        .execute_manifest(manifest, vec![NonFungibleGlobalId::from_public_key(&f.owner_pk)])
+}
+
 fn fetch_listing(f: &mut Fixture, listing_id: u64) -> Listing {
     let out: Option<Listing> = f
         .ledger
@@ -840,6 +899,513 @@ fn test_burn_listing_receipt_refuses_while_filled_unwithdrawn() {
 
     withdraw_proceeds(&mut f, 1).expect_commit_success();
     burn_listing_receipt(&mut f, 1).expect_commit_success();
+}
+
+// ── v2 (23 Nov pre-deploy review): state machine, boundaries, receipts ──────
+
+#[test]
+fn test_fill_twice_reverts() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+    fill_with_fungible(&mut f, 1, 0, dec!("100")).expect_commit_success();
+
+    let before = f.ledger.get_component_balance(f.buyer_account, f.payment_token);
+    fill_with_fungible(&mut f, 1, 0, dec!("100")).expect_commit_failure_containing_error("listing is not Listed");
+    assert_eq!(f.ledger.get_component_balance(f.buyer_account, f.payment_token), before, "the second buyer paid nothing");
+    assert_eq!(fetch_proceeds(&mut f, 1), Some((f.payment_token, dec!("100"))), "proceeds hold one payment only");
+}
+
+#[test]
+fn test_fill_after_cancel_reverts() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+    cancel_listing(&mut f, 1).expect_commit_success();
+
+    fill_with_fungible(&mut f, 1, 0, dec!("100")).expect_commit_failure_containing_error("listing is not Listed");
+    assert!(fetch_proceeds(&mut f, 1).is_none());
+}
+
+#[test]
+fn test_cancel_twice_reverts() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+    cancel_listing(&mut f, 1).expect_commit_success();
+    cancel_listing(&mut f, 1).expect_commit_failure_containing_error("listing is not Listed");
+}
+
+#[test]
+fn test_withdraw_proceeds_before_fill_reverts() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+    withdraw_proceeds(&mut f, 1).expect_commit_failure_containing_error("listing is not Filled");
+}
+
+#[test]
+fn test_withdraw_proceeds_after_cancel_reverts() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+    cancel_listing(&mut f, 1).expect_commit_success();
+    withdraw_proceeds(&mut f, 1).expect_commit_failure_containing_error("listing is not Filled");
+}
+
+/// `fill` requires `now < expires_at`: one second before the expiry fills, AT
+/// the expiry does not. Two identical listings so each side of the boundary
+/// gets its own.
+#[test]
+fn test_fill_expiry_boundary_is_exclusive() {
+    let mut f = setup();
+    let now = current_instant(&mut f);
+    let expiry = Instant::new(now.seconds_since_unix_epoch + 3600);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks.clone(), expiry).expect_commit_success();
+    list_asset(&mut f, 2, asks, expiry).expect_commit_success();
+
+    advance_time_by_secs(&mut f.ledger, 3599);
+    fill_with_fungible(&mut f, 1, 0, dec!("100")).expect_commit_success();
+
+    advance_time_by_secs(&mut f.ledger, 1);
+    fill_with_fungible(&mut f, 2, 0, dec!("100")).expect_commit_failure_containing_error("listing has expired");
+}
+
+#[test]
+fn test_list_accepts_expiry_exactly_at_the_30_day_ceiling() {
+    let mut f = setup();
+    let now = current_instant(&mut f);
+    let ceiling = Instant::new(now.seconds_since_unix_epoch + 30 * 24 * 60 * 60);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks.clone(), ceiling).expect_commit_success();
+
+    let one_over = Instant::new(ceiling.seconds_since_unix_epoch + 1);
+    list_asset(&mut f, 2, asks, one_over).expect_commit_failure_containing_error("at most 30 days out");
+}
+
+#[test]
+fn test_list_rejects_amount_beyond_divisibility() {
+    let mut f = setup();
+    let two_dp = f.ledger.create_fungible_resource(dec!("1000"), 2, f.buyer_account);
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: two_dp, amount: dec!("1.005") }];
+    list_asset(&mut f, 1, asks, expiry)
+        .expect_commit_failure_containing_error("fungible ask amount exceeds the resource's divisibility");
+}
+
+/// No change is ever given: paying MORE than the ask is refused like paying
+/// less (`test_fill_wrong_amount_reverts` covers less).
+#[test]
+fn test_fill_overpayment_reverts() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+
+    let before = f.ledger.get_component_balance(f.buyer_account, f.payment_token);
+    fill_with_fungible(&mut f, 1, 0, dec!("150")).expect_commit_failure_containing_error("payment amount does not match");
+    assert_eq!(f.ledger.get_component_balance(f.buyer_account, f.payment_token), before);
+}
+
+/// A Proof (or Bucket) of a look-alike resource carrying an integer local id
+/// is refused by every receipt-gated method before the id is read. The
+/// seller's own asset collection stands in for the look-alike: it has integer
+/// ids and the seller still holds #2.
+#[test]
+fn test_lookalike_receipt_is_refused_everywhere() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+
+    let fake = f.asset_resource;
+    let seller = f.seller_account;
+    let seller_pk = f.seller_pk;
+    for method in ["cancel", "extend_listing", "withdraw_proceeds"] {
+        call_with_receipt_proof(&mut f, method, fake, 2, seller, seller_pk)
+            .expect_commit_failure_containing_error("wrong receipt resource");
+    }
+
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .withdraw_non_fungibles_from_account(seller, fake, indexset![NonFungibleLocalId::integer(2)])
+        .take_all_from_worktop(fake, "receipt")
+        .call_method_with_name_lookup(f.swap, "burn_listing_receipt", |lookup| (lookup.bucket("receipt"),))
+        .build();
+    f.ledger
+        .execute_manifest(manifest, vec![NonFungibleGlobalId::from_public_key(&seller_pk)])
+        .expect_commit_failure_containing_error("wrong receipt resource");
+
+    assert_eq!(fetch_listing(&mut f, 1).state, ListingState::Listed);
+}
+
+/// v2 (F-008). A third party holding the listing receipt (sold, phished,
+/// stolen) can trigger `cancel`, but the asset goes to the PINNED seller —
+/// nothing reaches the caller.
+#[test]
+fn test_f008_cancel_by_receipt_holder_delivers_to_the_pinned_seller() {
+    let mut f = setup();
+    let (third_pk, _, third) = f.ledger.new_allocated_account();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+    transfer_receipt(&mut f, 1, third);
+
+    let seller_before = f.ledger.get_component_balance(f.seller_account, f.asset_resource);
+    let receipt_resource = f.listing_receipt_resource;
+    call_with_receipt_proof(&mut f, "cancel", receipt_resource, 1, third, third_pk).expect_commit_success();
+
+    assert_eq!(fetch_listing(&mut f, 1).state, ListingState::Cancelled);
+    assert_eq!(
+        f.ledger.get_component_balance(f.seller_account, f.asset_resource) - seller_before,
+        dec!("1"),
+        "the asset is back with the pinned seller"
+    );
+    assert_eq!(
+        f.ledger.get_component_balance(third, f.asset_resource),
+        Decimal::ZERO,
+        "the receipt holder received nothing"
+    );
+}
+
+/// Same property for proceeds (unchanged from v1, now pinned by a test): the
+/// receipt holder's withdraw pays the pinned seller.
+#[test]
+fn test_withdraw_proceeds_by_receipt_holder_pays_the_pinned_seller() {
+    let mut f = setup();
+    let (third_pk, _, third) = f.ledger.new_allocated_account();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+    fill_with_fungible(&mut f, 1, 0, dec!("100")).expect_commit_success();
+    transfer_receipt(&mut f, 1, third);
+
+    let seller_before = f.ledger.get_component_balance(f.seller_account, f.payment_token);
+    let receipt_resource = f.listing_receipt_resource;
+    call_with_receipt_proof(&mut f, "withdraw_proceeds", receipt_resource, 1, third, third_pk)
+        .expect_commit_success();
+
+    assert_eq!(f.ledger.get_component_balance(f.seller_account, f.payment_token) - seller_before, dec!("100"));
+    assert_eq!(f.ledger.get_component_balance(third, f.payment_token), Decimal::ZERO);
+}
+
+/// v2 (F-008): `cancel` now deposits into the seller's account, so a seller
+/// account that refuses deposits makes `cancel` revert. The listing must
+/// stay Listed with the asset in escrow, and cancel must work once the rule
+/// is lifted.
+#[test]
+fn test_cancel_deposit_refusal_then_retry_after_rule_lifted() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+
+    set_default_deposit_rule(&mut f.ledger, f.seller_account, &f.seller_pk, DefaultDepositRule::Reject);
+    cancel_listing(&mut f, 1).expect_commit_failure();
+    assert_eq!(fetch_listing(&mut f, 1).state, ListingState::Listed, "a reverted cancel changes nothing");
+    let vaults = f.ledger.get_component_vaults(f.swap, f.asset_resource);
+    assert_eq!(vaults.len(), 1);
+    assert_eq!(f.ledger.inspect_vault_balance(vaults[0]), Some(dec!("1")), "the asset is still in escrow");
+
+    set_default_deposit_rule(&mut f.ledger, f.seller_account, &f.seller_pk, DefaultDepositRule::Accept);
+    let before = f.ledger.get_component_balance(f.seller_account, f.asset_resource);
+    cancel_listing(&mut f, 1).expect_commit_success();
+    assert_eq!(f.ledger.get_component_balance(f.seller_account, f.asset_resource) - before, dec!("1"));
+}
+
+/// v2 (F-008): a hollow listing (asset recalled) deposits nothing on cancel,
+/// so even a seller account that refuses every deposit can close it.
+#[test]
+fn test_cancel_hollow_listing_succeeds_even_when_seller_refuses_deposits() {
+    let mut f = setup();
+    let recallable = f.ledger.create_non_fungible_resource_with_roles(
+        NonFungibleResourceRoles {
+            recall_roles: recall_roles! {
+                recaller => rule!(allow_all);
+                recaller_updater => rule!(deny_all);
+            },
+            ..Default::default()
+        },
+        f.seller_account,
+    );
+    f.asset_resource = recallable;
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+
+    let vaults = f.ledger.get_component_vaults(f.swap, recallable);
+    let recall = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .recall_non_fungibles(InternalAddress::new_or_panic(vaults[0].0), [NonFungibleLocalId::integer(1)])
+        .try_deposit_entire_worktop_or_abort(f.owner_account, None)
+        .build();
+    f.ledger.execute_manifest(recall, vec![]).expect_commit_success();
+
+    set_default_deposit_rule(&mut f.ledger, f.seller_account, &f.seller_pk, DefaultDepositRule::Reject);
+    cancel_listing(&mut f, 1).expect_commit_success();
+    assert_eq!(fetch_listing(&mut f, 1).state, ListingState::Cancelled);
+}
+
+/// A NonFungible ask that names a FUNGIBLE resource is accepted by `list`
+/// (13 Oct review L-2, not fixed) but can never be filled: the fill reverts
+/// and the buyer keeps their tokens. The seller can still cancel.
+#[test]
+fn test_nonfungible_ask_on_a_fungible_resource_is_unfillable_without_loss() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::NonFungible { resource: f.payment_token, id: NonFungibleLocalId::integer(1) }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+
+    let before = f.ledger.get_component_balance(f.buyer_account, f.payment_token);
+    fill_with_fungible(&mut f, 1, 0, dec!("1")).expect_commit_failure();
+    assert_eq!(f.ledger.get_component_balance(f.buyer_account, f.payment_token), before);
+    assert_eq!(fetch_listing(&mut f, 1).state, ListingState::Listed);
+    cancel_listing(&mut f, 1).expect_commit_success();
+}
+
+/// `alternative` is a `u8`, and `list` does not cap the ask count (review
+/// L-1, not fixed): a listing with 257 asks is accepted, index 255 fills, and
+/// index 256 cannot even be named. Pins today's behaviour so a cap shows up
+/// as a deliberate test change.
+#[test]
+fn test_list_accepts_more_than_256_asks_but_only_256_are_addressable() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks: Vec<Ask> = (1..=257u32)
+        .map(|i| Ask::Fungible { resource: f.payment_token, amount: Decimal::from(i) })
+        .collect();
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+    assert_eq!(fetch_listing(&mut f, 1).asks.len(), 257);
+
+    fill_with_fungible(&mut f, 1, 255, dec!("256")).expect_commit_success();
+    assert_eq!(fetch_listing(&mut f, 1).filled_with, Some(255));
+}
+
+/// A frozen asset vault (the issuer holds the freezer role) blocks BOTH fill
+/// and cancel — custody waits on the issuer — and nothing moves until it is
+/// unfrozen. The buyer's failed fill costs them nothing.
+#[test]
+fn test_frozen_asset_vault_blocks_fill_and_cancel_until_unfrozen() {
+    let mut f = setup();
+    let freezable = f.ledger.create_non_fungible_resource_with_roles(
+        NonFungibleResourceRoles {
+            freeze_roles: freeze_roles! {
+                freezer => rule!(allow_all);
+                freezer_updater => rule!(deny_all);
+            },
+            ..Default::default()
+        },
+        f.seller_account,
+    );
+    f.asset_resource = freezable;
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+
+    let vault = InternalAddress::new_or_panic(f.ledger.get_component_vaults(f.swap, freezable)[0].0);
+    let freeze = ManifestBuilder::new().lock_fee_from_faucet().freeze_withdraw(vault).build();
+    f.ledger.execute_manifest(freeze, vec![]).expect_commit_success();
+
+    let before = f.ledger.get_component_balance(f.buyer_account, f.payment_token);
+    fill_with_fungible(&mut f, 1, 0, dec!("100")).expect_commit_failure();
+    assert_eq!(f.ledger.get_component_balance(f.buyer_account, f.payment_token), before);
+    cancel_listing(&mut f, 1).expect_commit_failure();
+    assert_eq!(fetch_listing(&mut f, 1).state, ListingState::Listed);
+
+    let unfreeze = ManifestBuilder::new().lock_fee_from_faucet().unfreeze_withdraw(vault).build();
+    f.ledger.execute_manifest(unfreeze, vec![]).expect_commit_success();
+    cancel_listing(&mut f, 1).expect_commit_success();
+    assert_eq!(fetch_listing(&mut f, 1).state, ListingState::Cancelled);
+}
+
+/// The PAYMENT token's issuer recalls the proceeds out of the proceeds vault
+/// after a fill. Nothing strands: `withdraw_proceeds` still completes (paying
+/// zero), the listing reaches its terminal state, and the receipt burns.
+#[test]
+fn test_recalled_proceeds_still_let_the_listing_terminate() {
+    let mut f = setup();
+    let create = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .create_fungible_resource(
+            OwnerRole::None,
+            true,
+            18u8,
+            FungibleResourceRoles {
+                recall_roles: recall_roles! {
+                    recaller => rule!(allow_all);
+                    recaller_updater => rule!(deny_all);
+                },
+                ..Default::default()
+            },
+            metadata!(),
+            Some(dec!("1000")),
+        )
+        .try_deposit_entire_worktop_or_abort(f.buyer_account, None)
+        .build();
+    let created = f.ledger.execute_manifest(create, vec![]);
+    let token = created.expect_commit(true).new_resource_addresses()[0];
+
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+    let buyer = f.buyer_account;
+    let buyer_pk = f.buyer_pk;
+    fill_with_fungible_resource(&mut f, 1, 0, token, dec!("100"), buyer, buyer_pk, buyer).expect_commit_success();
+
+    let vault = InternalAddress::new_or_panic(f.ledger.get_component_vaults(f.swap, token)[0].0);
+    let recall = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .recall(vault, dec!("100"))
+        .try_deposit_entire_worktop_or_abort(f.owner_account, None)
+        .build();
+    f.ledger.execute_manifest(recall, vec![]).expect_commit_success();
+    assert_eq!(fetch_proceeds(&mut f, 1), Some((token, Decimal::ZERO)));
+
+    withdraw_proceeds(&mut f, 1).expect_commit_success();
+    assert!(fetch_listing(&mut f, 1).proceeds_withdrawn);
+    burn_listing_receipt(&mut f, 1).expect_commit_success();
+}
+
+// ── v2 (23 Nov review): royalty dials and locked roles, read back by behaviour ─
+
+/// The two dials start at 0 and only the royalty-admin badge moves them; a
+/// moved dial actually charges.
+#[test]
+fn test_royalty_dials_are_admin_only_and_charge() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks.clone(), expiry).expect_commit_success();
+    list_asset(&mut f, 2, asks, expiry).expect_commit_success();
+
+    let r = fill_with_fungible(&mut f, 1, 0, dec!("100"));
+    r.expect_commit_success();
+    assert_eq!(r.fee_summary.total_royalty_cost_in_xrd, Decimal::ZERO, "fill ships at 0");
+
+    let owner_badge = f.owner_badge;
+    let admin_badge = f.royalty_admin_badge;
+    for method in ["fill", "extend_listing"] {
+        set_swap_royalty(&mut f, None, method, RoyaltyAmount::Xrd(dec!("1")))
+            .expect_commit_failure_containing_error("Unauthorized");
+        set_swap_royalty(&mut f, Some(owner_badge), method, RoyaltyAmount::Xrd(dec!("1")))
+            .expect_commit_failure_containing_error("Unauthorized");
+        set_swap_royalty(&mut f, Some(admin_badge), method, RoyaltyAmount::Xrd(dec!("1"))).expect_commit_success();
+    }
+
+    let r = fill_with_fungible(&mut f, 2, 0, dec!("100"));
+    r.expect_commit_success();
+    assert_eq!(r.fee_summary.total_royalty_cost_in_xrd, dec!("1"), "a dialed fill royalty charges");
+
+    let mut f2 = setup();
+    let expiry = default_expiry(&mut f2);
+    let asks = vec![Ask::Fungible { resource: f2.payment_token, amount: dec!("100") }];
+    list_asset(&mut f2, 1, asks, expiry).expect_commit_success();
+    let admin_badge = f2.royalty_admin_badge;
+    set_swap_royalty(&mut f2, Some(admin_badge), "extend_listing", RoyaltyAmount::Xrd(dec!("1"))).expect_commit_success();
+    let r = extend_listing(&mut f2, 1);
+    r.expect_commit_success();
+    assert_eq!(r.fee_summary.total_royalty_cost_in_xrd, dec!("1"), "a dialed extend royalty charges");
+}
+
+/// Every other method is Free and LOCKED at the engine level, even against
+/// the royalty-admin badge — in particular `cancel` and `withdraw_proceeds`,
+/// so no royalty can ever trap an asset or proceeds.
+#[test]
+fn test_free_methods_are_locked_even_for_the_admin() {
+    let mut f = setup();
+    let admin_badge = f.royalty_admin_badge;
+    for method in [
+        "list",
+        "cancel",
+        "withdraw_proceeds",
+        "burn_listing_receipt",
+        "get_listing",
+        "get_config",
+        "get_proceeds",
+    ] {
+        set_swap_royalty(&mut f, Some(admin_badge), method, RoyaltyAmount::Xrd(dec!("1")))
+            .expect_commit_failure_containing_error("KeyValueEntryLocked");
+    }
+}
+
+/// Only the owner badge claims royalties; the admin badge cannot.
+#[test]
+fn test_royalty_claim_is_owner_only() {
+    let mut f = setup();
+    let admin_badge = f.royalty_admin_badge;
+    let owner_badge = f.owner_badge;
+    let owner = f.owner_account;
+    let manifest = badge_proof_manifest(&f, admin_badge)
+        .claim_component_royalties(f.swap)
+        .try_deposit_entire_worktop_or_abort(owner, None)
+        .build();
+    f.ledger
+        .execute_manifest(manifest, vec![NonFungibleGlobalId::from_public_key(&f.owner_pk)])
+        .expect_commit_failure_containing_error("Unauthorized");
+
+    let manifest = badge_proof_manifest(&f, owner_badge)
+        .claim_component_royalties(f.swap)
+        .try_deposit_entire_worktop_or_abort(owner, None)
+        .build();
+    f.ledger
+        .execute_manifest(manifest, vec![NonFungibleGlobalId::from_public_key(&f.owner_pk)])
+        .expect_commit_success();
+}
+
+/// Both instantiate badges are fixed supply: no one, not even a holder,
+/// can mint more.
+#[test]
+fn test_instantiate_badges_cannot_be_minted() {
+    let mut f = setup();
+    for badge in [f.owner_badge, f.royalty_admin_badge] {
+        let manifest = badge_proof_manifest(&f, badge)
+            .mint_fungible(badge, dec!("1"))
+            .try_deposit_entire_worktop_or_abort(f.owner_account, None)
+            .build();
+        f.ledger
+            .execute_manifest(manifest, vec![NonFungibleGlobalId::from_public_key(&f.owner_pk)])
+            .expect_commit_failure();
+        assert_eq!(f.ledger.get_component_balance(f.owner_account, badge), dec!("1"));
+    }
+}
+
+/// The listing receipt can be neither burned outside `burn_listing_receipt`
+/// (burner = the component's internal minter only) nor recalled by the
+/// owner badge (recaller defaults to deny_all).
+#[test]
+fn test_listing_receipt_cannot_be_burned_directly_or_recalled_by_the_owner() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+    let receipt_resource = f.listing_receipt_resource;
+
+    let burn = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .withdraw_non_fungibles_from_account(f.seller_account, receipt_resource, indexset![NonFungibleLocalId::integer(1)])
+        .burn_all_from_worktop(receipt_resource)
+        .build();
+    f.ledger
+        .execute_manifest(burn, vec![NonFungibleGlobalId::from_public_key(&f.seller_pk)])
+        .expect_commit_failure();
+
+    let vault = InternalAddress::new_or_panic(f.ledger.get_component_vaults(f.seller_account, receipt_resource)[0].0);
+    let owner_badge = f.owner_badge;
+    let recall = badge_proof_manifest(&f, owner_badge)
+        .recall_non_fungibles(vault, [NonFungibleLocalId::integer(1)])
+        .try_deposit_entire_worktop_or_abort(f.owner_account, None)
+        .build();
+    f.ledger
+        .execute_manifest(recall, vec![NonFungibleGlobalId::from_public_key(&f.owner_pk)])
+        .expect_commit_failure();
+
+    assert_eq!(f.ledger.get_component_balance(f.seller_account, receipt_resource), dec!("1"));
 }
 
 // ── Local verification: source-level tests, no ledger (CLAUDE.md) ────────────

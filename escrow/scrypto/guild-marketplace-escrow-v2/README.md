@@ -1,8 +1,8 @@
 # guild-marketplace-escrow-v2
 
 Source for the next version of the Guild task escrow and NFT swap blueprints.
-It fixes the findings from the 13 October 2026 review (F-001 to F-005, N-1,
-L-2, I-1) in a NEW package directory. The live package's source,
+It fixes the findings from the 13 October 2026 review (F-001 to F-005, F-008,
+N-1, L-2, I-1) in a NEW package directory. The live package's source,
 `../guild-marketplace-escrow/`, is unchanged.
 
 **Status: source only. Not published, not instantiated, not deployed.** The
@@ -25,6 +25,7 @@ change.
 | L-2 | `set_max_arbiter_fee_pct` allowed up to 1.0; `instantiate` capped at 0.5. | Both use the same 0.5 cap. | `test_l2_*` |
 | F-004 | Code comments said the auto-resolve ruling governs "the reward only". The code also splits the worker's claim bond by that ruling. | Comments corrected; behaviour unchanged (it was already documented in the auditor guide). | — |
 | F-005 | NftSwap `fill` returned whatever the asset vault held. After an issuer recalled the listed NFT, a buyer could pay for an empty bucket. | `fill` asserts the listed NFT is in the vault before taking any payment, then takes that NFT by id. `list` records whether the asset's recall and burn roles are locked to `deny_all` (`Listing.asset_recallable`, `asset_burnable`, also in `ListedEvent`). Conservation checks the listed id, and runs after `extend_listing` too. | `test_u2c_recall_then_fill_is_refused`, `test_v2_list_records_recall_and_burn_roles` |
+| F-008 | NftSwap `cancel` returned the NFT to whoever presented the listing receipt, so a stolen, phished or resold receipt yielded the NFT. | `cancel` deposits the NFT to the seller account pinned at `list` (`try_deposit_or_abort`) and returns nothing. A refused deposit reverts the cancel and the listing stays `Listed`. A hollow listing (NFT recalled) deposits nothing. `CancelledEvent.destination` names the pin. **Breaking for callers:** `cancel` no longer returns a bucket. | `test_f008_cancel_by_receipt_holder_delivers_to_the_pinned_seller`, `test_cancel_deposit_refusal_then_retry_after_rule_lifted`, `test_cancel_hollow_listing_succeeds_even_when_seller_refuses_deposits` |
 | I-1 | `extend_listing` added 30 days per call with no cap. | An extension sets the expiry to `now + 30 days`, the same ceiling `list` enforces, and refuses when that would not move it. | `test_extend_listing_resets_to_the_30_day_ceiling_and_no_further` |
 
 Comments the v1 source got wrong are corrected where they stand, each marked
@@ -42,7 +43,20 @@ Comments the v1 source got wrong are corrected where they stand, each marked
   still credits only the accounts pinned at create and claim.
 - **NFT payments in a swap.** If a buyer pays with a recallable NFT, its
   issuer could recall it from the proceeds vault before the seller withdraws.
-  v2 records the listed asset's roles, not the payment's.
+  v2 records the listed asset's roles, not the payment's. A fungible payment
+  token with a recall role has the same exposure
+  (`test_recalled_proceeds_still_let_the_listing_terminate`: nothing strands,
+  but the seller can be paid zero).
+- **Clawback after a sale.** `fill`'s presence check protects the buyer only
+  while the NFT is in escrow. An issuer with a recall or freeze role can still
+  recall or freeze the NFT in the buyer's account afterwards. v2 records
+  recall and burn roles; it does not record the freeze role. A frozen asset
+  vault blocks both `fill` and `cancel` until the issuer unfreezes it
+  (`test_frozen_asset_vault_blocks_fill_and_cancel_until_unfrozen`).
+- **Ask validation.** `list` does not cap the number of asks (`fill` takes a
+  `u8` index, so asks past the 256th cannot be filled) and does not check that
+  a `NonFungible` ask names a non-fungible resource. Both only make the
+  seller's own listing partly unfillable; tests pin today's behaviour.
 
 ## Values that are not decided here
 
