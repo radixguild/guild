@@ -627,7 +627,7 @@ const ledgerState = { network: "mainnet", state_version: 1, proposer_round_times
 /** `packageAddress`: what the live component reports it was instantiated
  *  from; `accountNfts`: the account's non-fungibles response, when a test
  *  needs another shape. */
-async function stubGateway(page: Page, opts: { packageAddress?: string; accountNfts?: () => unknown } = {}) {
+async function stubGateway(page: Page, opts: { packageAddress?: string; accountNfts?: () => unknown; recallable?: string[] } = {}) {
   await page.route(`${GATEWAY}/**`, async (route: Route) => {
     const path = new URL(route.request().url()).pathname;
     const body = route.request().postDataJSON() ?? {};
@@ -661,7 +661,20 @@ async function stubGateway(page: Page, opts: { packageAddress?: string; accountN
           details: {
             type: r.kind === "fungible" ? "FungibleResource" : "NonFungibleResource",
             divisibility: r.divisibility ?? undefined,
-            role_assignments: { entries: [{ role_key: { name: "withdrawer" }, assignment: { explicit_rule: { type: "AllowAll" } } }] },
+            role_assignments: {
+              entries: [
+                { role_key: { module: "Main", name: "withdrawer" }, assignment: { explicit_rule: { type: "AllowAll" }, resolution: "Explicit" } },
+                ...(opts.recallable?.includes(address)
+                  ? [
+                      { role_key: { module: "Main", name: "recaller" }, assignment: { explicit_rule: { type: "Protected" }, resolution: "Explicit" } },
+                      { role_key: { module: "Main", name: "recaller_updater" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
+                    ]
+                  : [
+                      { role_key: { module: "Main", name: "recaller" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
+                      { role_key: { module: "Main", name: "recaller_updater" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
+                    ]),
+              ],
+            },
           },
         }];
       });
@@ -779,6 +792,17 @@ test.describe("NFT swap — List an NFT", () => {
     await page.getByLabel("Alternative 1 amount").fill("0");
     await expect(page.getByText("The amount must be more than zero.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Open my wallet to list" })).toBeDisabled();
+  });
+
+  test("an NFT whose issuer can recall it cannot be picked, and the reason shows", async ({ page }) => {
+    await injectWalletMock(page);
+    await stubGateway(page, { recallable: [NFT] });
+    await page.goto("/swaps/list");
+
+    await expect(page.getByText("issuer can recall its NFTs, so it cannot be listed here.")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Guild swap throwaway 2/ })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Open my wallet to list" })).toBeDisabled();
+    expect(await sentManifests(page)).toEqual([]);
   });
 
   // The List form escrows the user's NFT on the strength of the component
