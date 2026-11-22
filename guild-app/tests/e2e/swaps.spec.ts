@@ -33,10 +33,10 @@ const LEDGER_ISO = "2026-10-06T07:00:00.000Z";
 const LEDGER = Date.parse(LEDGER_ISO) / 1000;
 
 const RESOURCES = {
-  [XRD]: { kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open" },
-  [NFT]: { kind: "nonFungible", divisibility: null, name: "Guild Swap Throwaway NFT", symbol: null, iconUrl: null, withdraw: "open" },
-  [EARLY]: { kind: "fungible", divisibility: 18, name: "EARLY", symbol: "EARLY", iconUrl: null, withdraw: "open" },
-  [OTHER_TOKEN]: { kind: "fungible", divisibility: 18, name: "Some Token", symbol: "SOME", iconUrl: null, withdraw: "open" },
+  [XRD]: { kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open", recall: "locked-deny" },
+  [NFT]: { kind: "nonFungible", divisibility: null, name: "Guild Swap Throwaway NFT", symbol: null, iconUrl: null, withdraw: "open", recall: "locked-deny" },
+  [EARLY]: { kind: "fungible", divisibility: 18, name: "EARLY", symbol: "EARLY", iconUrl: null, withdraw: "open", recall: "locked-deny" },
+  [OTHER_TOKEN]: { kind: "fungible", divisibility: 18, name: "Some Token", symbol: "SOME", iconUrl: null, withdraw: "open", recall: "locked-deny" },
 };
 
 const ASKS = [
@@ -627,7 +627,7 @@ const ledgerState = { network: "mainnet", state_version: 1, proposer_round_times
 /** `packageAddress`: what the live component reports it was instantiated
  *  from; `accountNfts`: the account's non-fungibles response, when a test
  *  needs another shape. */
-async function stubGateway(page: Page, opts: { packageAddress?: string; accountNfts?: () => unknown } = {}) {
+async function stubGateway(page: Page, opts: { packageAddress?: string; accountNfts?: () => unknown; recallable?: string[] } = {}) {
   await page.route(`${GATEWAY}/**`, async (route: Route) => {
     const path = new URL(route.request().url()).pathname;
     const body = route.request().postDataJSON() ?? {};
@@ -661,7 +661,20 @@ async function stubGateway(page: Page, opts: { packageAddress?: string; accountN
           details: {
             type: r.kind === "fungible" ? "FungibleResource" : "NonFungibleResource",
             divisibility: r.divisibility ?? undefined,
-            role_assignments: { entries: [{ role_key: { name: "withdrawer" }, assignment: { explicit_rule: { type: "AllowAll" } } }] },
+            role_assignments: {
+              entries: [
+                { role_key: { module: "Main", name: "withdrawer" }, assignment: { explicit_rule: { type: "AllowAll" }, resolution: "Explicit" } },
+                ...(opts.recallable?.includes(address)
+                  ? [
+                      { role_key: { module: "Main", name: "recaller" }, assignment: { explicit_rule: { type: "Protected" }, resolution: "Explicit" } },
+                      { role_key: { module: "Main", name: "recaller_updater" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
+                    ]
+                  : [
+                      { role_key: { module: "Main", name: "recaller" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
+                      { role_key: { module: "Main", name: "recaller_updater" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
+                    ]),
+              ],
+            },
           },
         }];
       });
@@ -716,7 +729,7 @@ test.describe("NFT swap — List an NFT", () => {
 
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
     expect((await sentManifests(page))[0]).toBe(
-      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: XRD, amount: "5000" }], expiryForDays(LEDGER, 7)),
+      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: XRD, amount: "5000" }], expiryForDays(LEDGER, 7), "locked-deny"),
     );
     await expect(page).toHaveURL(/\/swaps\/3\?listed=1$/);
   });
@@ -741,7 +754,7 @@ test.describe("NFT swap — List an NFT", () => {
 
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
     expect((await sentManifests(page))[0]).toBe(
-      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: EARLY, amount: "250" }], expiryForDays(LEDGER, 7)),
+      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: EARLY, amount: "250" }], expiryForDays(LEDGER, 7), "locked-deny"),
     );
   });
 
@@ -766,7 +779,7 @@ test.describe("NFT swap — List an NFT", () => {
 
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
     expect((await sentManifests(page))[0]).toBe(
-      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: OTHER_TOKEN, amount: "7" }], expiryForDays(LEDGER, 7)),
+      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: OTHER_TOKEN, amount: "7" }], expiryForDays(LEDGER, 7), "locked-deny"),
     );
   });
 
@@ -779,6 +792,17 @@ test.describe("NFT swap — List an NFT", () => {
     await page.getByLabel("Alternative 1 amount").fill("0");
     await expect(page.getByText("The amount must be more than zero.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Open my wallet to list" })).toBeDisabled();
+  });
+
+  test("an NFT whose issuer can recall it cannot be picked, and the reason shows", async ({ page }) => {
+    await injectWalletMock(page);
+    await stubGateway(page, { recallable: [NFT] });
+    await page.goto("/swaps/list");
+
+    await expect(page.getByText("issuer can recall its NFTs, so it cannot be listed here.")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Guild swap throwaway 2/ })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Open my wallet to list" })).toBeDisabled();
+    expect(await sentManifests(page)).toEqual([]);
   });
 
   // The List form escrows the user's NFT on the strength of the component

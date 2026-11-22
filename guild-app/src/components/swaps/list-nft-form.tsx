@@ -173,7 +173,7 @@ export function ListNftForm() {
 
   const pickedRes = picked && holdings.state === "ok" ? holdings.res.get(picked.resource) : undefined
   const pickedNft = picked && holdings.state === "ok" ? holdings.nfts.get(key(picked.resource, picked.id)) : undefined
-  const canList = Boolean(picked && asksOk && ledgerNow !== null && pickedRes?.withdraw !== "denied" && componentOk)
+  const canList = Boolean(picked && asksOk && ledgerNow !== null && pickedRes?.withdraw !== "denied" && pickedRes?.recall === "locked-deny" && componentOk)
 
   const resourcesForText = useMemo(() => {
     const out: Record<string, SwapResourceView> = {}
@@ -197,7 +197,7 @@ export function ListNftForm() {
       }
       const expiresAt = expiryForDays(fresh.ledgerNow, days)
       const txId = await tx.send((acct) =>
-        listSwapManifest(NFT_SWAP_COMPONENT, acct, picked.resource, picked.id, asks.map(normalizeAsk), expiresAt),
+        listSwapManifest(NFT_SWAP_COMPONENT, acct, picked.resource, picked.id, asks.map(normalizeAsk), expiresAt, pickedRes?.recall ?? "unknown"),
       )
       if (!txId) return
       // Disarm at once: the NFT has left this account, and a second press
@@ -261,12 +261,20 @@ export function ListNftForm() {
             holdings.groups.map((g) => {
               const r = holdings.res.get(g.resource)
               const denied = r?.withdraw === "denied"
+              // Only a collection whose recall roles are read and locked can be
+              // listed; a collection the Gateway could not say about is shut too.
+              const noRecall = r?.recall !== "locked-deny"
               return (
                 <div key={g.resource} className="space-y-1.5">
                   <p className="text-xs text-muted-foreground" title={g.resource}>
                     {r?.name ?? "Unnamed collection"} · <span className="font-mono">{shortAddress(g.resource)}</span>
                   </p>
                   {denied && <p className="text-[11px] text-muted-foreground">{LIST_COPY.notWithdrawable}</p>}
+                  {!denied && noRecall && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {r?.recall === "recallable" ? LIST_COPY.recallable : LIST_COPY.recallUnknown}
+                    </p>
+                  )}
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                     {g.ids.map((id) => {
                       const d = holdings.nfts.get(key(g.resource, id))
@@ -275,7 +283,7 @@ export function ListNftForm() {
                         <button
                           key={id}
                           type="button"
-                          disabled={denied}
+                          disabled={denied || noRecall}
                           onClick={() => account && setPicked({ account, resource: g.resource, id })}
                           aria-pressed={on}
                           className={`overflow-hidden rounded-lg border text-left disabled:opacity-40 ${on ? "border-primary ring-2 ring-primary/40" : ""}`}

@@ -171,7 +171,7 @@ const SWAP_GATED: Record<string, () => string> = {
     manifests.listSwapManifest(SWAP, POSTER, BADGE_RES, "#1#", [
       { kind: "fungible", resource: XRD_RES, amount: "5000" },
       { kind: "nonFungible", resource: RECEIPT_RES, id: "#2#" },
-    ], 1790114665),
+    ], 1790114665, "locked-deny"),
   fillSwapManifest: () =>
     manifests.fillSwapManifest(SWAP, WORKER, 1, 0, { kind: "fungible", resource: XRD_RES, amount: "5000" }, BADGE_RES, "#1#"),
   fillSwapManifestNonFungible: () =>

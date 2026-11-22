@@ -186,5 +186,5 @@ export {
   extendSwapListingManifest,
   burnListingReceiptManifest,
 } from './manifests.js';
-export type { SwapAsk } from './manifests.js';
+export type { SwapAsk, RecallState } from './manifests.js';
 export { LIVE_NFT_SWAP_COMPONENT } from './config.js';
