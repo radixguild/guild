@@ -132,6 +132,9 @@ export const DETAIL_COPY = {
   fillHeading: "Fill this listing",
   fillIntro:
     "Pick one of the seller's terms. You send exactly that, and the NFT comes to your account in the same transaction — or the transaction fails and only the network fee is spent.",
+  recallNoFill: "This collection's issuer can recall its NFTs, so Fill is not offered for it here.",
+  recallNoFillUnknown:
+    "This page could not confirm whether this collection's issuer can recall its NFTs, so Fill is not offered. Try again shortly.",
   fillConfirmCheck:
     "I compared the collection's resource address with the one its creator publishes, and I understand a fill cannot be undone.",
   fillNoWallet: "Connect your Radix Wallet to fill this listing.",
@@ -187,6 +190,9 @@ export const LIST_COPY = {
   noRoyalty:
     "Creator royalties are not collected here, and nobody reviews your price. What you type is what a buyer must pay.",
   notWithdrawable: "This NFT cannot be withdrawn from your account, so it cannot be listed.",
+  recallable: "This collection's issuer can recall its NFTs, so it cannot be listed here.",
+  recallUnknown:
+    "This page could not confirm whether this collection's issuer can recall its NFTs, so it cannot be listed here. Try again shortly.",
   restricted:
     "A rule controls who may move this NFT. Your wallet will say whether this account satisfies it.",
 } as const

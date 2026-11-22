@@ -1,7 +1,7 @@
 import { XRD_ADDRESS } from "./radix"
 import { INSTANTIATE_SPEC } from "./generated/instantiate-spec"
 import { isPositiveXrd, normalizeXrd } from "./xrd-decimal"
-import type { SwapAsk } from "./nft-swap"
+import type { RecallState, SwapAsk } from "./nft-swap"
 
 // Sanitize string values used in transaction manifests
 function sanitize(val: string): string {
@@ -1567,6 +1567,11 @@ function depositAllTo(account: string): string {
  * credential for cancel / extend / withdraw) is deposited back to it.
  * `expiresAt` is unix seconds, at most 30 days after the ledger clock when
  * the transaction executes (nft_swap.rs `list`) — use nft-swap.ts expiryForDays.
+ *
+ * `recall` is the asset resource's RecallState as the Gateway reported it
+ * (readResourceDisplay). The builder refuses anything but "locked-deny", so a
+ * stale or skipped form check cannot build a listing for an NFT whose issuer
+ * can recall it, or whose recall roles could not be read.
  */
 export function listSwapManifest(
   swapComponent: string,
@@ -1575,7 +1580,11 @@ export function listSwapManifest(
   assetId: string,
   asks: SwapAsk[],
   expiresAt: number,
+  recall: RecallState,
 ): string {
+  if (recall !== "locked-deny") {
+    throw new Error("Cannot list: this collection's issuer can recall its NFTs, or that could not be confirmed")
+  }
   const c = validateAddress(swapComponent, "component_rdx");
   const a = validateAddress(seller, "account_rdx");
   const r = validateAddress(assetResource, "resource_rdx");

@@ -33,10 +33,10 @@ const LEDGER_ISO = "2026-10-06T07:00:00.000Z";
 const LEDGER = Date.parse(LEDGER_ISO) / 1000;
 
 const RESOURCES = {
-  [XRD]: { kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open" },
-  [NFT]: { kind: "nonFungible", divisibility: null, name: "Guild Swap Throwaway NFT", symbol: null, iconUrl: null, withdraw: "open" },
-  [EARLY]: { kind: "fungible", divisibility: 18, name: "EARLY", symbol: "EARLY", iconUrl: null, withdraw: "open" },
-  [OTHER_TOKEN]: { kind: "fungible", divisibility: 18, name: "Some Token", symbol: "SOME", iconUrl: null, withdraw: "open" },
+  [XRD]: { kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open", recall: "locked-deny" },
+  [NFT]: { kind: "nonFungible", divisibility: null, name: "Guild Swap Throwaway NFT", symbol: null, iconUrl: null, withdraw: "open", recall: "locked-deny" },
+  [EARLY]: { kind: "fungible", divisibility: 18, name: "EARLY", symbol: "EARLY", iconUrl: null, withdraw: "open", recall: "locked-deny" },
+  [OTHER_TOKEN]: { kind: "fungible", divisibility: 18, name: "Some Token", symbol: "SOME", iconUrl: null, withdraw: "open", recall: "locked-deny" },
 };
 
 const ASKS = [
@@ -716,7 +716,7 @@ test.describe("NFT swap — List an NFT", () => {
 
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
     expect((await sentManifests(page))[0]).toBe(
-      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: XRD, amount: "5000" }], expiryForDays(LEDGER, 7)),
+      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: XRD, amount: "5000" }], expiryForDays(LEDGER, 7), "locked-deny"),
     );
     await expect(page).toHaveURL(/\/swaps\/3\?listed=1$/);
   });
@@ -741,7 +741,7 @@ test.describe("NFT swap — List an NFT", () => {
 
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
     expect((await sentManifests(page))[0]).toBe(
-      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: EARLY, amount: "250" }], expiryForDays(LEDGER, 7)),
+      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: EARLY, amount: "250" }], expiryForDays(LEDGER, 7), "locked-deny"),
     );
   });
 
@@ -766,7 +766,7 @@ test.describe("NFT swap — List an NFT", () => {
 
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
     expect((await sentManifests(page))[0]).toBe(
-      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: OTHER_TOKEN, amount: "7" }], expiryForDays(LEDGER, 7)),
+      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: OTHER_TOKEN, amount: "7" }], expiryForDays(LEDGER, 7), "locked-deny"),
     );
   });
 

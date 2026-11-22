@@ -278,6 +278,17 @@ export type AskProblem =
   | "duplicate"
   | "same_as_asset"
 
+/**
+ * Whether a resource's issuer can recall its NFTs, read from the resource's
+ * role assignments (readResourceDisplay).
+ *  - "locked-deny": `recaller` and `recaller_updater` are both DenyAll.
+ *  - "recallable":  `recaller` is anything else, or `recaller_updater` is not
+ *                   DenyAll (the role could be changed to allow recall).
+ *  - "unknown":     the roles were absent or unreadable.
+ * Only "locked-deny" may be listed or filled through this app.
+ */
+export type RecallState = "locked-deny" | "recallable" | "unknown"
+
 /** What the list form knows about an ask's resource, read LIVE from the
  *  Gateway (readResourceDisplay) — never assumed. */
 export type AskResourceKind = { kind: "fungible"; divisibility: number } | { kind: "nonFungible" }

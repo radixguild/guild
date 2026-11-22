@@ -150,10 +150,12 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
   const [picked, setPicked] = useState<number | null>(null)
   const [checked, setChecked] = useState(false)
   const own = tx.account === l.seller
-  const locked = tx.busy || behind
+  const recall = view.resources[l.assetResource]?.recall ?? "unknown"
+  const noFill = recall !== "locked-deny"
+  const locked = tx.busy || behind || noFill
 
   const fill = async () => {
-    if (picked === null || behind) return
+    if (picked === null || behind || noFill) return
     const ask = l.asks[picked]
     const id = await tx.send((account) =>
       fillSwapManifest(view.component, account, l.listingId, picked, ask, l.assetResource, l.assetId),
@@ -172,6 +174,11 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
         <p className="text-muted-foreground">{DETAIL_COPY.fillIntro}</p>
+        {noFill && (
+          <p data-testid="recall-no-fill" className="rounded-lg border p-3">
+            {recall === "recallable" ? DETAIL_COPY.recallNoFill : DETAIL_COPY.recallNoFillUnknown}
+          </p>
+        )}
         <ol className="space-y-2">
           {l.asks.map((ask, i) => (
             <li
@@ -179,7 +186,7 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
               className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 ${picked === i ? "border-primary" : ""}`}
             >
               <AskBlock ask={ask} view={view} />
-              {tx.connected && !(ask.kind === "nonFungible" && view.askNfts[`${ask.resource} ${ask.id}`]?.burned) && (
+              {tx.connected && !noFill && !(ask.kind === "nonFungible" && view.askNfts[`${ask.resource} ${ask.id}`]?.burned) && (
                 <Button
                   size="sm"
                   variant={picked === i ? "default" : "outline"}

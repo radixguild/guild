@@ -19,6 +19,7 @@ import {
   readSwapBoard,
   readSwapComponentState,
   readSwapListingsById,
+  recallRule,
 } from "@/lib/nft-swap-gateway"
 import { __resetSwapCachesForTests, DETAIL_ASK_DISPLAY_CAP, getSwapBoard, getSwapDetail } from "@/lib/nft-swap-service"
 import { GET as getBoardRoute } from "@/app/api/v1/swaps/route"
@@ -921,5 +922,49 @@ describe("GET /api/v1/swaps and /api/v1/swaps/{id}", () => {
     let last = 0
     for (let i = 0; i < 61; i++) last = (await getBoardRoute(req("?status=sold", "10.9.9.9"))).status
     expect(last).toBe(429)
+  })
+})
+
+describe("recallRule — the issuer's recall roles, from role_assignments", () => {
+  const role = (name: string, rule: string, resolution = "Explicit") => ({
+    role_key: { module: "Main", name },
+    assignment: resolution === "Explicit" ? { explicit_rule: { type: rule }, resolution } : { resolution },
+    updater_roles: [{ module: "Main", name: `${name}_updater` }],
+  })
+  const details = (recaller: unknown, updater: unknown) => ({
+    type: "NonFungibleResource",
+    role_assignments: {
+      owner: { rule: { type: "Protected" }, updater: "None" },
+      entries: [role("withdrawer", "AllowAll"), recaller, updater].filter(Boolean),
+    },
+  })
+
+  it("DenyAll recaller and DenyAll recaller_updater (the shape of resource_rdx1nguzt4…evhqrn4) is locked-deny", () => {
+    expect(recallRule(details(role("recaller", "DenyAll"), role("recaller_updater", "DenyAll")))).toBe("locked-deny")
+  })
+  it("a Protected recaller is recallable", () => {
+    expect(recallRule(details(role("recaller", "Protected"), role("recaller_updater", "DenyAll")))).toBe("recallable")
+  })
+  it("a recaller on the owner's rule is recallable", () => {
+    expect(recallRule(details(role("recaller", "", "Owner"), role("recaller_updater", "DenyAll")))).toBe("recallable")
+  })
+  it("a DenyAll recaller whose updater is not DenyAll is recallable (it could be changed)", () => {
+    expect(recallRule(details(role("recaller", "DenyAll"), role("recaller_updater", "Protected")))).toBe("recallable")
+    expect(recallRule(details(role("recaller", "DenyAll"), role("recaller_updater", "AllowAll")))).toBe("recallable")
+  })
+  it("absent or unreadable roles are unknown", () => {
+    expect(recallRule(undefined)).toBe("unknown")
+    expect(recallRule({ role_assignments: {} })).toBe("unknown")
+    expect(recallRule(details(null, role("recaller_updater", "DenyAll")))).toBe("unknown")
+    expect(recallRule(details(role("recaller", "DenyAll"), null))).toBe("unknown")
+    expect(recallRule(details({ role_key: { module: "Main", name: "recaller" }, assignment: {} }, role("recaller_updater", "DenyAll")))).toBe("unknown")
+    // A role named recaller in another module is not the resource's recaller.
+    expect(recallRule(details({ ...role("recaller", "DenyAll"), role_key: { module: "Metadata", name: "recaller" } }, role("recaller_updater", "DenyAll")))).toBe("unknown")
+  })
+  it("readResourceDisplay carries it", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      ok({ items: [{ address: NFT, metadata: { items: [] }, details: details(role("recaller", "Protected"), role("recaller_updater", "DenyAll")) }] }),
+    )
+    expect((await readResourceDisplay([NFT]))!.get(NFT)).toMatchObject({ recall: "recallable" })
   })
 })
