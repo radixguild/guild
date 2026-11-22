@@ -604,6 +604,11 @@ export async function runFillSwap(opts: FillSwapOptions): Promise<SwapLegResult>
   const status = swapStatus(listing, state.ledgerNow);
   if (status !== 'open') return refuse(`listing ${listingId} is ${status} at the ledger clock — only an open listing can be filled`, { listingId });
 
+  // No fill of an NFT whose issuer can recall it; a read that cannot say fails closed.
+  const recall = await deps.readResourceRecall(config, listing.assetResource);
+  if (recall === 'recallable') return refuse(`${listing.assetResource}: this collection's issuer can recall its NFTs, so a fill is not offered for it`, { listingId });
+  if (recall !== 'locked-deny') return refuse(`${listing.assetResource}: could not confirm whether this collection's issuer can recall its NFTs, so a fill is not offered`, { listingId });
+
   let alt = opts.alternative;
   if (alt === undefined) {
     if (listing.asks.length > 1) {

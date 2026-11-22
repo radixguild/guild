@@ -341,6 +341,29 @@ describe('fill-swap', () => {
     expect(m.split('ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES')).toHaveLength(2);
   });
 
+  test.each([
+    ['recallable', /issuer can recall its NFTs/],
+    ['unknown', /could not confirm whether this collection's issuer can recall/],
+  ] as const)('refuses a %s collection, dry run or live, and signs nothing', async (state, line) => {
+    const { d, signed } = deps({ readResourceRecall: async () => state });
+    for (const live of [false, true]) {
+      const r = await runFillSwap({ listingId: 3, live, identity: await identity(), config: CONFIG, deps: d });
+      expect(r.refused).toBe(true);
+      expect(r.message).toMatch(line);
+      expect(r.manifest).toBeUndefined();
+    }
+    expect(signed).toEqual([]);
+  });
+
+  test('a locked-deny collection fills, and the built manifest still asserts the listed NFT', async () => {
+    const { d, signed } = deps({ readResourceRecall: async () => 'locked-deny' });
+    const r = await runFillSwap({ listingId: 3, live: true, maxPrice: { resource: MAINNET_XRD, amount: '5000' }, identity: await identity(), config: CONFIG, deps: d });
+    expect(r.refused).toBeUndefined();
+    expect(signed).toHaveLength(1);
+    expect(signed[0]).toContain('ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES');
+    expect(signed[0].indexOf('ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES')).toBeGreaterThan(signed[0].indexOf('"fill"'));
+  });
+
   test('more than one alternative needs --alternative, and names them', async () => {
     const asks: SwapAsk[] = [
       { kind: 'fungible', resource: MAINNET_XRD, amount: '5000' },

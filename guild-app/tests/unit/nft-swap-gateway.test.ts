@@ -948,6 +948,9 @@ describe("recallRule — the issuer's recall roles, from role_assignments", () =
   it("a recaller on the owner's rule is recallable", () => {
     expect(recallRule(details(role("recaller", "", "Owner"), role("recaller_updater", "DenyAll")))).toBe("recallable")
   })
+  it("an AllowAll recaller is recallable", () => {
+    expect(recallRule(details(role("recaller", "AllowAll"), role("recaller_updater", "DenyAll")))).toBe("recallable")
+  })
   it("a DenyAll recaller whose updater is not DenyAll is recallable (it could be changed)", () => {
     expect(recallRule(details(role("recaller", "DenyAll"), role("recaller_updater", "Protected")))).toBe("recallable")
     expect(recallRule(details(role("recaller", "DenyAll"), role("recaller_updater", "AllowAll")))).toBe("recallable")

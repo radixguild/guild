@@ -336,6 +336,22 @@ describe("SwapDetail", () => {
     expect(screen.getByRole("button", { name: "Extend by 30 days" })).toBeEnabled()
   })
 
+  it.each(["recallable", "unknown"] as const)(
+    "recall guard, %s: Withdraw proceeds and Burn receipt stay available on listings already settled",
+    async (recall) => {
+      const base = detail({ recall })
+      const owed = { ...base, listing: { ...base.listing, state: "Filled", status: "filled", filledWith: 0, proceedsWithdrawn: false } }
+      F.apiFetch.mockResolvedValue(answer(owed))
+      const first = render(<SwapDetail listingId="7" />)
+      expect(await screen.findByRole("button", { name: /^Withdraw / })).toBeEnabled()
+      first.unmount()
+      const done = { ...base, listing: { ...base.listing, state: "Filled", status: "filled", filledWith: 0, proceedsWithdrawn: true } }
+      F.apiFetch.mockResolvedValue(answer(done))
+      render(<SwapDetail listingId="7" />)
+      expect(await screen.findByRole("button", { name: "Burn the listing receipt" })).toBeEnabled()
+    },
+  )
+
   it("recall guard, locked-deny: Fill is offered and no reason shows", async () => {
     F.apiFetch.mockResolvedValue(answer(detail({ recall: "locked-deny" })))
     render(<SwapDetail listingId="7" />)
