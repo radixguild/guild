@@ -4236,7 +4236,6 @@ fn create_task_via_caller(
                 lookup.bucket("insurance"),
                 dec!("0.1"),
                 WORK_BRIEF,
-                None::<ManifestProof>,
             )
         })
         .call_method(
@@ -4249,10 +4248,12 @@ fn create_task_via_caller(
 }
 
 /// `claim_task` THROUGH `caller` with the fixture worker's badge and bond,
-/// pinning `worker`. With `owner_badge` = Some(id), a proof of that
-/// ACCOUNT_OWNER_BADGE (held by the fixture worker) is popped off the
-/// transaction's auth zone and handed to `caller`, which pushes it onto ITS
-/// OWN auth zone before calling `claim_task`.
+/// pinning `worker`. Badges go to the component as BUCKETS: a proof handed to
+/// a component is restricted, and the engine refuses to pass it on to the
+/// escrow or into the component's auth zone. The component makes its own
+/// worker-badge proof; with `owner_badge` = Some(id) it also makes a proof of
+/// that ACCOUNT_OWNER_BADGE (held by the fixture worker) in ITS OWN auth zone.
+/// Everything it returns (receipt, badges) goes back to the fixture worker.
 fn claim_task_via_caller(
     f: &mut Fixture,
     caller: ComponentAddress,
@@ -4261,26 +4262,26 @@ fn claim_task_via_caller(
     owner_badge: Option<NonFungibleLocalId>,
     signers: Vec<NonFungibleGlobalId>,
 ) -> TransactionReceipt {
-    let (escrow, bond) = (f.escrow, f.claim_bond);
+    let (escrow, bond, worker_badge) = (f.escrow, f.claim_bond, f.worker_badge);
     let mut builder = ManifestBuilder::new().lock_fee_from_faucet();
     let hand_over = owner_badge.is_some();
     if let Some(id) = owner_badge {
         builder = builder
-            .create_proof_from_account_of_non_fungibles(f.worker_account, ACCOUNT_OWNER_BADGE, vec![id])
-            .pop_from_auth_zone("owner_proof");
+            .withdraw_non_fungibles_from_account(f.worker_account, ACCOUNT_OWNER_BADGE, vec![id])
+            .take_all_from_worktop(ACCOUNT_OWNER_BADGE, "owner_badge");
     }
     let manifest = builder
-        .create_proof_from_account_of_non_fungibles(
+        .withdraw_non_fungibles_from_account(
             f.worker_account,
-            f.worker_badge,
+            worker_badge,
             vec![NonFungibleLocalId::integer(1)],
         )
-        .pop_from_auth_zone("worker_proof")
+        .take_all_from_worktop(worker_badge, "worker_badge")
         .withdraw_from_account(f.worker_account, f.reward_token, bond)
         .take_from_worktop(f.reward_token, bond, "bond")
         .call_method_with_name_lookup(caller, "claim_task_via", |lookup| {
-            let owner_proof = if hand_over { Some(lookup.proof("owner_proof")) } else { None };
-            (escrow, task_id, worker, lookup.proof("worker_proof"), lookup.bucket("bond"), owner_proof)
+            let owner_badge = if hand_over { Some(lookup.bucket("owner_badge")) } else { None };
+            (escrow, task_id, worker, lookup.bucket("worker_badge"), lookup.bucket("bond"), owner_badge)
         })
         .call_method(
             f.worker_account,
@@ -4353,8 +4354,9 @@ fn test_payee_owner_check_component_caller_cannot_use_the_transactions_signature
 }
 
 /// A component that holds the owner proof in ITS OWN auth zone passes: the
-/// securified worker account's badge proof is handed to `OwnerCheckCaller`,
-/// which pushes it before calling `claim_task`.
+/// securified worker account's owner badge is handed to `OwnerCheckCaller`,
+/// which makes a proof of it in its own auth zone before calling
+/// `claim_task`, then returns both badges.
 #[test]
 fn test_payee_owner_check_component_caller_passes_with_the_owner_badge_in_its_own_auth_zone() {
     let mut f = setup();
@@ -4363,11 +4365,21 @@ fn test_payee_owner_check_component_caller_passes_with_the_owner_badge_in_its_ow
     create_task(&mut f, dec!("100"), dec!("10"), dec!("0.1")).expect_commit_success();
     let caller = new_owner_check_caller(&mut f);
     let (worker_account, worker_pk) = (f.worker_account, f.worker_pk);
-    let (sec_worker, worker_badge) = securified_account_held_by(&mut f, worker_account, worker_pk);
+    let (sec_worker, owner_badge) = securified_account_held_by(&mut f, worker_account, worker_pk);
     let signers = vec![NonFungibleGlobalId::from_public_key(&worker_pk)];
-    claim_task_via_caller(&mut f, caller, 1, sec_worker, Some(worker_badge), signers)
+    claim_task_via_caller(&mut f, caller, 1, sec_worker, Some(owner_badge), signers)
         .expect_commit_success();
     assert_eq!(fetch_task(&mut f, 1).worker_account, Some(sec_worker));
+    assert_eq!(
+        f.ledger.get_component_balance(worker_account, ACCOUNT_OWNER_BADGE),
+        dec!("1"),
+        "the component returned the owner badge"
+    );
+    assert_eq!(
+        f.ledger.get_component_balance(worker_account, f.worker_badge),
+        dec!("3"),
+        "the component returned the worker badge"
+    );
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

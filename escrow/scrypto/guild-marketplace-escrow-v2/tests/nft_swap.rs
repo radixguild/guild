@@ -1916,17 +1916,29 @@ fn new_owner_check_caller(f: &mut Fixture) -> ComponentAddress {
         .new_component_addresses()[0]
 }
 
+/// What a `list_via_caller` transaction does with the pinned seller's owner
+/// badge (an ACCOUNT_OWNER_BADGE held by the fixture seller).
+enum CallerBadge {
+    /// Nothing.
+    Absent,
+    /// A proof of it stays in the TRANSACTION's auth zone.
+    ProofInTxAuthZone(NonFungibleLocalId),
+    /// The badge itself is withdrawn and handed to the component, which
+    /// makes its own proof of it. (A proof handed to a component is
+    /// restricted: the engine refuses to put it in that component's auth
+    /// zone, so a badge proof cannot be handed over.)
+    BadgeToComponent(NonFungibleLocalId),
+}
+
 /// List the fixture seller's NFT `asset_local_id` THROUGH `caller`, pinning
-/// `seller`. `badge` says what happens to a proof of that ACCOUNT_OWNER_BADGE
-/// (held by the fixture seller): `InAuthZone` leaves it in the TRANSACTION's
-/// auth zone; `PoppedOff` pops it and hands it to `caller`, which pushes it
-/// onto ITS OWN auth zone before calling `list`.
+/// `seller`, doing `badge` with the seller's owner badge. Everything the
+/// component returns (receipt, badge) goes back to the fixture seller.
 fn list_via_caller(
     f: &mut Fixture,
     caller: ComponentAddress,
     seller: ComponentAddress,
     asset_local_id: u64,
-    badge: BadgeProof,
+    badge: CallerBadge,
     signers: Vec<NonFungibleGlobalId>,
 ) -> TransactionReceipt {
     let from_account = f.seller_account;
@@ -1936,15 +1948,15 @@ fn list_via_caller(
     let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
     let builder = ManifestBuilder::new().lock_fee_from_faucet();
     let (builder, hand_over) = match badge {
-        BadgeProof::Absent => (builder, false),
-        BadgeProof::InAuthZone(id) => (
+        CallerBadge::Absent => (builder, false),
+        CallerBadge::ProofInTxAuthZone(id) => (
             builder.create_proof_from_account_of_non_fungibles(from_account, ACCOUNT_OWNER_BADGE, indexset![id]),
             false,
         ),
-        BadgeProof::PoppedOff(id) => (
+        CallerBadge::BadgeToComponent(id) => (
             builder
-                .create_proof_from_account_of_non_fungibles(from_account, ACCOUNT_OWNER_BADGE, indexset![id])
-                .pop_from_auth_zone("badge_proof"),
+                .withdraw_non_fungibles_from_account(from_account, ACCOUNT_OWNER_BADGE, indexset![id])
+                .take_all_from_worktop(ACCOUNT_OWNER_BADGE, "owner_badge"),
             true,
         ),
     };
@@ -1956,8 +1968,8 @@ fn list_via_caller(
         )
         .take_all_from_worktop(asset_resource, "asset")
         .call_method_with_name_lookup(caller, "list_via", |lookup| {
-            let owner_proof = if hand_over { Some(lookup.proof("badge_proof")) } else { None };
-            (swap, seller, lookup.bucket("asset"), asks.clone(), expiry, owner_proof)
+            let owner_badge = if hand_over { Some(lookup.bucket("owner_badge")) } else { None };
+            (swap, seller, lookup.bucket("asset"), asks.clone(), expiry, owner_badge)
         })
         .call_method(
             from_account,
@@ -1979,11 +1991,11 @@ fn test_owner_check_component_caller_cannot_use_the_transactions_proofs() {
     let caller = new_owner_check_caller(&mut f);
     let seller_sig = NonFungibleGlobalId::from_public_key(&f.seller_pk);
     let seller = f.seller_account;
-    list_via_caller(&mut f, caller, seller, 1, BadgeProof::Absent, vec![seller_sig.clone()])
+    list_via_caller(&mut f, caller, seller, 1, CallerBadge::Absent, vec![seller_sig.clone()])
         .expect_commit_failure_containing_error("AssertAccessRuleFailed");
 
     let (secured, _original_pk, badge_id) = new_securified_account(&mut f);
-    list_via_caller(&mut f, caller, secured, 1, BadgeProof::InAuthZone(badge_id), vec![seller_sig])
+    list_via_caller(&mut f, caller, secured, 1, CallerBadge::ProofInTxAuthZone(badge_id), vec![seller_sig])
         .expect_commit_failure_containing_error("AssertAccessRuleFailed");
 
     assert_eq!(
@@ -1994,17 +2006,23 @@ fn test_owner_check_component_caller_cannot_use_the_transactions_proofs() {
 }
 
 /// A component that holds the owner proof in ITS OWN auth zone passes. The
-/// securified account's badge proof is handed to `OwnerCheckCaller`, which
-/// pushes it before calling `list`.
+/// securified account's owner badge is handed to `OwnerCheckCaller`, which
+/// makes a proof of it in its own auth zone before calling `list`, then
+/// returns the badge.
 #[test]
 fn test_owner_check_component_caller_passes_with_the_owner_badge_in_its_own_auth_zone() {
     let mut f = setup();
     let caller = new_owner_check_caller(&mut f);
     let (secured, _original_pk, badge_id) = new_securified_account(&mut f);
     let signers = vec![NonFungibleGlobalId::from_public_key(&f.seller_pk)];
-    list_via_caller(&mut f, caller, secured, 1, BadgeProof::PoppedOff(badge_id), signers)
+    list_via_caller(&mut f, caller, secured, 1, CallerBadge::BadgeToComponent(badge_id), signers)
         .expect_commit_success();
     assert_eq!(fetch_listing(&mut f, 1).seller, secured);
+    assert_eq!(
+        f.ledger.get_component_balance(f.seller_account, ACCOUNT_OWNER_BADGE),
+        dec!("1"),
+        "the component returned the owner badge"
+    );
 }
 
 /// An account securified under an Access Controller: its owner badge sits in

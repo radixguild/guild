@@ -7,9 +7,14 @@ use scrypto::prelude::*;
 // What the tests use it for: `Runtime::assert_access_rule` checks the global
 // caller's auth zone (radix-engine 1.3.1 `Authorization::auth_zone_stack_matches`).
 // Through this component that is this component's own auth zone, not the
-// transaction's, so the transaction's signature proofs are out of reach. A
-// test can hand this component a proof (`owner_proof`), which it pushes onto
-// its own auth zone before forwarding the call.
+// transaction's, so the transaction's signature proofs are out of reach.
+//
+// Badges come in as BUCKETS, never as proofs. A proof passed into a component
+// is marked restricted, and the engine then refuses to move it into that
+// component's auth zone or on to another component ("Moving restricted proof
+// downstream", radix-engine 1.3.1 `NonFungibleProofBlueprint::on_move`). So
+// this component creates its own proofs from the badges it is handed, uses
+// them, drops them, and returns the badges.
 
 /// Mirror of `guild_marketplace_escrow_v2::nft_swap::Ask`: the same variants
 /// in the same order with the same field types, so the bytes this component
@@ -33,6 +38,8 @@ mod owner_check_caller {
         }
 
         /// NftSwap `list(seller, asset, asks, expires_at)`, called from here.
+        /// With `owner_badge`, a proof of it sits in THIS component's auth
+        /// zone during the call. Returns the listing receipt and the badge.
         pub fn list_via(
             &self,
             swap: ComponentAddress,
@@ -40,15 +47,17 @@ mod owner_check_caller {
             asset: NonFungibleBucket,
             asks: Vec<Ask>,
             expires_at: Instant,
-            owner_proof: Option<Proof>,
-        ) -> Bucket {
-            Self::push(owner_proof);
+            owner_badge: Option<Bucket>,
+        ) -> (Bucket, Option<Bucket>) {
+            Self::push_proof_of(&owner_badge);
             let swap: Global<AnyComponent> = swap.into();
-            swap.call("list", &(seller, asset, asks, expires_at))
+            let receipt: Bucket = swap.call("list", &(seller, asset, asks, expires_at));
+            LocalAuthZone::drop_regular_proofs();
+            (receipt, owner_badge)
         }
 
         /// Escrow `create_task(poster, reward, insurance, fee, brief)`, called
-        /// from here.
+        /// from here with nothing in this component's auth zone.
         pub fn create_task_via(
             &self,
             escrow: ComponentAddress,
@@ -57,9 +66,7 @@ mod owner_check_caller {
             insurance: Bucket,
             arbiter_fee_pct: Decimal,
             work_brief_hash: Hash,
-            owner_proof: Option<Proof>,
         ) -> Bucket {
-            Self::push(owner_proof);
             let escrow: Global<AnyComponent> = escrow.into();
             escrow.call(
                 "create_task",
@@ -68,24 +75,31 @@ mod owner_check_caller {
         }
 
         /// Escrow `claim_task(task_id, worker, worker_badge, claim_bond)`,
-        /// called from here.
+        /// called from here. The worker-badge proof is created here from
+        /// `worker_badge`. With `owner_badge`, a proof of it sits in THIS
+        /// component's auth zone during the call. Returns the claim receipt,
+        /// the worker badge and the owner badge.
         pub fn claim_task_via(
             &self,
             escrow: ComponentAddress,
             task_id: u64,
             worker: ComponentAddress,
-            worker_badge: Proof,
+            worker_badge: Bucket,
             claim_bond: Bucket,
-            owner_proof: Option<Proof>,
-        ) -> Bucket {
-            Self::push(owner_proof);
+            owner_badge: Option<Bucket>,
+        ) -> (Bucket, Bucket, Option<Bucket>) {
+            Self::push_proof_of(&owner_badge);
+            let badge_proof = worker_badge.create_proof_of_all();
             let escrow: Global<AnyComponent> = escrow.into();
-            escrow.call("claim_task", &(task_id, worker, worker_badge, claim_bond))
+            let receipt: Bucket =
+                escrow.call("claim_task", &(task_id, worker, badge_proof, claim_bond));
+            LocalAuthZone::drop_regular_proofs();
+            (receipt, worker_badge, owner_badge)
         }
 
-        fn push(owner_proof: Option<Proof>) {
-            if let Some(proof) = owner_proof {
-                LocalAuthZone::push(proof);
+        fn push_proof_of(badge: &Option<Bucket>) {
+            if let Some(badge) = badge {
+                LocalAuthZone::push(badge.create_proof_of_all());
             }
         }
     }
