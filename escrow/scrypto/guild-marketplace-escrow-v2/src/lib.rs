@@ -1457,11 +1457,12 @@ mod guild_marketplace_escrow {
             // out. Failing at pin time puts the error in the designator's own
             // transaction, where they can still fix it.
             //
-            // A caller-supplied payee is safe in a way a caller-supplied GATE is
-            // not: `create_task` consumes the poster's reward and insurance in the
-            // same call that reads `poster`, so a wrong value can only misdirect
-            // the designator's OWN refund. Contrast M5, where the same
-            // free-parameter-ness defeats the self-claim gate below.
+            // v2 (payee owner check): naming an account is no longer
+            // enough; the caller must control it. v1 argued a caller-supplied
+            // payee was safe because a wrong value "can only misdirect the
+            // designator's OWN refund". The misdirection was the problem: a
+            // typo or someone else's account received every poster-side
+            // refund. NftSwap's `list` got the same check in guild#93.
             assert!(
                 poster
                     .as_node_id()
@@ -1469,6 +1470,7 @@ mod guild_marketplace_escrow {
                     .is_some_and(|t| t.is_global_account()),
                 "poster must be a global account address"
             );
+            Self::assert_caller_controls_account(poster);
 
             let task_id = self.next_task_id;
             self.next_task_id = self.next_task_id.checked_add(1).expect("task_id overflow");
@@ -1653,10 +1655,11 @@ mod guild_marketplace_escrow {
                 .as_non_fungible()
                 .non_fungible_local_id();
 
-            // PAYEE PIN (worker side). Same reasoning as `create_task`: every
-            // worker-side withdrawal deposits here, and the claimer names the
-            // account in the same call that consumes their own bond, so a wrong
-            // value can only misdirect their own money.
+            // PAYEE PIN (worker side). Every worker-side withdrawal deposits
+            // here, so it must be an account (same reason as `create_task`).
+            // v2 (payee owner check): and the claimer must control it, so a
+            // typo or someone else's account can no longer receive the reward
+            // and the bond.
             assert!(
                 worker
                     .as_node_id()
@@ -1664,6 +1667,7 @@ mod guild_marketplace_escrow {
                     .is_some_and(|t| t.is_global_account()),
                 "worker must be a global account address"
             );
+            Self::assert_caller_controls_account(worker);
 
             // v2 (F-001, claimant side): an account that holds an arbiter
             // badge may not be named as a task's worker. It stops the
@@ -1737,6 +1741,15 @@ mod guild_marketplace_escrow {
             // What this assert actually buys is an honest-mistake guard, not a
             // sybil defence. Do not cite it as one. See docs/PROJECT-STATE.md,
             // 2026-07-31 triage block.
+            //
+            // v2 (payee owner check): `poster` and `worker` are no longer free
+            // parameters. `create_task` and `claim_task` each require the
+            // caller to control the account it pins. That does NOT make this gate a sybil
+            // defence: a person can control any number of accounts (a fresh
+            // key is one), so the "decoy" is now a second account of their own
+            // and still costs only gas. What changed is narrower: a claimer
+            // can no longer name the poster's account unless they control it,
+            // so this assert now fires only for one controller holding both.
             assert!(
                 worker != task.poster,
                 "self-claim not allowed: worker account must differ from poster"
@@ -2523,6 +2536,11 @@ mod guild_marketplace_escrow {
             // destination, not an identity). Poster-side self-dealing is OPEN
             // BY DESIGN and must be stated in the honesty copy, never claimed
             // closed.
+            // v2 (payee owner check): `create_task` now requires its caller
+            // to control `poster`, so "bound to nothing" is no longer literal. The
+            // conclusion stands: an arbiter who posts can pin a second
+            // account of their own as poster, so a poster-side comparison
+            // would still be defeated for the cost of gas.
             //
             // ⚠️ CORRECTED in v2 (guild#84 review L2). v1 said "An
             // arbiter-poster still cannot STEAL — settlement credits only
@@ -2861,6 +2879,27 @@ mod guild_marketplace_escrow {
                     panic!("reward token must be fungible")
                 }
             }
+        }
+
+        /// v2 (payee owner check): the caller must satisfy `account`'s
+        /// OWNER rule, the same rule that guards that account's withdrawals.
+        /// Callers check `is_global_account()` first, so `account` is always an
+        /// instance of the native Account blueprint, not third-party code.
+        ///
+        /// `assert_access_rule` checks the GLOBAL CALLER's auth zone and the
+        /// direct caller's implicit badges, never this frame's own proofs
+        /// (radix-engine 1.3.1 `Authorization::auth_zone_stack_matches`). A
+        /// manifest that calls this method directly passes when it is signed
+        /// by the account's key, or holds a proof of a securified account's
+        /// owner badge in its auth zone. A component calling it must hold the
+        /// owner proof in its OWN auth zone, so a signature-owned account
+        /// cannot be pinned through a component. A never-used preallocated
+        /// account is created by the owner-role read. Fails with the engine's
+        /// `AssertAccessRuleFailed`. Both callers run it before they change any
+        /// component state, and the failure reverts the whole transaction.
+        fn assert_caller_controls_account(account: ComponentAddress) {
+            let account: Global<Account> = account.into();
+            Runtime::assert_access_rule(account.get_owner_role().rule);
         }
 
         /// `pct * reward`, clamped to [floor, cap], rounded DOWN to what the

@@ -882,6 +882,9 @@ fn test_claim_task_happy_path() {
 fn test_self_claim_rejects() {
     // Finding 8: a badge holder declaring the POSTER's account as the payout
     // target is the one-account self-dealing loop — must reject at claim.
+    // v2 (payee owner check): the claimer must control the worker account it
+    // names, so the poster's key co-signs (one controller holding both
+    // accounts). Without it the owner check refuses before this gate.
     let mut f = setup();
     let token = f.reward_token; add_token_to_whitelist(&mut f, token, dec!("10"));
     create_task(&mut f, dec!("100"), dec!("10"), dec!("0.1")).expect_commit_success();
@@ -909,7 +912,10 @@ fn test_self_claim_rejects() {
         .build();
     let receipt = f.ledger.execute_manifest(
         manifest,
-        vec![NonFungibleGlobalId::from_public_key(&f.worker_pk)],
+        vec![
+            NonFungibleGlobalId::from_public_key(&f.worker_pk),
+            NonFungibleGlobalId::from_public_key(&f.poster_pk),
+        ],
     );
     // Five asserts precede the self-claim gate (badge resource, bond resource,
     // bond amount, task exists, state==Open). A bare failure check cannot tell
@@ -2049,8 +2055,9 @@ fn test_resolve_rejects_an_arbiter_badge_assigned_to_the_worker() {
 
 /// The trade L6(c) makes, kept VISIBLE by a test: an arbiter badge assigned
 /// to the POSTER's account still resolves. `task.poster` is a caller-supplied
-/// parameter bound to nothing (M5), so a poster-side comparison would be
-/// defeated by a decoy address for the cost of gas — a guard that reads as a
+/// parameter (M5). v2 (payee owner check) requires the caller to control it,
+/// but a caller can control a second account, so a poster-side comparison would still be
+/// defeated by a decoy account for the cost of gas — a guard that reads as a
 /// defence and is not one. Poster-side self-dealing is OPEN BY DESIGN and the
 /// honesty copy must say so.
 ///
@@ -3945,6 +3952,158 @@ fn test_claim_task_rejects_non_account_worker() {
     );
 }
 
+// ── v2 payee owner check (create_task poster, claim_task worker) ───────
+
+/// A never-used preallocated Secp256k1 account and the badge its key signs
+/// with. Nothing on ledger knows it until a transaction touches it.
+fn fresh_preallocated_account(f: &mut Fixture) -> (ComponentAddress, NonFungibleGlobalId) {
+    let (pk, _) = f.ledger.new_key_pair();
+    (
+        ComponentAddress::preallocated_account_from_public_key(&PublicKey::Secp256k1(pk)),
+        NonFungibleGlobalId::from_public_key(&pk),
+    )
+}
+
+/// `create_task` (100 reward, 10 insurance, 0.1 fee) funded from the fixture
+/// poster's account, pinning `poster` as the payee, signed by `signers`.
+fn create_task_pinning(
+    f: &mut Fixture,
+    poster: ComponentAddress,
+    signers: Vec<NonFungibleGlobalId>,
+) -> TransactionReceipt {
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .withdraw_from_account(f.poster_account, f.reward_token, dec!("110"))
+        .take_from_worktop(f.reward_token, dec!("100"), "reward")
+        .take_from_worktop(f.reward_token, dec!("10"), "insurance")
+        .call_method_with_name_lookup(f.escrow, "create_task", |lookup| {
+            (poster, lookup.bucket("reward"), lookup.bucket("insurance"), dec!("0.1"), WORK_BRIEF)
+        })
+        .call_method(
+            f.poster_account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    f.ledger.execute_manifest(manifest, signers)
+}
+
+/// `claim_task` with the fixture worker's badge and bond, pinning `worker` as
+/// the payee, signed by `signers`.
+fn claim_task_pinning(
+    f: &mut Fixture,
+    task_id: u64,
+    worker: ComponentAddress,
+    signers: Vec<NonFungibleGlobalId>,
+) -> TransactionReceipt {
+    let bond = f.claim_bond;
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .create_proof_from_account_of_non_fungibles(
+            f.worker_account,
+            f.worker_badge,
+            vec![NonFungibleLocalId::integer(1)],
+        )
+        .pop_from_auth_zone("worker_proof")
+        .withdraw_from_account(f.worker_account, f.reward_token, bond)
+        .take_from_worktop(f.reward_token, bond, "bond")
+        .call_method_with_name_lookup(f.escrow, "claim_task", |lookup| {
+            (task_id, worker, lookup.proof("worker_proof"), lookup.bucket("bond"))
+        })
+        .call_method(
+            f.worker_account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    f.ledger.execute_manifest(manifest, signers)
+}
+
+/// Payee owner check, poster side. Pinning an account the transaction does not control is
+/// refused: another party's allocated account, and a preallocated address
+/// whose key did not sign (the typo case). Before v2 both created the task,
+/// and every poster-side refund would have gone to that account.
+#[test]
+fn test_payee_owner_check_create_task_refuses_a_poster_account_the_caller_does_not_control() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    let poster_before = f.ledger.get_component_balance(f.poster_account, f.reward_token);
+    let poster_sig = NonFungibleGlobalId::from_public_key(&f.poster_pk);
+    let (stranger, _) = fresh_preallocated_account(&mut f);
+
+    let someone_else = f.worker_account;
+    create_task_pinning(&mut f, someone_else, vec![poster_sig.clone()])
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+    create_task_pinning(&mut f, stranger, vec![poster_sig])
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+
+    assert_eq!(
+        f.ledger.get_component_balance(f.poster_account, f.reward_token),
+        poster_before,
+        "the reward and insurance never left the poster"
+    );
+    let info: Option<TaskInfo> = f
+        .ledger
+        .call_method(f.escrow, "get_task_info", manifest_args!(1u64))
+        .expect_commit_success()
+        .output(1);
+    assert!(info.is_none(), "no task was created");
+}
+
+/// Payee owner check, poster side, success: the caller may pin a SECOND account it
+/// controls (here a never-used preallocated account whose key co-signs).
+/// The check binds the payee to the caller's control, not to the funding
+/// account.
+#[test]
+fn test_payee_owner_check_create_task_accepts_a_second_account_the_caller_controls() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    let (second, second_sig) = fresh_preallocated_account(&mut f);
+    let signers = vec![NonFungibleGlobalId::from_public_key(&f.poster_pk), second_sig];
+    create_task_pinning(&mut f, second, signers).expect_commit_success();
+    assert_eq!(fetch_task(&mut f, 1).poster, second);
+}
+
+/// Payee owner check, worker side. Pinning a worker account the transaction does not
+/// control is refused: another party's allocated account, and a preallocated
+/// address whose key did not sign. Before v2 both claimed the task, and the
+/// reward and the bond would have gone to that account. The task stays Open.
+#[test]
+fn test_payee_owner_check_claim_task_refuses_a_worker_account_the_caller_does_not_control() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    create_task(&mut f, dec!("100"), dec!("10"), dec!("0.1")).expect_commit_success();
+    let worker_sig = NonFungibleGlobalId::from_public_key(&f.worker_pk);
+    let (stranger, _) = fresh_preallocated_account(&mut f);
+
+    let someone_else = f.owner_account;
+    claim_task_pinning(&mut f, 1, someone_else, vec![worker_sig.clone()])
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+    claim_task_pinning(&mut f, 1, stranger, vec![worker_sig])
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+
+    let info = fetch_task(&mut f, 1);
+    assert_eq!(info.state, TaskState::Open);
+    assert_eq!(info.worker_account, None);
+}
+
+/// Payee owner check, worker side, success: the claimer may pin a second account it
+/// controls (a never-used preallocated account whose key co-signs).
+#[test]
+fn test_payee_owner_check_claim_task_accepts_a_second_account_the_caller_controls() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    create_task(&mut f, dec!("100"), dec!("10"), dec!("0.1")).expect_commit_success();
+    let (second, second_sig) = fresh_preallocated_account(&mut f);
+    let signers = vec![NonFungibleGlobalId::from_public_key(&f.worker_pk), second_sig];
+    claim_task_pinning(&mut f, 1, second, signers).expect_commit_success();
+    assert_eq!(fetch_task(&mut f, 1).worker_account, Some(second));
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Component royalties — the Shape-B revenue dial (DB-2, sitting 2026-08-06).
 // What these prove: the dial exists ONLY on create_task, only the royalty-admin
@@ -5068,7 +5227,10 @@ fn test_u2a_ruling_succeeds_when_the_claimant_deposits_their_badge_with_the_arbi
 }
 
 /// F-001 claim-side check: an account that holds an arbiter badge cannot be
-/// named as a task's worker.
+/// named as a task's worker. v2 (payee owner check): the claimer must also
+/// control the worker account, so the arbiter account's key co-signs here.
+/// Without it the owner check refuses first (see
+/// `test_payee_owner_check_claim_task_refuses_a_worker_account_the_caller_does_not_control`).
 #[test]
 fn test_u2a_account_holding_an_arbiter_badge_cannot_claim() {
     let mut f = setup();
@@ -5096,8 +5258,12 @@ fn test_u2a_account_holding_an_arbiter_badge_cannot_claim() {
             manifest_args!(ManifestExpression::EntireWorktop),
         )
         .build();
+    let signers = vec![
+        NonFungibleGlobalId::from_public_key(&f.worker_pk),
+        NonFungibleGlobalId::from_public_key(&f.arbiter_pk),
+    ];
     f.ledger
-        .execute_manifest(manifest, vec![NonFungibleGlobalId::from_public_key(&f.worker_pk)])
+        .execute_manifest(manifest, signers)
         .expect_commit_failure_containing_error("an account holding an arbiter badge cannot claim a task");
     assert_eq!(fetch_task(&mut f, 1).state, TaskState::Open);
 }
