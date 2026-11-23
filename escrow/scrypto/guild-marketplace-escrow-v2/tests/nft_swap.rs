@@ -1742,3 +1742,152 @@ fn test_owner_check_preallocated_signer_alone_cannot_list_someone_elses_nft() {
     list_asset_advanced(&mut f, seller, fresh, 1, asks, expiry, signers)
         .expect_commit_failure_containing_error("Unauthorized");
 }
+
+// ── v2 seller owner check: securified accounts (owner-badge proof) ─────────
+
+/// Create a never-used preallocated Secp256k1 account, `securify` it, and
+/// park the returned owner badge in the fixture seller's account. After this
+/// the account's OWNER rule is `require(ACCOUNT_OWNER_BADGE:<bytes of the
+/// account address>)` (radix-engine 1.3.1 `SecurifiedAccount::securify` via
+/// `AccountBlueprint::securify`), so its original key no longer controls it
+/// and a proof of that badge does. Returns the account, its original key and
+/// the badge's local id.
+fn new_securified_account(f: &mut Fixture) -> (ComponentAddress, Secp256k1PublicKey, NonFungibleLocalId) {
+    let (pk, _) = f.ledger.new_key_pair();
+    let account = ComponentAddress::preallocated_account_from_public_key(&PublicKey::Secp256k1(pk));
+    let seller_account = f.seller_account;
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_method(account, "securify", manifest_args!())
+        .call_method(
+            seller_account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    f.ledger
+        .execute_manifest(
+            manifest,
+            vec![
+                NonFungibleGlobalId::from_public_key(&pk),
+                NonFungibleGlobalId::from_public_key(&f.seller_pk),
+            ],
+        )
+        .expect_commit_success();
+    let badge_id = NonFungibleLocalId::bytes(account.as_node_id().0).unwrap();
+    (account, pk, badge_id)
+}
+
+/// What a `list` transaction presents for the pinned seller's owner badge.
+enum BadgeProof {
+    /// No badge proof at all.
+    Absent,
+    /// A proof of this owner badge (held by the fixture seller), made with
+    /// `create_proof_from_account_of_non_fungibles`, which leaves it in the
+    /// transaction's auth zone.
+    InAuthZone(NonFungibleLocalId),
+    /// The same proof, popped off the auth zone into a named manifest proof
+    /// before `list` runs: it exists in the transaction, but not where
+    /// `assert_access_rule` looks.
+    PoppedOff(NonFungibleLocalId),
+}
+
+/// List `asset_resource` id `asset_local_id` from the fixture seller with
+/// `seller` pinned, presenting `badge` first. The listing receipt goes back
+/// to the fixture seller.
+fn list_with_badge_proof(
+    f: &mut Fixture,
+    seller: ComponentAddress,
+    asset_local_id: u64,
+    badge: BadgeProof,
+    signers: Vec<NonFungibleGlobalId>,
+) -> TransactionReceipt {
+    let from_account = f.seller_account;
+    let asset_resource = f.asset_resource;
+    let expiry = default_expiry(f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    let builder = ManifestBuilder::new().lock_fee_from_faucet();
+    let builder = match badge {
+        BadgeProof::Absent => builder,
+        BadgeProof::InAuthZone(id) => {
+            builder.create_proof_from_account_of_non_fungibles(from_account, ACCOUNT_OWNER_BADGE, indexset![id])
+        }
+        BadgeProof::PoppedOff(id) => builder
+            .create_proof_from_account_of_non_fungibles(from_account, ACCOUNT_OWNER_BADGE, indexset![id])
+            .pop_from_auth_zone("badge_proof"),
+    };
+    let manifest = builder
+        .withdraw_non_fungibles_from_account(
+            from_account,
+            asset_resource,
+            indexset![NonFungibleLocalId::integer(asset_local_id)],
+        )
+        .take_all_from_worktop(asset_resource, "asset")
+        .call_method_with_name_lookup(f.swap, "list", |lookup| {
+            (seller, lookup.bucket("asset"), asks.clone(), expiry)
+        })
+        .drop_all_proofs()
+        .call_method(
+            from_account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    f.ledger.execute_manifest(manifest, signers)
+}
+
+/// Securified account, success path. The pinned account's OWNER rule is its
+/// owner badge; the badge sits in the fixture seller's account, and the
+/// transaction puts a proof of it in the auth zone. Only the fixture seller
+/// signs (the securified account's original key does not). `cancel` then
+/// delivers the asset to the securified account.
+#[test]
+fn test_owner_check_list_accepts_securified_account_with_owner_badge_proof() {
+    let mut f = setup();
+    let (secured, _original_pk, badge_id) = new_securified_account(&mut f);
+    let signers = vec![NonFungibleGlobalId::from_public_key(&f.seller_pk)];
+    list_with_badge_proof(&mut f, secured, 1, BadgeProof::InAuthZone(badge_id), signers)
+        .expect_commit_success();
+    assert_eq!(fetch_listing(&mut f, 1).seller, secured);
+
+    let r = cancel_listing(&mut f, 1);
+    r.expect_commit_success();
+    assert_eq!(cancelled_event(&f, &r).destination, secured);
+    assert_eq!(
+        f.ledger.get_component_balance(secured, f.asset_resource),
+        dec!("1"),
+        "cancel delivered the asset to the securified account"
+    );
+}
+
+/// Securified account, refusal paths, each failing the owner check:
+/// 1. the account's ORIGINAL key signs but no badge proof is presented
+///    (securify replaced the key rule, so the key alone no longer controls
+///    the account);
+/// 2. a proof of a DIFFERENT securified account's owner badge is presented;
+/// 3. the right badge's proof exists in the transaction but was popped off
+///    the auth zone into a named proof before `list`.
+/// The NFT stays with the fixture seller throughout.
+#[test]
+fn test_owner_check_list_refuses_securified_account_without_its_badge_in_the_auth_zone() {
+    let mut f = setup();
+    let (secured, original_pk, badge_id) = new_securified_account(&mut f);
+    let (_other, _, other_badge_id) = new_securified_account(&mut f);
+    let seller_sig = NonFungibleGlobalId::from_public_key(&f.seller_pk);
+
+    let key_only = vec![seller_sig.clone(), NonFungibleGlobalId::from_public_key(&original_pk)];
+    list_with_badge_proof(&mut f, secured, 1, BadgeProof::Absent, key_only)
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+
+    list_with_badge_proof(&mut f, secured, 1, BadgeProof::InAuthZone(other_badge_id), vec![seller_sig.clone()])
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+
+    list_with_badge_proof(&mut f, secured, 1, BadgeProof::PoppedOff(badge_id), vec![seller_sig])
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+
+    assert_eq!(
+        f.ledger.get_component_balance(f.seller_account, f.asset_resource),
+        dec!("3"),
+        "the NFT never left the seller"
+    );
+}
