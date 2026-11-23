@@ -1730,10 +1730,12 @@ mod guild_marketplace_escrow {
             //     PUBLIC-MINT: the manifest calls `public_mint` with a username
             //     and presents no proof and no badge. Cost is the network fee.
             //   • Badge scarcity is therefore NOT a sybil gate, and this assert
-            //     is not one either: `poster` is a FREE PARAMETER of create_task
-            //     and the `self-claim not allowed` assert immediately below is
-            //     the ONLY place it is ever read for enforcement, so a decoy
-            //     poster address disables the gate at zero cost (M5, Wave-B).
+            //     is not one either: `poster` is chosen by create_task's caller
+            //     (v1: any account address; v2: any account the caller
+            //     controls, see the v2 note below), and the `self-claim not
+            //     allowed` assert immediately below is the ONLY place it is
+            //     ever read for enforcement, so a decoy poster account disables
+            //     the gate for the cost of gas (M5, Wave-B).
             //     (Named, not numbered, deliberately: this reference has been
             //     wrong twice — :711 → :727 → :935 — [cite-exempt: the incident record itself] because every edit to this
             //     file moves it. A line number in a comment is a fact with an
@@ -1744,8 +1746,8 @@ mod guild_marketplace_escrow {
             //
             // v2 (payee owner check): `poster` and `worker` are no longer free
             // parameters. `create_task` and `claim_task` each require the
-            // caller to control the account it pins. That does NOT make this gate a sybil
-            // defence: a person can control any number of accounts (a fresh
+            // caller to control the account it pins. That does NOT make this
+            // gate a sybil defence: a person can control any number of accounts (a fresh
             // key is one), so the "decoy" is now a second account of their own
             // and still costs only gas. What changed is narrower: a claimer
             // can no longer name the poster's account unless they control it,

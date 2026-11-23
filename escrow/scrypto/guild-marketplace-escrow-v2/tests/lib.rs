@@ -917,8 +917,9 @@ fn test_self_claim_rejects() {
             NonFungibleGlobalId::from_public_key(&f.poster_pk),
         ],
     );
-    // Five asserts precede the self-claim gate (badge resource, bond resource,
-    // bond amount, task exists, state==Open). A bare failure check cannot tell
+    // Eight asserts precede the self-claim gate (badge resource, worker is an
+    // account, worker owner check, F-001 arbiter badge, task exists, bond
+    // resource, bond amount, state==Open). A bare failure check cannot tell
     // this test's subject apart from any of them — and this is the assert a live
     // mainnet probe will be cited as proving.
     receipt.expect_commit_failure_containing_error("self-claim not allowed");
