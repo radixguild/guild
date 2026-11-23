@@ -7,7 +7,7 @@
 //! wasm32 build `scrypto-test`'s ledger simulator needs fails locally on
 //! this Mac (`blst` will not build for `wasm32-unknown-unknown` here).
 
-use guild_marketplace_escrow_v2::nft_swap::{Ask, Listing, ListingState, NftSwapConfig};
+use guild_marketplace_escrow_v2::nft_swap::{Ask, CancelledEvent, Listing, ListingState, NftSwapConfig};
 use scrypto_test::prelude::*;
 
 struct Fixture {
@@ -122,26 +122,54 @@ fn list_asset(
     asks: Vec<Ask>,
     expires_at: Instant,
 ) -> TransactionReceipt {
-    let nf_id = NonFungibleLocalId::integer(asset_local_id);
     let seller_account = f.seller_account;
+    let signers = vec![NonFungibleGlobalId::from_public_key(&f.seller_pk)];
+    list_asset_advanced(f, seller_account, seller_account, asset_local_id, asks, expires_at, signers)
+}
+
+/// General form of `list_asset`: withdraw the NFT from `from_account`, pin
+/// `seller` as the payee, deposit the listing receipt back to
+/// `from_account`, and sign with `signers`. The seller owner check makes
+/// `seller` and `signers` matter: the transaction must satisfy `seller`'s
+/// owner role.
+fn list_asset_advanced(
+    f: &mut Fixture,
+    from_account: ComponentAddress,
+    seller: ComponentAddress,
+    asset_local_id: u64,
+    asks: Vec<Ask>,
+    expires_at: Instant,
+    signers: Vec<NonFungibleGlobalId>,
+) -> TransactionReceipt {
+    let nf_id = NonFungibleLocalId::integer(asset_local_id);
     let asset_resource = f.asset_resource;
     let manifest = ManifestBuilder::new()
         .lock_fee_from_faucet()
-        .withdraw_non_fungibles_from_account(seller_account, asset_resource, indexset![nf_id])
+        .withdraw_non_fungibles_from_account(from_account, asset_resource, indexset![nf_id])
         .take_all_from_worktop(asset_resource, "asset")
         .call_method_with_name_lookup(f.swap, "list", |lookup| {
-            (seller_account, lookup.bucket("asset"), asks.clone(), expires_at)
+            (seller, lookup.bucket("asset"), asks.clone(), expires_at)
         })
         .call_method(
-            seller_account,
+            from_account,
             "deposit_batch",
             manifest_args!(ManifestExpression::EntireWorktop),
         )
         .build();
-    f.ledger.execute_manifest(
-        manifest,
-        vec![NonFungibleGlobalId::from_public_key(&f.seller_pk)],
-    )
+    f.ledger.execute_manifest(manifest, signers)
+}
+
+/// Decode the single `CancelledEvent` a successful `cancel` emitted.
+fn cancelled_event(f: &Fixture, receipt: &TransactionReceipt) -> CancelledEvent {
+    let events: Vec<CancelledEvent> = receipt
+        .expect_commit_success()
+        .application_events
+        .iter()
+        .filter(|(id, _)| f.ledger.is_event_name_equal::<CancelledEvent>(id))
+        .map(|(_, data)| scrypto_decode::<CancelledEvent>(data).expect("CancelledEvent decodes"))
+        .collect();
+    assert_eq!(events.len(), 1, "exactly one CancelledEvent");
+    events.into_iter().next().unwrap()
 }
 
 fn fill_with_fungible(f: &mut Fixture, listing_id: u64, alternative: u8, amount: Decimal) -> TransactionReceipt {
@@ -1059,7 +1087,11 @@ fn test_f008_cancel_by_receipt_holder_delivers_to_the_pinned_seller() {
 
     let seller_before = f.ledger.get_component_balance(f.seller_account, f.asset_resource);
     let receipt_resource = f.listing_receipt_resource;
-    call_with_receipt_proof(&mut f, "cancel", receipt_resource, 1, third, third_pk).expect_commit_success();
+    let r = call_with_receipt_proof(&mut f, "cancel", receipt_resource, 1, third, third_pk);
+    r.expect_commit_success();
+    let event = cancelled_event(&f, &r);
+    assert_eq!(event.listing_id, 1);
+    assert_eq!(event.destination, f.seller_account, "CancelledEvent names the pinned seller, not the caller");
 
     assert_eq!(fetch_listing(&mut f, 1).state, ListingState::Cancelled);
     assert_eq!(
@@ -1148,8 +1180,16 @@ fn test_cancel_hollow_listing_succeeds_even_when_seller_refuses_deposits() {
     f.ledger.execute_manifest(recall, vec![]).expect_commit_success();
 
     set_default_deposit_rule(&mut f.ledger, f.seller_account, &f.seller_pk, DefaultDepositRule::Reject);
-    cancel_listing(&mut f, 1).expect_commit_success();
+    let seller_before = f.ledger.get_component_balance(f.seller_account, recallable);
+    let r = cancel_listing(&mut f, 1);
+    r.expect_commit_success();
     assert_eq!(fetch_listing(&mut f, 1).state, ListingState::Cancelled);
+    assert_eq!(
+        f.ledger.get_component_balance(f.seller_account, recallable),
+        seller_before,
+        "a hollow cancel deposits nothing to the seller"
+    );
+    assert_eq!(cancelled_event(&f, &r).destination, f.seller_account, "the event still names the pin");
 }
 
 /// A NonFungible ask that names a FUNGIBLE resource is accepted by `list`
@@ -1573,4 +1613,132 @@ fn test_v2_list_records_recall_and_burn_roles() {
     let listing = fetch_listing(&mut f, 2);
     assert!(listing.asset_burnable);
     assert!(!listing.asset_recallable);
+}
+
+// ── v2 seller owner check: `list` must prove control of the pinned seller ───
+
+/// The F-008 follow-up. Pinning an account the transaction does not control
+/// (here: the buyer's allocated account, signed only by the seller) is
+/// refused. Before the check this listed fine and the buyer's account would
+/// have received the asset on cancel.
+#[test]
+fn test_owner_check_list_rejects_someone_elses_account() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    let (seller, other) = (f.seller_account, f.buyer_account);
+    let signers = vec![NonFungibleGlobalId::from_public_key(&f.seller_pk)];
+    list_asset_advanced(&mut f, seller, other, 1, asks, expiry, signers)
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+    assert_eq!(
+        f.ledger.get_component_balance(f.seller_account, f.asset_resource),
+        dec!("3"),
+        "the NFT never left the seller"
+    );
+}
+
+/// The typo case: a valid preallocated address whose key did not sign.
+#[test]
+fn test_owner_check_list_rejects_an_unsigned_preallocated_account() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    let (stranger_pk, _) = f.ledger.new_key_pair();
+    let stranger =
+        ComponentAddress::preallocated_account_from_public_key(&PublicKey::Secp256k1(stranger_pk));
+    let seller = f.seller_account;
+    let signers = vec![NonFungibleGlobalId::from_public_key(&f.seller_pk)];
+    list_asset_advanced(&mut f, seller, stranger, 1, asks, expiry, signers)
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+}
+
+/// Allocated account pinned by its own signer: the fixture's normal path,
+/// asserted explicitly here.
+#[test]
+fn test_owner_check_list_accepts_own_allocated_account() {
+    let mut f = setup();
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    list_asset(&mut f, 1, asks, expiry).expect_commit_success();
+    assert_eq!(fetch_listing(&mut f, 1).seller, f.seller_account);
+}
+
+/// A preallocated Secp256k1 account that already exists on ledger (the
+/// faucet deposit in `new_preallocated_account` created it), listing from
+/// itself and signing with its own key.
+#[test]
+fn test_owner_check_list_accepts_own_preallocated_account_already_on_ledger() {
+    let mut f = setup();
+    let (pre_pk, _, pre) = f.ledger.new_preallocated_account();
+    let move_nft = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .withdraw_non_fungibles_from_account(f.seller_account, f.asset_resource, indexset![NonFungibleLocalId::integer(1)])
+        .try_deposit_entire_worktop_or_abort(pre, None)
+        .build();
+    f.ledger
+        .execute_manifest(move_nft, vec![NonFungibleGlobalId::from_public_key(&f.seller_pk)])
+        .expect_commit_success();
+
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    let signers = vec![NonFungibleGlobalId::from_public_key(&pre_pk)];
+    list_asset_advanced(&mut f, pre, pre, 1, asks, expiry, signers).expect_commit_success();
+    assert_eq!(fetch_listing(&mut f, 1).seller, pre);
+}
+
+/// Preallocated accounts that have never been used (no transaction has
+/// touched the address before `list`), for BOTH key types. The pinned
+/// account's key co-signs; the NFT comes from the fixture seller. `list`
+/// succeeds, and `cancel` then delivers the asset to the new account, so the
+/// pin is a real, working account.
+#[test]
+fn test_owner_check_list_accepts_never_used_preallocated_accounts() {
+    let mut f = setup();
+    let (secp_pk, _) = f.ledger.new_key_pair();
+    let (ed_pk, _) = f.ledger.new_ed25519_key_pair();
+    let cases = [
+        (
+            ComponentAddress::preallocated_account_from_public_key(&PublicKey::Secp256k1(secp_pk)),
+            NonFungibleGlobalId::from_public_key(&secp_pk),
+        ),
+        (
+            ComponentAddress::preallocated_account_from_public_key(&PublicKey::Ed25519(ed_pk)),
+            NonFungibleGlobalId::from_public_key(&ed_pk),
+        ),
+    ];
+    let seller = f.seller_account;
+    for (i, (fresh, fresh_badge)) in cases.into_iter().enumerate() {
+        let listing_id = (i + 1) as u64;
+        let expiry = default_expiry(&mut f);
+        let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+        let signers = vec![NonFungibleGlobalId::from_public_key(&f.seller_pk), fresh_badge];
+        list_asset_advanced(&mut f, seller, fresh, listing_id, asks, expiry, signers).expect_commit_success();
+        assert_eq!(fetch_listing(&mut f, listing_id).seller, fresh);
+
+        // Listing receipt went to the fixture seller (`from_account`).
+        let r = cancel_listing(&mut f, listing_id);
+        r.expect_commit_success();
+        assert_eq!(cancelled_event(&f, &r).destination, fresh);
+        assert_eq!(
+            f.ledger.get_component_balance(fresh, f.asset_resource),
+            dec!("1"),
+            "cancel delivered the asset to the never-used preallocated account"
+        );
+    }
+}
+
+/// The pinned account's key alone is not enough when the NFT comes from a
+/// different account: withdrawing still needs that account's owner. This
+/// pins down that the new check did not loosen anything else.
+#[test]
+fn test_owner_check_preallocated_signer_alone_cannot_list_someone_elses_nft() {
+    let mut f = setup();
+    let (fresh_pk, _) = f.ledger.new_key_pair();
+    let fresh = ComponentAddress::preallocated_account_from_public_key(&PublicKey::Secp256k1(fresh_pk));
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    let seller = f.seller_account;
+    let signers = vec![NonFungibleGlobalId::from_public_key(&fresh_pk)];
+    list_asset_advanced(&mut f, seller, fresh, 1, asks, expiry, signers)
+        .expect_commit_failure_containing_error("Unauthorized");
 }

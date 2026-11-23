@@ -34,6 +34,12 @@ use scrypto::prelude::*;
 // v2 (13 Oct F-008): `cancel` deposits the asset to the pinned seller account
 // instead of returning it to whoever presented the listing receipt. The
 // receipt stays a transferable trigger, but no longer a claim on the asset.
+//
+// v2 (seller owner check, follow-up to F-008): `list` asserts the calling
+// transaction satisfies the pinned `seller` account's owner role. After F-008
+// a valid-but-wrong `seller` would receive the asset on cancel as well as the
+// proceeds on fill, so naming an account is no longer enough; the caller must
+// control it.
 //   S3a — `fill` and `extend_listing` both start their royalty at `Xrd(0)`,
 //         `updatable`; every other method is `Free, locked`.
 //   S4a — same custody shape as the escrow: owner badge is the royalty
@@ -68,10 +74,10 @@ pub enum ListingState {
 pub struct Listing {
     /// Global account, pinned at `list` — the ONLY destination
     /// `withdraw_proceeds` will ever pay, and (v2, F-008) the only
-    /// destination `cancel` returns the asset to. A caller-supplied payee is safe
-    /// here for the same reason it is in the escrow's `create_task`: `list`
-    /// consumes the seller's own asset in the same call that reads `seller`,
-    /// so a wrong value can only misdirect the designator's own proceeds.
+    /// destination `cancel` returns the asset to. Because a wrong value would
+    /// send the asset itself (not only the proceeds) to that account, `list`
+    /// requires the calling transaction to satisfy the account's owner role
+    /// (v2 seller owner check): a caller can only pin an account it controls.
     pub seller: ComponentAddress,
     pub asset_resource: ResourceAddress,
     pub asset_id: NonFungibleLocalId,
@@ -378,9 +384,11 @@ mod nft_swap_blueprint {
                 );
             }
 
-            // PAYEE PIN, same argument as create_task's poster check: list
-            // consumes the seller's own asset in this same call, so a wrong
-            // value can only misdirect the designator's own proceeds later.
+            // PAYEE PIN. Since F-008 both exits (`cancel` for the asset,
+            // `withdraw_proceeds` for the payment) pay `seller`, so a wrong
+            // value would hand the asset itself to that account. The caller
+            // must therefore prove control of `seller`, not merely name a
+            // global account.
             assert!(
                 seller
                     .as_node_id()
@@ -388,6 +396,24 @@ mod nft_swap_blueprint {
                     .is_some_and(|t| t.is_global_account()),
                 "seller must be a global account address"
             );
+            // v2 (seller owner check): read the account's OWNER role and
+            // assert it against this call's auth zone. `assert_access_rule`
+            // checks the GLOBAL CALLER's auth zone (radix-engine 1.3.1
+            // `Authorization::auth_zone_stack_matches`). When a manifest
+            // calls `list` directly, that is the transaction processor's
+            // auth zone: it holds the transaction's signature badges and any
+            // proof the manifest pushed (e.g. `create_proof_from_account_*`
+            // of a securified account's owner badge). A preallocated
+            // (never-used) account is created on this read with owner role
+            // `require(signature badge of its key)`, so signing the
+            // transaction with that key is enough. When `list` is called from
+            // another component, the global caller is that component, so the
+            // owner proof must be in ITS auth zone. Fails with the engine's
+            // `AssertAccessRuleFailed` (this is the only access-rule assert
+            // in the blueprint).
+            let seller_account: Global<Account> = seller.into();
+            let seller_owner_rule = seller_account.get_owner_role().rule;
+            Runtime::assert_access_rule(seller_owner_rule);
 
             let now = Clock::current_time_rounded_to_seconds();
             assert!(
