@@ -1826,7 +1826,11 @@ fn list_with_badge_proof(
         .call_method_with_name_lookup(f.swap, "list", |lookup| {
             (seller, lookup.bucket("asset"), asks.clone(), expiry)
         })
-        .drop_all_proofs()
+        // Named proofs only: `drop_all_proofs` (DropAllProofs) also drops the
+        // auth zone's SIGNATURE proofs (radix-engine 1.3.1
+        // `AuthZoneBlueprint::drop_proofs`), and `deposit_batch` below needs
+        // the fixture seller's signature.
+        .drop_named_proofs()
         .call_method(
             from_account,
             "deposit_batch",
