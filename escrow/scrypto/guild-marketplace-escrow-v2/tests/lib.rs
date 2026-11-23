@@ -4105,6 +4105,215 @@ fn test_payee_owner_check_claim_task_accepts_a_second_account_the_caller_control
     assert_eq!(fetch_task(&mut f, 1).worker_account, Some(second));
 }
 
+// ── v2 payee owner check: securified accounts (owner-badge proof) ──────
+// Same pattern as the NftSwap `list` securified tests in tests/nft_swap.rs.
+
+/// Create a never-used preallocated Secp256k1 account, `securify` it, and
+/// park the returned owner badge in `holder` (signed by `holder_pk`). After
+/// this the account's OWNER rule is `require(ACCOUNT_OWNER_BADGE:<bytes of
+/// the account address>)` (radix-engine 1.3.1 `SecurifiedAccount::securify`
+/// via `AccountBlueprint::securify`), so its original key no longer controls
+/// it and a proof of that badge does. Returns the account, its original key
+/// and the badge's local id.
+fn new_securified_account(
+    f: &mut Fixture,
+    holder: ComponentAddress,
+    holder_pk: Secp256k1PublicKey,
+) -> (ComponentAddress, Secp256k1PublicKey, NonFungibleLocalId) {
+    let (pk, _) = f.ledger.new_key_pair();
+    let account = ComponentAddress::preallocated_account_from_public_key(&PublicKey::Secp256k1(pk));
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_method(account, "securify", manifest_args!())
+        .call_method(
+            holder,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    f.ledger
+        .execute_manifest(
+            manifest,
+            vec![
+                NonFungibleGlobalId::from_public_key(&pk),
+                NonFungibleGlobalId::from_public_key(&holder_pk),
+            ],
+        )
+        .expect_commit_success();
+    let badge_id = NonFungibleLocalId::bytes(account.as_node_id().0).unwrap();
+    (account, pk, badge_id)
+}
+
+/// `create_task_pinning`, but first a proof of owner badge `badge` (if any),
+/// held by the fixture poster, is created with
+/// `create_proof_from_account_of_non_fungibles`, which leaves it in the
+/// transaction's auth zone where `assert_access_rule` looks.
+fn create_task_pinning_with_badge(
+    f: &mut Fixture,
+    poster: ComponentAddress,
+    badge: Option<NonFungibleLocalId>,
+    signers: Vec<NonFungibleGlobalId>,
+) -> TransactionReceipt {
+    let funder = f.poster_account;
+    let builder = ManifestBuilder::new().lock_fee_from_faucet();
+    let builder = match badge {
+        None => builder,
+        Some(id) => {
+            builder.create_proof_from_account_of_non_fungibles(funder, ACCOUNT_OWNER_BADGE, indexset![id])
+        }
+    };
+    let manifest = builder
+        .withdraw_from_account(funder, f.reward_token, dec!("110"))
+        .take_from_worktop(f.reward_token, dec!("100"), "reward")
+        .take_from_worktop(f.reward_token, dec!("10"), "insurance")
+        .call_method_with_name_lookup(f.escrow, "create_task", |lookup| {
+            (poster, lookup.bucket("reward"), lookup.bucket("insurance"), dec!("0.1"), WORK_BRIEF)
+        })
+        .call_method(
+            funder,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    f.ledger.execute_manifest(manifest, signers)
+}
+
+/// `claim_task_pinning`, but a proof of owner badge `badge` (if any), held by
+/// the fixture worker, is left in the auth zone before `claim_task` runs.
+fn claim_task_pinning_with_badge(
+    f: &mut Fixture,
+    task_id: u64,
+    worker: ComponentAddress,
+    badge: Option<NonFungibleLocalId>,
+    signers: Vec<NonFungibleGlobalId>,
+) -> TransactionReceipt {
+    let bond = f.claim_bond;
+    let claimer = f.worker_account;
+    let builder = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .create_proof_from_account_of_non_fungibles(
+            claimer,
+            f.worker_badge,
+            vec![NonFungibleLocalId::integer(1)],
+        )
+        .pop_from_auth_zone("worker_proof");
+    let builder = match badge {
+        None => builder,
+        Some(id) => {
+            builder.create_proof_from_account_of_non_fungibles(claimer, ACCOUNT_OWNER_BADGE, indexset![id])
+        }
+    };
+    let manifest = builder
+        .withdraw_from_account(claimer, f.reward_token, bond)
+        .take_from_worktop(f.reward_token, bond, "bond")
+        .call_method_with_name_lookup(f.escrow, "claim_task", |lookup| {
+            (task_id, worker, lookup.proof("worker_proof"), lookup.bucket("bond"))
+        })
+        .call_method(
+            claimer,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    f.ledger.execute_manifest(manifest, signers)
+}
+
+/// Payee owner check, poster side, securified account, success. The pinned
+/// account's OWNER rule is its owner badge; the badge sits in the fixture
+/// poster's account and the transaction puts a proof of it in the auth zone.
+/// Only the fixture poster signs (the securified account's original key does
+/// not).
+#[test]
+fn test_payee_owner_check_create_task_accepts_a_securified_poster_with_its_owner_badge_proof() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    let (holder, holder_pk) = (f.poster_account, f.poster_pk);
+    let (secured, _original_pk, badge_id) = new_securified_account(&mut f, holder, holder_pk);
+    let signers = vec![NonFungibleGlobalId::from_public_key(&f.poster_pk)];
+    create_task_pinning_with_badge(&mut f, secured, Some(badge_id), signers).expect_commit_success();
+    assert_eq!(fetch_task(&mut f, 1).poster, secured);
+}
+
+/// Payee owner check, poster side, securified account, refusals:
+/// 1. the account's ORIGINAL key signs but no badge proof is presented
+///    (securify replaced the key rule, so the key alone no longer controls
+///    the account);
+/// 2. a proof of a DIFFERENT securified account's owner badge is presented.
+/// No task is created and the reward and insurance never leave the poster.
+#[test]
+fn test_payee_owner_check_create_task_refuses_a_securified_poster_without_its_owner_badge() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    let (holder, holder_pk) = (f.poster_account, f.poster_pk);
+    let (secured, original_pk, _badge_id) = new_securified_account(&mut f, holder, holder_pk);
+    let (_other, _, other_badge_id) = new_securified_account(&mut f, holder, holder_pk);
+    let poster_before = f.ledger.get_component_balance(f.poster_account, f.reward_token);
+    let poster_sig = NonFungibleGlobalId::from_public_key(&f.poster_pk);
+
+    let key_only = vec![poster_sig.clone(), NonFungibleGlobalId::from_public_key(&original_pk)];
+    create_task_pinning_with_badge(&mut f, secured, None, key_only)
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+
+    create_task_pinning_with_badge(&mut f, secured, Some(other_badge_id), vec![poster_sig])
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+
+    assert_eq!(
+        f.ledger.get_component_balance(f.poster_account, f.reward_token),
+        poster_before,
+        "the reward and insurance never left the poster"
+    );
+    let info: Option<TaskInfo> = f
+        .ledger
+        .call_method(f.escrow, "get_task_info", manifest_args!(1u64))
+        .expect_commit_success()
+        .output(1);
+    assert!(info.is_none(), "no task was created");
+}
+
+/// Payee owner check, worker side, securified account, success. The badge
+/// sits in the fixture worker's account and a proof of it is in the auth
+/// zone; only the fixture worker signs.
+#[test]
+fn test_payee_owner_check_claim_task_accepts_a_securified_worker_with_its_owner_badge_proof() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    create_task(&mut f, dec!("100"), dec!("10"), dec!("0.1")).expect_commit_success();
+    let (holder, holder_pk) = (f.worker_account, f.worker_pk);
+    let (secured, _original_pk, badge_id) = new_securified_account(&mut f, holder, holder_pk);
+    let signers = vec![NonFungibleGlobalId::from_public_key(&f.worker_pk)];
+    claim_task_pinning_with_badge(&mut f, 1, secured, Some(badge_id), signers).expect_commit_success();
+    assert_eq!(fetch_task(&mut f, 1).worker_account, Some(secured));
+}
+
+/// Payee owner check, worker side, securified account, refusals: the
+/// original key alone, and a DIFFERENT securified account's owner badge.
+/// The task stays Open with no worker.
+#[test]
+fn test_payee_owner_check_claim_task_refuses_a_securified_worker_without_its_owner_badge() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    create_task(&mut f, dec!("100"), dec!("10"), dec!("0.1")).expect_commit_success();
+    let (holder, holder_pk) = (f.worker_account, f.worker_pk);
+    let (secured, original_pk, _badge_id) = new_securified_account(&mut f, holder, holder_pk);
+    let (_other, _, other_badge_id) = new_securified_account(&mut f, holder, holder_pk);
+    let worker_sig = NonFungibleGlobalId::from_public_key(&f.worker_pk);
+
+    let key_only = vec![worker_sig.clone(), NonFungibleGlobalId::from_public_key(&original_pk)];
+    claim_task_pinning_with_badge(&mut f, 1, secured, None, key_only)
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+
+    claim_task_pinning_with_badge(&mut f, 1, secured, Some(other_badge_id), vec![worker_sig])
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+
+    let info = fetch_task(&mut f, 1);
+    assert_eq!(info.state, TaskState::Open);
+    assert_eq!(info.worker_account, None);
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Component royalties — the Shape-B revenue dial (DB-2, sitting 2026-08-06).
 // What these prove: the dial exists ONLY on create_task, only the royalty-admin
