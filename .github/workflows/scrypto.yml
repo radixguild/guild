@@ -137,6 +137,14 @@ jobs:
         working-directory: escrow/scrypto/guild-marketplace-escrow-v2
       - run: cargo test --locked
         working-directory: escrow/scrypto/guild-marketplace-escrow-v2
+        # `cargo test --locked` covers only the test binaries. The packages the
+        # tests compile at runtime (`compile_and_publish`: the crate itself, and
+        # any test-only package under tests/assets) are built by
+        # scrypto-compiler, which adds `--locked` only when this is set
+        # (scrypto-compiler 1.3.1 `is_scrypto_cargo_locked_env_var_active`).
+        # Without it, a stale lockfile there is silently re-resolved mid-test.
+        env:
+          SCRYPTO_CARGO_LOCKED: "true"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: guild-marketplace-escrow-v2-wasm
