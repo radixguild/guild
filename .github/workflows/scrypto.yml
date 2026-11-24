@@ -105,10 +105,17 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2 (2.9.3)
         with:
           workspaces: escrow/scrypto/guild-marketplace-escrow -> target
-      - run: cargo build --release --target wasm32-unknown-unknown
+      # --locked, as in the escrow v2 and badges jobs: this crate commits its
+      # Cargo.lock, so a lockfile that would need changes fails the run instead
+      # of being re-resolved.
+      - run: cargo build --locked --release --target wasm32-unknown-unknown
         working-directory: escrow/scrypto/guild-marketplace-escrow
-      - run: cargo test
+      - run: cargo test --locked
         working-directory: escrow/scrypto/guild-marketplace-escrow
+        # The crate the tests compile at runtime (`compile_and_publish`) is
+        # built by scrypto-compiler, which adds --locked only when this is set.
+        env:
+          SCRYPTO_CARGO_LOCKED: "true"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: guild-marketplace-escrow-wasm
@@ -133,6 +140,30 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2 (2.9.3)
         with:
           workspaces: escrow/scrypto/guild-marketplace-escrow-v2 -> target
+      # The test-only package under tests/assets has its own Cargo.lock. Fail
+      # when its `scrypto` version differs from the crate's own lock, so the
+      # two cannot drift apart unnoticed. Matches the package named exactly
+      # `scrypto` (not scrypto-test, scrypto-derive, ...).
+      - name: scrypto version agrees between the two v2 lockfiles
+        run: |
+          set -euo pipefail
+          crate_lock=escrow/scrypto/guild-marketplace-escrow-v2/Cargo.lock
+          asset_lock=escrow/scrypto/guild-marketplace-escrow-v2/tests/assets/owner_check_caller/Cargo.lock
+          scrypto_versions() {
+            awk '
+              /^\[\[package\]\]/ { name = ""; next }
+              /^name = / { name = $3; gsub(/"/, "", name); next }
+              /^version = / && name == "scrypto" { v = $3; gsub(/"/, "", v); print v; name = "" }
+            ' "$1" | sort -u
+          }
+          crate_v=$(scrypto_versions "$crate_lock")
+          asset_v=$(scrypto_versions "$asset_lock")
+          echo "crate lock scrypto: ${crate_v:-<none>}"
+          echo "asset lock scrypto: ${asset_v:-<none>}"
+          if [ -z "$crate_v" ] || [ -z "$asset_v" ] || [ "$crate_v" != "$asset_v" ]; then
+            echo "::error::scrypto version differs or is missing between $crate_lock and $asset_lock"
+            exit 1
+          fi
       - run: cargo build --locked --release --target wasm32-unknown-unknown
         working-directory: escrow/scrypto/guild-marketplace-escrow-v2
       - run: cargo test --locked
