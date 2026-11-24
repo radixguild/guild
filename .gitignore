@@ -54,6 +54,10 @@ Cargo.lock
 !escrow/scrypto/guild-marketplace-escrow/Cargo.lock
 !blueprints/agent-badge-controller/Cargo.lock
 !badge-manager/scrypto/radix-badge-manager/Cargo.lock
+!escrow/scrypto/guild-marketplace-escrow-v2/Cargo.lock
+# Test-only packages the escrow v2 tests compile at runtime: their lockfiles
+# pin the scrypto version the test ledger runs.
+!escrow/scrypto/guild-marketplace-escrow-v2/tests/assets/*/Cargo.lock
 
 # Test artifacts
 guild-app/test-results/
