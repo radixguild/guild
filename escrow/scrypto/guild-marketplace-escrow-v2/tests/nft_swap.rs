@@ -1895,3 +1895,211 @@ fn test_owner_check_list_refuses_securified_account_without_its_badge_in_the_aut
         "the NFT never left the seller"
     );
 }
+
+// ── v2 seller owner check: the remaining paths ──────────────────────────────
+
+/// Publish and instantiate the TEST-ONLY `OwnerCheckCaller` package
+/// (`tests/assets/owner_check_caller`): a global component that forwards a
+/// call to `list`, so the owner check sees a component as its global caller.
+fn new_owner_check_caller(f: &mut Fixture) -> ComponentAddress {
+    let package = f.ledger.compile_and_publish(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/assets/owner_check_caller"
+    ));
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_function(package, "OwnerCheckCaller", "instantiate", manifest_args!())
+        .build();
+    f.ledger
+        .execute_manifest(manifest, vec![])
+        .expect_commit_success()
+        .new_component_addresses()[0]
+}
+
+/// What a `list_via_caller` transaction does with the pinned seller's owner
+/// badge (an ACCOUNT_OWNER_BADGE held by the fixture seller).
+enum CallerBadge {
+    /// Nothing.
+    Absent,
+    /// A proof of it stays in the TRANSACTION's auth zone.
+    ProofInTxAuthZone(NonFungibleLocalId),
+    /// The badge itself is withdrawn and handed to the component, which
+    /// makes its own proof of it. (A proof handed to a component is
+    /// restricted: the engine refuses to put it in that component's auth
+    /// zone, so a badge proof cannot be handed over.)
+    BadgeToComponent(NonFungibleLocalId),
+}
+
+/// List the fixture seller's NFT `asset_local_id` THROUGH `caller`, pinning
+/// `seller`, doing `badge` with the seller's owner badge. Everything the
+/// component returns (receipt, badge) goes back to the fixture seller.
+fn list_via_caller(
+    f: &mut Fixture,
+    caller: ComponentAddress,
+    seller: ComponentAddress,
+    asset_local_id: u64,
+    badge: CallerBadge,
+    signers: Vec<NonFungibleGlobalId>,
+) -> TransactionReceipt {
+    let from_account = f.seller_account;
+    let asset_resource = f.asset_resource;
+    let swap = f.swap;
+    let expiry = default_expiry(f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    let builder = ManifestBuilder::new().lock_fee_from_faucet();
+    let (builder, hand_over) = match badge {
+        CallerBadge::Absent => (builder, false),
+        CallerBadge::ProofInTxAuthZone(id) => (
+            builder.create_proof_from_account_of_non_fungibles(from_account, ACCOUNT_OWNER_BADGE, indexset![id]),
+            false,
+        ),
+        CallerBadge::BadgeToComponent(id) => (
+            builder
+                .withdraw_non_fungibles_from_account(from_account, ACCOUNT_OWNER_BADGE, indexset![id])
+                .take_all_from_worktop(ACCOUNT_OWNER_BADGE, "owner_badge"),
+            true,
+        ),
+    };
+    let manifest = builder
+        .withdraw_non_fungibles_from_account(
+            from_account,
+            asset_resource,
+            indexset![NonFungibleLocalId::integer(asset_local_id)],
+        )
+        .take_all_from_worktop(asset_resource, "asset")
+        .call_method_with_name_lookup(caller, "list_via", |lookup| {
+            let owner_badge = if hand_over { Some(lookup.bucket("owner_badge")) } else { None };
+            (swap, seller, lookup.bucket("asset"), asks.clone(), expiry, owner_badge)
+        })
+        .call_method(
+            from_account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    f.ledger.execute_manifest(manifest, signers)
+}
+
+/// Through a component, the TRANSACTION's proofs do not count. The fixture
+/// seller signs, but `list` is reached through `OwnerCheckCaller`, whose own
+/// auth zone is empty, so pinning the fixture seller's key-owned account is
+/// refused. So is a securified account whose owner-badge proof sits in the
+/// transaction's auth zone instead of the component's. The NFT never moves.
+#[test]
+fn test_owner_check_component_caller_cannot_use_the_transactions_proofs() {
+    let mut f = setup();
+    let caller = new_owner_check_caller(&mut f);
+    let seller_sig = NonFungibleGlobalId::from_public_key(&f.seller_pk);
+    let seller = f.seller_account;
+    list_via_caller(&mut f, caller, seller, 1, CallerBadge::Absent, vec![seller_sig.clone()])
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+
+    let (secured, _original_pk, badge_id) = new_securified_account(&mut f);
+    list_via_caller(&mut f, caller, secured, 1, CallerBadge::ProofInTxAuthZone(badge_id), vec![seller_sig])
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+
+    assert_eq!(
+        f.ledger.get_component_balance(f.seller_account, f.asset_resource),
+        dec!("3"),
+        "the NFT never left the seller"
+    );
+}
+
+/// A component that holds the owner proof in ITS OWN auth zone passes. The
+/// securified account's owner badge is handed to `OwnerCheckCaller`, which
+/// makes a proof of it in its own auth zone before calling `list`, then
+/// returns the badge.
+#[test]
+fn test_owner_check_component_caller_passes_with_the_owner_badge_in_its_own_auth_zone() {
+    let mut f = setup();
+    let caller = new_owner_check_caller(&mut f);
+    let (secured, _original_pk, badge_id) = new_securified_account(&mut f);
+    let signers = vec![NonFungibleGlobalId::from_public_key(&f.seller_pk)];
+    list_via_caller(&mut f, caller, secured, 1, CallerBadge::BadgeToComponent(badge_id), signers)
+        .expect_commit_success();
+    assert_eq!(fetch_listing(&mut f, 1).seller, secured);
+    assert_eq!(
+        f.ledger.get_component_balance(f.seller_account, ACCOUNT_OWNER_BADGE),
+        dec!("1"),
+        "the component returned the owner badge"
+    );
+}
+
+/// An account securified under an Access Controller: its owner badge sits in
+/// the controller, so the proof comes from the controller's `create_proof`,
+/// gated by its primary role (here 1 of 4 keys). The primary key's signature
+/// alone is refused; with the controller's proof `list` passes, and `cancel`
+/// delivers the NFT to the account.
+#[test]
+fn test_owner_check_list_with_an_access_controller_account() {
+    let mut f = setup();
+    let (pk1, _, _, _, _, _, _, _, ac_account, controller) =
+        f.ledger.new_ed25519_preallocated_account_with_access_controller(1);
+    let signers = vec![
+        NonFungibleGlobalId::from_public_key(&f.seller_pk),
+        NonFungibleGlobalId::from_public_key(&pk1),
+    ];
+    let seller = f.seller_account;
+    let asset_resource = f.asset_resource;
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+
+    list_asset_advanced(&mut f, seller, ac_account, 1, asks.clone(), expiry, signers.clone())
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_method(controller, "create_proof", manifest_args!())
+        .withdraw_non_fungibles_from_account(seller, asset_resource, indexset![NonFungibleLocalId::integer(1)])
+        .take_all_from_worktop(asset_resource, "asset")
+        .call_method_with_name_lookup(f.swap, "list", |lookup| {
+            (ac_account, lookup.bucket("asset"), asks.clone(), expiry)
+        })
+        .call_method(seller, "deposit_batch", manifest_args!(ManifestExpression::EntireWorktop))
+        .build();
+    f.ledger.execute_manifest(manifest, signers).expect_commit_success();
+    assert_eq!(fetch_listing(&mut f, 1).seller, ac_account);
+
+    cancel_listing(&mut f, 1).expect_commit_success();
+    assert_eq!(
+        f.ledger.get_component_balance(ac_account, f.asset_resource),
+        dec!("1"),
+        "cancel delivered the NFT to the Access Controller account"
+    );
+}
+
+/// A securified seller is paid too: list with the badge proof, a buyer fills,
+/// and `withdraw_proceeds` (triggered by the receipt holder, the fixture
+/// seller) deposits the payment to the securified account.
+#[test]
+fn test_owner_check_securified_seller_receives_fill_proceeds() {
+    let mut f = setup();
+    let (secured, _original_pk, badge_id) = new_securified_account(&mut f);
+    let seller_sig = NonFungibleGlobalId::from_public_key(&f.seller_pk);
+    list_with_badge_proof(&mut f, secured, 1, BadgeProof::InAuthZone(badge_id), vec![seller_sig])
+        .expect_commit_success();
+    fill_with_fungible(&mut f, 1, 0, dec!("100")).expect_commit_success();
+
+    let (receipt_resource, seller, seller_pk) = (f.listing_receipt_resource, f.seller_account, f.seller_pk);
+    call_with_receipt_proof(&mut f, "withdraw_proceeds", receipt_resource, 1, seller, seller_pk)
+        .expect_commit_success();
+    assert_eq!(f.ledger.get_component_balance(secured, f.payment_token), dec!("100"));
+    assert!(fetch_listing(&mut f, 1).proceeds_withdrawn);
+}
+
+/// An account whose owner rule is `allow_all` (anyone can create one with
+/// `Account::create_advanced`) can be pinned by ANY caller, because the rule
+/// passes for everyone. This records the behaviour; it is not a hole: anyone
+/// can already withdraw from such an account, and only the lister, who gives
+/// up their own NFT to list, is exposed.
+#[test]
+fn test_owner_check_allow_all_owner_account_passes_for_anyone() {
+    let mut f = setup();
+    let open = f.ledger.new_account_advanced(OwnerRole::Fixed(rule!(allow_all)));
+    let seller = f.seller_account;
+    let expiry = default_expiry(&mut f);
+    let asks = vec![Ask::Fungible { resource: f.payment_token, amount: dec!("100") }];
+    let signers = vec![NonFungibleGlobalId::from_public_key(&f.seller_pk)];
+    list_asset_advanced(&mut f, seller, open, 1, asks, expiry, signers).expect_commit_success();
+    assert_eq!(fetch_listing(&mut f, 1).seller, open);
+}
