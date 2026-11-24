@@ -2529,20 +2529,19 @@ mod guild_marketplace_escrow {
             // cannot tell that two accounts share an owner. It is a trust
             // placed in the arbiter, and the honesty copy must say so.
             //
-            // ⚠️ DELIBERATELY NOT COMPARED: `task.poster`. It is a
-            // caller-supplied parameter bound to nothing (M5) — a decoy
-            // poster address defeats a poster-side check for the cost of gas,
-            // so shipping one would produce a guard that reads as a defence
-            // in the audit and is not one (the DESIGN-REVIEW §18.9 item 3
+            // ⚠️ DELIBERATELY NOT COMPARED: `task.poster`. In v1 it was a
+            // caller-supplied parameter bound to nothing (M5). In v2
+            // `create_task` requires its caller to control `poster`
+            // (`assert_caller_controls_account`), but that does not make it
+            // an identity this comparison can use: an arbiter who posts can
+            // pin a second account of their own as poster, so a poster-side
+            // comparison would still be defeated for the cost of gas, and
+            // shipping one would produce a guard that reads as a defence in
+            // the audit and is not one (the DESIGN-REVIEW §18.9 item 3
             // analysis, and the reason L6 was ruled (c): poster is a payout
             // destination, not an identity). Poster-side self-dealing is OPEN
             // BY DESIGN and must be stated in the honesty copy, never claimed
             // closed.
-            // v2 (payee owner check): `create_task` now requires its caller
-            // to control `poster`, so "bound to nothing" is no longer literal. The
-            // conclusion stands: an arbiter who posts can pin a second
-            // account of their own as poster, so a poster-side comparison
-            // would still be defeated for the cost of gas.
             //
             // ⚠️ CORRECTED in v2 (guild#84 review L2). v1 said "An
             // arbiter-poster still cannot STEAL — settlement credits only
