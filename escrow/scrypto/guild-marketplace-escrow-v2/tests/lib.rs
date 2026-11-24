@@ -4314,6 +4314,166 @@ fn test_payee_owner_check_claim_task_refuses_a_securified_worker_without_its_own
     assert_eq!(info.worker_account, None);
 }
 
+// ── v2 payee owner check: the component path ─────────────────────────────
+
+/// Publish and instantiate the TEST-ONLY `OwnerCheckCaller` package
+/// (`tests/assets/owner_check_caller`): a global component that forwards a
+/// call to `create_task` / `claim_task`, so the owner check sees a component
+/// as its global caller.
+fn new_owner_check_caller(f: &mut Fixture) -> ComponentAddress {
+    let package = f.ledger.compile_and_publish(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/assets/owner_check_caller"
+    ));
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .call_function(package, "OwnerCheckCaller", "instantiate", manifest_args!())
+        .build();
+    f.ledger
+        .execute_manifest(manifest, vec![])
+        .expect_commit_success()
+        .new_component_addresses()[0]
+}
+
+/// `create_task` (100 / 10 / 0.1) THROUGH `caller`, funded from the fixture
+/// poster's account, pinning `poster`. No proof is handed to the component.
+fn create_task_via_caller(
+    f: &mut Fixture,
+    caller: ComponentAddress,
+    poster: ComponentAddress,
+    signers: Vec<NonFungibleGlobalId>,
+) -> TransactionReceipt {
+    let escrow = f.escrow;
+    let manifest = ManifestBuilder::new()
+        .lock_fee_from_faucet()
+        .withdraw_from_account(f.poster_account, f.reward_token, dec!("110"))
+        .take_from_worktop(f.reward_token, dec!("100"), "reward")
+        .take_from_worktop(f.reward_token, dec!("10"), "insurance")
+        .call_method_with_name_lookup(caller, "create_task_via", |lookup| {
+            (
+                escrow,
+                poster,
+                lookup.bucket("reward"),
+                lookup.bucket("insurance"),
+                dec!("0.1"),
+                WORK_BRIEF,
+            )
+        })
+        .call_method(
+            f.poster_account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    f.ledger.execute_manifest(manifest, signers)
+}
+
+/// `claim_task` THROUGH `caller` with the fixture worker's badge and bond,
+/// pinning `worker`. Badges go to the component as BUCKETS: a proof handed to
+/// a component is restricted, and the engine refuses to pass it on to the
+/// escrow or into the component's auth zone. The component makes its own
+/// worker-badge proof; with `owner_badge` = Some(id) it also makes a proof of
+/// that ACCOUNT_OWNER_BADGE (held by the fixture worker) in ITS OWN auth zone.
+/// Everything it returns (receipt, badges) goes back to the fixture worker.
+fn claim_task_via_caller(
+    f: &mut Fixture,
+    caller: ComponentAddress,
+    task_id: u64,
+    worker: ComponentAddress,
+    owner_badge: Option<NonFungibleLocalId>,
+    signers: Vec<NonFungibleGlobalId>,
+) -> TransactionReceipt {
+    let (escrow, bond, worker_badge) = (f.escrow, f.claim_bond, f.worker_badge);
+    let mut builder = ManifestBuilder::new().lock_fee_from_faucet();
+    let hand_over = owner_badge.is_some();
+    if let Some(id) = owner_badge {
+        builder = builder
+            .withdraw_non_fungibles_from_account(f.worker_account, ACCOUNT_OWNER_BADGE, vec![id])
+            .take_all_from_worktop(ACCOUNT_OWNER_BADGE, "owner_badge");
+    }
+    let manifest = builder
+        .withdraw_non_fungibles_from_account(
+            f.worker_account,
+            worker_badge,
+            vec![NonFungibleLocalId::integer(1)],
+        )
+        .take_all_from_worktop(worker_badge, "worker_badge")
+        .withdraw_from_account(f.worker_account, f.reward_token, bond)
+        .take_from_worktop(f.reward_token, bond, "bond")
+        .call_method_with_name_lookup(caller, "claim_task_via", |lookup| {
+            let owner_badge = if hand_over { Some(lookup.bucket("owner_badge")) } else { None };
+            (escrow, task_id, worker, lookup.bucket("worker_badge"), lookup.bucket("bond"), owner_badge)
+        })
+        .call_method(
+            f.worker_account,
+            "deposit_batch",
+            manifest_args!(ManifestExpression::EntireWorktop),
+        )
+        .build();
+    f.ledger.execute_manifest(manifest, signers)
+}
+
+/// Through a component, the TRANSACTION's signatures do not count. Each
+/// payee signs, but `create_task` / `claim_task` are reached through
+/// `OwnerCheckCaller`, whose own auth zone is empty, so pinning the payee's
+/// key-owned account is refused. No task is created; the claimed-for task
+/// stays Open.
+#[test]
+fn test_payee_owner_check_component_caller_cannot_use_the_transactions_signatures() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    let caller = new_owner_check_caller(&mut f);
+    let (poster, worker) = (f.poster_account, f.worker_account);
+    let poster_sig = NonFungibleGlobalId::from_public_key(&f.poster_pk);
+    let worker_sig = NonFungibleGlobalId::from_public_key(&f.worker_pk);
+
+    create_task_via_caller(&mut f, caller, poster, vec![poster_sig])
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+    let info: Option<TaskInfo> = f
+        .ledger
+        .call_method(f.escrow, "get_task_info", manifest_args!(1u64))
+        .expect_commit_success()
+        .output(1);
+    assert!(info.is_none(), "no task was created");
+
+    create_task(&mut f, dec!("100"), dec!("10"), dec!("0.1")).expect_commit_success();
+    claim_task_via_caller(&mut f, caller, 1, worker, None, vec![worker_sig])
+        .expect_commit_failure_containing_error("AssertAccessRuleFailed");
+    let info = fetch_task(&mut f, 1);
+    assert_eq!(info.state, TaskState::Open);
+    assert_eq!(info.worker_account, None);
+}
+
+/// A component that holds the owner proof in ITS OWN auth zone passes: the
+/// securified worker account's owner badge is handed to `OwnerCheckCaller`,
+/// which makes a proof of it in its own auth zone before calling
+/// `claim_task`, then returns both badges.
+#[test]
+fn test_payee_owner_check_component_caller_passes_with_the_owner_badge_in_its_own_auth_zone() {
+    let mut f = setup();
+    let token = f.reward_token;
+    add_token_to_whitelist(&mut f, token, dec!("10"));
+    create_task(&mut f, dec!("100"), dec!("10"), dec!("0.1")).expect_commit_success();
+    let caller = new_owner_check_caller(&mut f);
+    let (worker_account, worker_pk) = (f.worker_account, f.worker_pk);
+    let (sec_worker, _original_pk, owner_badge) = new_securified_account(&mut f, worker_account, worker_pk);
+    let signers = vec![NonFungibleGlobalId::from_public_key(&worker_pk)];
+    claim_task_via_caller(&mut f, caller, 1, sec_worker, Some(owner_badge), signers)
+        .expect_commit_success();
+    assert_eq!(fetch_task(&mut f, 1).worker_account, Some(sec_worker));
+    assert_eq!(
+        f.ledger.get_component_balance(worker_account, ACCOUNT_OWNER_BADGE),
+        dec!("1"),
+        "the component returned the owner badge"
+    );
+    assert_eq!(
+        f.ledger.get_component_balance(worker_account, f.worker_badge),
+        dec!("3"),
+        "the component returned the worker badge"
+    );
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Component royalties — the Shape-B revenue dial (DB-2, sitting 2026-08-06).
 // What these prove: the dial exists ONLY on create_task, only the royalty-admin
