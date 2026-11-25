@@ -1,7 +1,8 @@
 <!-- status: live
      verified: 2026-10-11 (index only: every date below was re-read from the document's own header
      that day, and every link resolves in this tree. The claims inside each document were not
-     re-checked by this pass; each header says what its own `verified:` lines covered.) -->
+     re-checked by this pass; each header says what its own `verified:` lines covered.)
+     verified: 2026-11-25 (the `CONFIG.md` and `DEPLOY.md` rows only) -->
 # Docs — design and reference documents
 
 These are the design and reference documents that ship with the code. The repository's own
@@ -38,6 +39,8 @@ each header.
 
 | Doc | What it covers |
 |---|---|
+| [`CONFIG.md`](CONFIG.md) | Every environment name the code reads, per package, with where it is read, whether it is required, its default and whether it is secret |
+| [`DEPLOY.md`](DEPLOY.md) | Build order, start, checks and rollback for the dashboard, the kit tarballs and the bot. A draft, not yet run end to end; steps the repository does not contain are marked as operator steps |
 | [`ESCROW-METHOD-INVENTORY.md`](ESCROW-METHOD-INVENTORY.md) | Every escrow method, with its access class and return type. The signature table is generated from the source and checked in CI; it describes `main`, not a deployed package |
 | [`ESCROW-MIGRATION-S1-METHOD-MAP.md`](ESCROW-MIGRATION-S1-METHOD-MAP.md) | How methods mapped across one escrow migration (historical) |
 | [`SCRYPTO-AUTH-CONVENTION.md`](SCRYPTO-AUTH-CONVENTION.md) | How the blueprints express authorisation |
@@ -55,6 +58,8 @@ each header.
 |---|---|---|
 | [`AUDITOR-GUIDE.md`](AUDITOR-GUIDE.md) | live | 2026-10-06 |
 | [`BADGE-SCHEMAS.md`](BADGE-SCHEMAS.md) | live | 2026-09-23 |
+| [`CONFIG.md`](CONFIG.md) | live | 2026-11-25 |
+| [`DEPLOY.md`](DEPLOY.md) | live | 2026-11-25 |
 | [`ESCROW-DESIGN.md`](ESCROW-DESIGN.md) | historical | 2026-09-30 |
 | [`ESCROW-METHOD-INVENTORY.md`](ESCROW-METHOD-INVENTORY.md) | live | 2026-09-21 |
 | [`ESCROW-MIGRATION-S1-METHOD-MAP.md`](ESCROW-MIGRATION-S1-METHOD-MAP.md) | historical | 2026-08-15 |
