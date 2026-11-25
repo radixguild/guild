@@ -39,6 +39,7 @@ vi.mock("@/lib/auth", () => ({
 const POSTER = "account_rdx1poster"
 const WORKER = "account_rdx1worker"
 const OUTSIDER = "account_rdx1outsider"
+const OTHER_WORKER = "account_rdx1otherworker"
 const asUser = (userId: string) => {
   auth.userId = userId
 }
@@ -759,5 +760,96 @@ describe("API lifecycle: create → list → submit → review (off-chain lane)"
     asUser(WORKER)
     const submitter = await listSubmissionsRoute(urlReq(), ctx(taskId))
     expect(submitter.status).toBe(200)
+  })
+
+  it("a submitter sees only their own submissions; the creator sees all", async () => {
+    const { taskId } = await createTaskAs(POSTER)
+    fake.submissions.push(
+      {
+        id: 101,
+        taskId,
+        submitterId: WORKER,
+        content: "worker-a content",
+        status: "pending",
+        reviewerId: null,
+        reviewNote: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: 102,
+        taskId,
+        submitterId: OTHER_WORKER,
+        content: "worker-b content",
+        status: "pending",
+        reviewerId: null,
+        reviewNote: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    )
+
+    asUser(WORKER)
+    const worker = await listSubmissionsRoute(urlReq(), ctx(taskId))
+    expect(worker.status).toBe(200)
+    const workerJson = await worker.json()
+    expect(workerJson.data).toHaveLength(1)
+    expect(workerJson.data[0]).toMatchObject({ taskId, submitterId: WORKER })
+    expect(JSON.stringify(workerJson.data)).not.toContain("worker-b content")
+
+    asUser(OTHER_WORKER)
+    const other = await listSubmissionsRoute(urlReq(), ctx(taskId))
+    expect(other.status).toBe(200)
+    const otherJson = await other.json()
+    expect(otherJson.data).toHaveLength(1)
+    expect(otherJson.data[0].submitterId).toBe(OTHER_WORKER)
+    expect(JSON.stringify(otherJson.data)).not.toContain("worker-a content")
+
+    asUser(POSTER)
+    const poster = await listSubmissionsRoute(urlReq(), ctx(taskId))
+    expect(poster.status).toBe(200)
+    const posterJson = await poster.json()
+    expect(posterJson.data).toHaveLength(2)
+    expect(posterJson.data.map((s: { submitterId: string }) => s.submitterId).sort()).toEqual(
+      [WORKER, OTHER_WORKER].sort(),
+    )
+    const posterBody = JSON.stringify(posterJson.data)
+    expect(posterBody).toContain("worker-a content")
+    expect(posterBody).toContain("worker-b content")
+
+    asUser(OUTSIDER)
+    const outsider = await listSubmissionsRoute(urlReq(), ctx(taskId))
+    expect(outsider.status).toBe(403)
+    expect((await outsider.json()).error.code).toBe("FORBIDDEN")
+  })
+
+  it("a submitter with several attempts sees all of their own attempts and none of another submitter's", async () => {
+    const { taskId } = await createTaskAs(POSTER)
+    const seeds: Array<[number, string, string]> = [
+      [111, WORKER, "attempt 1"],
+      [112, WORKER, "attempt 2"],
+      [113, OTHER_WORKER, "other work"],
+    ]
+    for (const [id, submitterId, content] of seeds) {
+      fake.submissions.push({
+        id,
+        taskId,
+        submitterId,
+        content,
+        status: "pending",
+        reviewerId: null,
+        reviewNote: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+    }
+
+    asUser(WORKER)
+    const worker = await listSubmissionsRoute(urlReq(), ctx(taskId))
+    expect(worker.status).toBe(200)
+    const workerJson = await worker.json()
+    expect(workerJson.data).toHaveLength(2)
+    expect(workerJson.data.every((s: { submitterId: string }) => s.submitterId === WORKER)).toBe(true)
+    expect(workerJson.data.map((s: { id: number }) => s.id)).toEqual([111, 112])
   })
 })

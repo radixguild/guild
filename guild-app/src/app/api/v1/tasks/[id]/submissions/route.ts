@@ -36,17 +36,17 @@ export const GET = withAuth(async (_req, { params, user }) => {
 
   const submissions = await listSubmissionsByTask(taskId)
 
-  // Only task creator or submitters can view
+  // The creator sees every row; any other caller sees only their own rows, and a caller with none is refused.
   const isCreator = task.creatorId === user.userId
-  const isSubmitter = submissions.some((s) => s.submitterId === user.userId)
-  if (!isCreator && !isSubmitter) {
+  const visible = isCreator ? submissions : submissions.filter((s) => s.submitterId === user.userId)
+  if (!isCreator && visible.length === 0) {
     return NextResponse.json(
       { ok: false, error: { code: "FORBIDDEN", message: "Not authorized to view submissions" } },
       { status: 403 },
     )
   }
 
-  return NextResponse.json({ ok: true, data: submissions })
+  return NextResponse.json({ ok: true, data: visible })
 })
 
 export const POST = withAuth(async (req, { params, user }) => {
