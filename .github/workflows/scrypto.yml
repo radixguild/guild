@@ -133,6 +133,30 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2 (2.9.3)
         with:
           workspaces: escrow/scrypto/guild-marketplace-escrow-v2 -> target
+      # The test-only package under tests/assets has its own Cargo.lock. Fail
+      # when its `scrypto` version differs from the crate's own lock, so the
+      # two cannot drift apart unnoticed. Matches the package named exactly
+      # `scrypto` (not scrypto-test, scrypto-derive, ...).
+      - name: scrypto version agrees between the two v2 lockfiles
+        run: |
+          set -euo pipefail
+          crate_lock=escrow/scrypto/guild-marketplace-escrow-v2/Cargo.lock
+          asset_lock=escrow/scrypto/guild-marketplace-escrow-v2/tests/assets/owner_check_caller/Cargo.lock
+          scrypto_versions() {
+            awk '
+              /^\[\[package\]\]/ { name = ""; next }
+              /^name = / { name = $3; gsub(/"/, "", name); next }
+              /^version = / && name == "scrypto" { v = $3; gsub(/"/, "", v); print v; name = "" }
+            ' "$1" | sort -u
+          }
+          crate_v=$(scrypto_versions "$crate_lock")
+          asset_v=$(scrypto_versions "$asset_lock")
+          echo "crate lock scrypto: ${crate_v:-<none>}"
+          echo "asset lock scrypto: ${asset_v:-<none>}"
+          if [ -z "$crate_v" ] || [ -z "$asset_v" ] || [ "$crate_v" != "$asset_v" ]; then
+            echo "::error::scrypto version differs or is missing between $crate_lock and $asset_lock"
+            exit 1
+          fi
       - run: cargo build --locked --release --target wasm32-unknown-unknown
         working-directory: escrow/scrypto/guild-marketplace-escrow-v2
       - run: cargo test --locked
