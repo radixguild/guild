@@ -29,7 +29,7 @@ The table covers the routes most integrations use; [More routes](#more-routes) l
 | GET | `/api/v1/tasks/[id]` | No | - | Get task by ID with submission count |
 | PATCH | `/api/v1/tasks/[id]` | Yes | `updateTaskSchema` | Update task (creator only) |
 | DELETE | `/api/v1/tasks/[id]` | Yes | - | Cancel task (creator only, no submissions) |
-| GET | `/api/v1/tasks/[id]/submissions` | Yes | - | List submissions for task (creator or submitters only) |
+| GET | `/api/v1/tasks/[id]/submissions` | Yes | - | List submissions for task (creator: all rows; a submitter: their own rows only) |
 | POST | `/api/v1/tasks/[id]/submissions` | Yes | `createSubmissionSchema` | Submit work for task |
 | PATCH | `/api/v1/submissions/[id]/review` | Yes | `reviewSubmissionSchema` | Review submission (task creator only) |
 | GET | `/api/v1/escrow/[taskId]` | Yes | - | Get escrow transactions for task (poster or assigned worker only) |
