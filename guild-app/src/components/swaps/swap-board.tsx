@@ -78,7 +78,7 @@ function SwapCard({ l, board }: { l: SwapListingView; board: SwapBoardView }) {
   const noFill =
     l.status === "open" &&
     !l.hidden &&
-    (isReceiptAsset(l.assetResource, guildReceiptResources(board.receiptResource)) ||
+    (isReceiptAsset(l.assetResource, guildReceiptResources(board.receiptResource), board.resources[l.assetResource]?.name) ||
       issuerControl(board.resources[l.assetResource]) !== "locked")
   return (
     <Link href={`/swaps/${l.listingId}`} className="group block no-underline">

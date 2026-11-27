@@ -28,6 +28,7 @@ import {
   guildReceiptResources,
   issuerControlRule,
   readResourceControl,
+  readResourceName,
   readResourceRecall,
   transferRule,
   recallRule,
@@ -59,7 +60,7 @@ const KEY_HEX = '07'.repeat(32);
 // A second collection, for a listing whose NFT is not the throwaway one.
 const OTHER_NFT = 'resource_rdx1nguzt4xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
 // What the legs pass the builders for an asset they may list or fill.
-const GUARD = { control: 'locked' as const, receiptResources: [RECEIPT, CONFIG.taskReceiptResource, CONFIG.claimReceiptResource] };
+const GUARD = { control: 'locked' as const, receiptResources: [RECEIPT, CONFIG.taskReceiptResource, CONFIG.claimReceiptResource], assetName: null };
 
 const STATE: SwapState = {
   listingsKvStore: 'internal_keyvaluestore_rdx1kp9yd7edwqrzn5gnwzc38drdmy8tnjpn864a3v4538tmtxky2x5cqp',
@@ -93,6 +94,7 @@ function deps(over: Partial<SwapDeps> & { read?: ListingRead; holder?: string | 
     readNftHolder: async () => ('holder' in over ? over.holder : SELLER),
     readResourceKind: async (_c, r) => (r === MAINNET_XRD ? { kind: 'fungible', divisibility: 18 } : { kind: 'nonFungible' }),
     readResourceControl: async () => 'locked',
+    readResourceName: async () => null,
     readListedListingId: async () => 3,
     signAndSubmitManifest: async (m) => {
       signed.push(m);
@@ -352,10 +354,10 @@ describe('fill-swap', () => {
   });
 
   test.each([
-    ['recallable', /issuer can recall it/],
-    ['freezable', /issuer can freeze it/],
-    ['restrictable', /issuer restricts transfers of it, or can still do so/],
-    ['unknown', /could not confirm whether .* issuer can recall, freeze or restrict it/],
+    ['recallable', /recall is not permanently switched off for resource_rdx1/],
+    ['freezable', /freezing is not permanently switched off for resource_rdx1/],
+    ['restrictable', /transfers of resource_rdx1\w+ are restricted, or are not permanently open/],
+    ['unknown', /could not confirm that recall, freezing and transfer restrictions are permanently off/],
   ] as const)('refuses a %s collection, dry run or live, and signs nothing', async (state, line) => {
     const { d, signed } = deps({ readResourceControl: async () => state });
     for (const live of [false, true]) {
@@ -531,10 +533,10 @@ describe('list-swap', () => {
   });
 
   test.each([
-    ['recallable', /issuer can recall it/],
-    ['freezable', /issuer can freeze it/],
-    ['restrictable', /issuer restricts transfers of it, or can still do so/],
-    ['unknown', /could not confirm whether .* issuer can recall, freeze or restrict it/],
+    ['recallable', /recall is not permanently switched off for resource_rdx1/],
+    ['freezable', /freezing is not permanently switched off for resource_rdx1/],
+    ['restrictable', /transfers of resource_rdx1\w+ are restricted, or are not permanently open/],
+    ['unknown', /could not confirm that recall, freezing and transfer restrictions are permanently off/],
   ] as const)('refuses a %s collection before building or signing anything', async (state, line) => {
     const { d, signed } = deps({ readResourceControl: async () => state });
     const r = await runListSwap({ nft, asks: [xrd5000], days: 7, live: false, identity: null, config: CONFIG, deps: d });
@@ -745,7 +747,7 @@ describe('Guild receipts are never a swap asset or an ask', () => {
     const { d, signed } = deps({ read: { kind: 'ok', state: STATE, listing: listing({ assetResource: res() }) } });
     const r = await runFillSwap({ listingId: 3, live: true, maxPrice: { resource: MAINNET_XRD, amount: '5000' }, identity: await identity(), config: CONFIG, deps: d });
     expect(r.refused).toBe(true);
-    expect(r.message).toMatch(/is a Guild receipt, so a fill is not offered/);
+    expect(r.message).toMatch(/is a Guild receipt by address or by name .*so a fill is not offered/);
     expect(signed).toEqual([]);
   });
   test.each([
@@ -756,18 +758,18 @@ describe('Guild receipts are never a swap asset or an ask', () => {
     const asAsset = deps({ holder: id.address });
     const a = await runListSwap({ nft: { resource: res(), id: '#2#' }, asks: [xrd], days: 7, live: true, identity: id, config: CONFIG, deps: asAsset.d });
     expect(a.refused).toBe(true);
-    expect(a.message).toMatch(/is a Guild receipt, so it cannot be listed here/);
+    expect(a.message).toMatch(/is a Guild receipt by address or by name .*so it cannot be listed here/);
     const asAsk = deps({ holder: id.address });
     const b = await runListSwap({ nft: { resource: NFT, id: '#2#' }, asks: [{ kind: 'nonFungible', resource: res(), id: '#5#' }], days: 7, live: true, identity: id, config: CONFIG, deps: asAsk.d });
     expect(b.refused).toBe(true);
-    expect(b.message).toMatch(/ask 0: .* is a Guild receipt, so it cannot be asked for here/);
+    expect(b.message).toMatch(/ask 0: .* is a Guild receipt by address or by name .*so it cannot be asked for here/);
     expect([...asAsset.signed, ...asAsk.signed]).toEqual([]);
   });
 
   test.each([
-    ['recallable', /ask 0: .* issuer can recall it, so it cannot be asked for here/],
-    ['freezable', /ask 0: .* issuer can freeze it/],
-    ['restrictable', /ask 0: .* issuer restricts transfers of it/],
+    ['recallable', /ask 0: recall is not permanently switched off .* so it cannot be asked for here/],
+    ['freezable', /ask 0: freezing is not permanently switched off/],
+    ['restrictable', /ask 0: transfers of .* are restricted/],
     ['unknown', /ask 0: could not confirm/],
   ] as const)('list-swap refuses an ask whose resource is %s, though the NFT itself is locked', async (state, line) => {
     const id = await identity();
@@ -776,5 +778,72 @@ describe('Guild receipts are never a swap asset or an ask', () => {
     expect(r.refused).toBe(true);
     expect(r.message).toMatch(line);
     expect(signed).toEqual([]);
+  });
+});
+
+// A receipt from another instance of the escrow or swap blueprints has a
+// different address and the same name. Mainnet listing 4 was one: a "Guild
+// Marketplace Task Receipt" that is not the configured escrow's.
+describe('a Guild receipt the address list does not know is caught by its name', () => {
+  const xrd: SwapAsk = { kind: 'fungible', resource: MAINNET_XRD, amount: '5000' };
+  const NAMES = ['Guild Marketplace Task Receipt', 'Guild Marketplace Claim Receipt', 'Guild NFT Swap Listing Receipt'];
+
+  test.each(NAMES)('fill-swap refuses a listing whose NFT is named "%s", with locked roles', async (name) => {
+    const { d, signed } = deps({ readResourceName: async () => name, read: { kind: 'ok', state: STATE, listing: listing({ assetResource: OTHER_NFT }) } });
+    const r = await runFillSwap({ listingId: 3, live: true, maxPrice: { resource: MAINNET_XRD, amount: '5000' }, identity: await identity(), config: CONFIG, deps: d });
+    expect(r.refused).toBe(true);
+    expect(r.message).toMatch(/is a Guild receipt by address or by name/);
+    expect(signed).toEqual([]);
+  });
+  test.each(NAMES)('list-swap refuses an NFT named "%s", and an ask named so', async (name) => {
+    const id = await identity();
+    const asAsset = deps({ holder: id.address, readResourceName: async (_c, r) => (r === OTHER_NFT ? name : null) });
+    const a = await runListSwap({ nft: { resource: OTHER_NFT, id: '#2#' }, asks: [xrd], days: 7, live: true, identity: id, config: CONFIG, deps: asAsset.d });
+    expect(a.refused).toBe(true);
+    expect(a.message).toMatch(/so it cannot be listed here/);
+    const asAsk = deps({ holder: id.address, readResourceName: async (_c, r) => (r === OTHER_NFT ? name : null) });
+    const b = await runListSwap({ nft: { resource: NFT, id: '#2#' }, asks: [{ kind: 'nonFungible', resource: OTHER_NFT, id: '#5#' }], days: 7, live: true, identity: id, config: CONFIG, deps: asAsk.d });
+    expect(b.refused).toBe(true);
+    expect(b.message).toMatch(/ask 0: .*so it cannot be asked for here/);
+    expect([...asAsset.signed, ...asAsk.signed]).toEqual([]);
+  });
+  test('an ordinary collection name (live listing 9: Ciggie Puffs) still lists and fills, and the builder gets the name', async () => {
+    const id = await identity();
+    const l = deps({ holder: id.address, readResourceName: async (_c, r) => (r === NFT ? 'Ciggie Puffs' : 'Ciggie') });
+    const listed = await runListSwap({ nft: { resource: NFT, id: '#2#' }, asks: [xrd], days: 7, live: true, identity: id, config: CONFIG, deps: l.d });
+    expect(listed.refused).toBeUndefined();
+    expect(l.signed).toEqual([listSwapManifest(SWAP, id.address, NFT, '#2#', [xrd], LEDGER + 7 * 86400, { ...GUARD, assetName: 'Ciggie Puffs' })]);
+    const f = deps({ readResourceName: async () => 'Ciggie Puffs' });
+    const filled = await runFillSwap({ listingId: 3, live: true, maxPrice: { resource: MAINNET_XRD, amount: '5000' }, identity: id, config: CONFIG, deps: f.d });
+    expect(filled.refused).toBeUndefined();
+    expect(f.signed).toHaveLength(1);
+  });
+  test.skipIf(STANDALONE)('parity with guild-app: isGuildReceiptName, and isReceiptAsset with a name', async () => {
+    const app = (await import('../../../guild-app/src/lib/nft-swap')) as unknown as {
+      isGuildReceiptName: (n: unknown) => boolean;
+      isReceiptAsset: (a: string, r: unknown, n?: unknown) => boolean;
+    };
+    const kit = await import('./manifests.js');
+    const names = [...NAMES, 'guild receipt', 'GUILD-RECEIPT', 'Ｇｕｉｌｄ Receipt', 'Receipt of the Guild', 'Guild Badge', 'Receipt', 'Ciggie Puffs', '', null, undefined, 7];
+    for (const n of names) {
+      expect(kit.isGuildReceiptName(n as never), String(n)).toBe(app.isGuildReceiptName(n));
+      expect(kit.isReceiptAsset(NFT, [RECEIPT], n as never), String(n)).toBe(app.isReceiptAsset(NFT, [RECEIPT], n));
+    }
+    for (const n of [...NAMES, 'Receipt of the Guild', 'Ｇｕｉｌｄ Receipt']) expect(kit.isGuildReceiptName(n)).toBe(true);
+    for (const n of ['Guild Badge', 'Receipt', 'Ciggie Puffs', '', null]) expect(kit.isGuildReceiptName(n)).toBe(false);
+  });
+  test('readResourceName reads the metadata name; none or unreadable is null', async () => {
+    const real = globalThis.fetch;
+    const answer = (body: unknown, status = 200) => (globalThis.fetch = (async () => new Response(JSON.stringify(body), { status })) as typeof fetch);
+    try {
+      answer({ items: [{ metadata: { items: [{ key: 'name', value: { typed: { value: 'Guild Marketplace Task Receipt' } } }] } }] });
+      expect(await readResourceName(CONFIG, NFT)).toBe('Guild Marketplace Task Receipt');
+      answer({ items: [{ metadata: { items: [] } }] });
+      expect(await readResourceName(CONFIG, NFT)).toBeNull();
+      answer({}, 500);
+      expect(await readResourceName(CONFIG, NFT)).toBeNull();
+    } finally {
+      globalThis.fetch = real;
+    }
   });
 });

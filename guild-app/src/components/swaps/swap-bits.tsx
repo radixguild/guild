@@ -169,7 +169,8 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 /**
- * "5,000 XRD" / "NFT #12# of Wefty V2" — the full address stays in the title.
+ * "5,000 XRD" / "NFT #12# of Wefty V2 (resource_rdx1n…abc123)" — the full
+ * address stays in the title.
  * Only a common token (common-tokens.ts, matched by ADDRESS) reads by symbol
  * alone. Any other token carries its short address, because its name and
  * symbol are whatever its issuer wrote: "420 CIGGIE (resource_rdx1t4abc…l48s)".
@@ -188,8 +189,8 @@ export function askText(ask: SwapAsk, resources: Record<string, SwapResourceView
     }
     return `${formatAmount(ask.amount)} ${unit}`
   }
-  const coll = r?.name ?? shortAddress(ask.resource)
-  return `NFT ${ask.id} of ${coll}`
+  // A collection's name is issuer-written too, so it never stands alone.
+  return r?.name ? `NFT ${ask.id} of ${r.name} (${shortAddress(ask.resource)})` : `NFT ${ask.id} of ${shortAddress(ask.resource)}`
 }
 
 /**

@@ -170,7 +170,7 @@ export function ListNftForm() {
       const control = issuerControl(d)
       // A known receipt list only: while it is unread nothing can be listed
       // anyway (canList), and every ask would read as a receipt.
-      const receipt = receipts !== null && isReceiptAsset(r, receipts)
+      const receipt = receipts !== null && isReceiptAsset(r, receipts, d.name)
       if (d.kind === "nonFungible") return { kind: "nonFungible", control, receipt }
       if (d.divisibility === null) return null
       return { kind: "fungible", divisibility: d.divisibility, control, receipt, lookAlikeOf: lookAlikeOf(r, d)?.symbol ?? null }
@@ -195,7 +195,7 @@ export function ListNftForm() {
       ledgerNow !== null &&
       pickedRes?.withdraw !== "denied" &&
       pickedControl === "locked" &&
-      !isReceiptAsset(picked.resource, receipts) &&
+      !isReceiptAsset(picked.resource, receipts, pickedRes?.name) &&
       componentOk,
   )
 
@@ -226,6 +226,7 @@ export function ListNftForm() {
         listSwapManifest(NFT_SWAP_COMPONENT, acct, picked.resource, picked.id, asks.map(normalizeAsk), expiresAt, {
           control: pickedControl,
           receiptResources: guildReceiptResources(fresh.receiptResource),
+          assetName: pickedRes?.name ?? null,
         }),
       )
       if (!txId) return
@@ -294,7 +295,7 @@ export function ListNftForm() {
               // locked can be listed; one the Gateway could not say about is
               // shut too, and so is a Guild receipt.
               const control = issuerControl(r)
-              const receipt = isReceiptAsset(g.resource, receipts)
+              const receipt = isReceiptAsset(g.resource, receipts, r?.name)
               const shut = denied || receipt || control !== "locked"
               return (
                 <div key={g.resource} className="space-y-1.5">

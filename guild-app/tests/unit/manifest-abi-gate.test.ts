@@ -166,7 +166,7 @@ const GATED: Record<string, () => string> = {
 // blueprint; the completeness test counts them.
 const SWAP = "component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4"
 const XRD_RES = "resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd"
-const LIST_GUARD = { control: "locked" as const, receiptResources: [RECEIPT_RES] }
+const LIST_GUARD = { control: "locked" as const, receiptResources: [RECEIPT_RES], assetName: null }
 const SWAP_GATED: Record<string, () => string> = {
   listSwapManifest: () =>
     manifests.listSwapManifest(SWAP, POSTER, BADGE_RES, "#1#", [

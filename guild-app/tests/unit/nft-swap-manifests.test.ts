@@ -34,7 +34,7 @@ const XRD = "resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd
 const GUILD_ADMIN_2 = "account_rdx12y6ch4m8wjcgu7hrnwfqjeqt70w4kh7qy7k3gs2j9wyx3596fgt3fm"
 // What the List form passes for an asset it may list: issuer control read as
 // locked, and the Guild's receipt resources (the listing receipt first).
-const LIST_GUARD = { control: "locked" as const, receiptResources: [RECEIPT] }
+const LIST_GUARD = { control: "locked" as const, receiptResources: [RECEIPT], assetName: null }
 const POSTER_2 = "account_rdx12y5senkxfxg38swfv4tg88lx73jqnkdvcnzv8kwwdmg0efl40r2p7u"
 
 /** The instruction every fill carries after `fill`: the listed NFT, by id. */
@@ -277,7 +277,7 @@ describe.each([
   it.each(["recallable", "freezable", "restrictable", "unknown", undefined, "locked-deny"])(
     "refuses to build for issuer control %s",
     (control) => {
-      expect(() => build({ control, receiptResources: [RECEIPT] })).toThrow(new RegExp(`Cannot ${verb}: this collection's issuer`))
+      expect(() => build({ control, receiptResources: [RECEIPT] })).toThrow(new RegExp(`Cannot ${verb}: recall, freezing or transfer restrictions are not permanently off`))
     },
   )
   it("refuses a missing guard", () => {
@@ -286,6 +286,15 @@ describe.each([
   it("refuses the swap's own listing receipt, and any other receipt resource passed, as the asset", () => {
     expect(() => build(LIST_GUARD, RECEIPT)).toThrow(new RegExp(`Cannot ${verb}: a Guild receipt`))
     expect(() => build({ control: "locked", receiptResources: [RECEIPT, THROWAWAY_NFT] })).toThrow(/a Guild receipt/)
+  })
+  it.each(["Guild Marketplace Task Receipt", "Guild Marketplace Claim Receipt", "Guild NFT Swap Listing Receipt"])(
+    "refuses an asset named %s, whatever its address (a receipt from another instance of the blueprints)",
+    (assetName) => {
+      expect(() => build({ ...LIST_GUARD, assetName })).toThrow(new RegExp(`Cannot ${verb}: a Guild receipt`))
+    },
+  )
+  it("an ordinary name builds", () => {
+    expect(build({ ...LIST_GUARD, assetName: "Ciggie Puffs" })).toContain(`"${verb}"`)
   })
   it("refuses when the receipt resources are not known (empty, missing or malformed)", () => {
     expect(() => build({ control: "locked", receiptResources: [] })).toThrow(/a Guild receipt/)

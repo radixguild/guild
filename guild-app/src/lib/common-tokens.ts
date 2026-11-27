@@ -55,36 +55,69 @@ const DRAWS_LIKE: Record<string, string> = {
   "0": "o", "1": "l",
 }
 
-/** A name or symbol reduced to what a reader sees: invisible characters
- *  dropped (the zero-width ones and the blank "letters" such as the Hangul
- *  fillers), compatibility forms and accents folded, case dropped, spacing and
- *  punctuation removed, look-alike letters mapped to the Latin one. */
-function folded(s: string | null | undefined): string[] {
+// Symbols that draw like a letter, mapped before symbols are dropped.
+const SYMBOL_LETTERS: Record<string, string> = { "×": "x", "✕": "x", "✖": "x", "⨯": "x", "╳": "x", "|": "l", "¦": "l", "ǀ": "l", "∣": "l" }
+// Marks an issuer can hang on a name without changing how it reads.
+const TRAILING_MARKS = /[™®©℠]/g
+// Lettered emoji blocks: regional indicators and the three squared/circled
+// Latin sets. Each is A–Z in order from its first code point.
+const LETTER_BLOCKS = [0x1f1e6, 0x1f130, 0x1f150, 0x1f170]
+
+function blockLetter(ch: string): string {
+  const cp = ch.codePointAt(0) ?? 0
+  for (const start of LETTER_BLOCKS) if (cp >= start && cp < start + 26) return String.fromCharCode(97 + cp - start)
+  return ch
+}
+
+/**
+ * A name or symbol reduced to what a reader sees, as the list of its letters:
+ * invisible characters dropped (the zero-width ones and the blank "letters"
+ * such as the Hangul fillers), trademark-style marks and modifier letters
+ * dropped, compatibility forms and accents folded, lettered emoji and
+ * letter-shaped symbols mapped, case dropped, spacing and punctuation removed,
+ * look-alike letters mapped to the Latin one, and "vv" / "rn" read as "w" /
+ * "m".
+ *
+ * `glyphs` also reads a CAPITAL I as a lowercase l (and so "OCI" as "OCl"):
+ * the two draw the same in most fonts, but only in that case, so it is a
+ * second reading beside the plain one rather than part of it.
+ */
+function folded(s: string | null | undefined, glyphs = false): string[] {
   if (!s) return []
-  const base = s
-    .normalize("NFKD")
-    .replace(/[\p{M}\p{Default_Ignorable_Code_Point}]/gu, "")
+  let t = s.replace(TRAILING_MARKS, "")
+  if (glyphs) t = t.replace(/I/g, "l")
+  const base = [...t.normalize("NFKD")]
+    .map((ch) => SYMBOL_LETTERS[ch] ?? blockLetter(ch))
+    .join("")
+    .replace(/[\p{M}\p{Lm}\p{Default_Ignorable_Code_Point}]/gu, "")
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]/gu, "")
-  return [...base].map((ch) => DRAWS_LIKE[ch] ?? ch)
+  const mapped = [...base].map((ch) => DRAWS_LIKE[ch] ?? ch).join("")
+  return [...mapped.replace(/vv/g, "w").replace(/rn/g, "m")]
 }
 
 const ASCII = /^[a-z0-9]$/
+// Scripts whose letters are mostly drawn like Latin ones. A letter from one of
+// these that this file has no mapping for is taken as a stand-in outright.
+const LATIN_LIKE = /[\p{Script=Cyrillic}\p{Script=Greek}\p{Script=Armenian}\p{Script=Cherokee}\p{Script=Lisu}\p{Script=Coptic}\p{Script=Deseret}]/u
 
 /**
  * Does `mine` read as `theirs`? Equal after folding, or the same length with
  * every position either equal or a non-ASCII letter this file has no mapping
- * for (a stand-in it does not know), provided at least half the positions
- * are equal — so an all-CJK symbol is not "the same" as every three-letter one.
+ * for (a stand-in it does not know). Such letters must all be from a
+ * Latin-like script, or else at least half the positions must be equal — so
+ * an all-CJK symbol is not "the same" as every three-letter one.
  */
 function sameToTheEye(mine: string[], theirs: string[]): boolean {
   if (mine.length === 0 || mine.length !== theirs.length) return false
   let equal = 0
+  let latinLike = true
   for (let i = 0; i < mine.length; i++) {
     if (mine[i] === theirs[i]) equal++
     else if (ASCII.test(mine[i])) return false
+    else if (!LATIN_LIKE.test(mine[i])) latinLike = false
   }
-  return equal * 2 >= mine.length
+  return latinLike || equal * 2 >= mine.length
 }
 
 /**
@@ -100,11 +133,15 @@ export function lookAlikeOf(
   meta: { name?: string | null; symbol?: string | null } | null | undefined,
 ): CommonToken | null {
   if (!meta || commonTokenFor(address)) return null
-  const mine = [folded(meta.symbol), folded(meta.name)].filter((m) => m.length > 0)
-  if (mine.length === 0) return null
+  // Two readings of each side: plain, and with a capital I read as an l.
+  const readings = (x: { name?: string | null; symbol?: string | null }, glyphs: boolean) =>
+    [folded(x.symbol, glyphs), folded(x.name, glyphs)].filter((m) => m.length > 0)
   return (
     COMMON_TOKENS.find((t) =>
-      [folded(t.symbol), folded(t.name)].some((theirs) => mine.some((m) => sameToTheEye(m, theirs))),
+      [false, true].some((glyphs) => {
+        const mine = readings(meta, glyphs)
+        return readings(t, glyphs).some((theirs) => mine.some((m) => sameToTheEye(m, theirs)))
+      }),
     ) ?? null
   )
 }

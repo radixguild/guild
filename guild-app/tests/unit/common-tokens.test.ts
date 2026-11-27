@@ -111,8 +111,28 @@ describe("lookAlikeOf — a token whose name or symbol imitates a common token",
     expect(lookAlikeOf(OTHER, { symbol: "xʀᴅ", name: null })?.symbol).toBe("XRD")
     // Cherokee Ꭱ and Ꭰ draw like R and D; neither is in the map.
     expect(lookAlikeOf(OTHER, { symbol: "XᎡD", name: null })?.symbol).toBe("XRD")
-    expect(lookAlikeOf(OTHER, { symbol: "XᎡᎠ", name: null })).toBeNull() // under half the letters match: not claimed
+    // Every letter a stand-in, all from Latin-like scripts: still claimed.
+    expect(lookAlikeOf(OTHER, { symbol: "XᎡᎠ", name: null })?.symbol).toBe("XRD")
+    expect(lookAlikeOf(OTHER, { symbol: "ꓫꓣꓓ", name: null })).not.toBeNull() // Lisu
     expect(lookAlikeOf(OTHER, { symbol: null, name: "RadᎥx" })?.symbol).toBe("XRD")
+  })
+  it("plain ASCII stand-ins: l / I / 1 for each other, VV for W, rn for m", () => {
+    expect(lookAlikeOf(OTHER, { symbol: "OCl", name: null })?.symbol).toBe("OCI")
+    expect(lookAlikeOf(OTHER, { symbol: "OC1", name: null })?.symbol).toBe("OCI")
+    expect(lookAlikeOf(OTHER, { symbol: "oci", name: null })?.symbol).toBe("OCI")
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "DefiPIaza" })?.symbol).toBe("DFP2")
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "AstroIescent" })?.symbol).toBe("ASTRL")
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "HyperIane USD Coin" })?.symbol).toBe("hUSDC")
+    expect(lookAlikeOf(OTHER, { symbol: "VVOVVO", name: null })?.symbol).toBe("WOWO")
+    expect(lookAlikeOf(OTHER, { symbol: "VVEFT", name: null })?.symbol).toBe("WEFT")
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "Weft Finance".replace("n", "ri") })).toBeNull()
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "Hyperlane USD Coin".replace("m", "rn") })?.symbol).toBe("hUSDC")
+  })
+  it("letter-shaped symbols, trademark marks, modifier letters and lettered emoji", () => {
+    for (const symbol of ["×RD", "✕RD", "XRD™", "XRD®", "XRDˈ", "🇽🇷🇩", "🆇🆁🅳", "🅇🅁🄳", "🅧🅡🅓"]) {
+      expect(lookAlikeOf(OTHER, { symbol, name: null })?.symbol, symbol).toBe("XRD")
+    }
+    expect(lookAlikeOf(OTHER, { symbol: "OC|", name: null })?.symbol).toBe("OCI")
   })
   it("a symbol in another script is not a look-alike of every token of its length", () => {
     expect(lookAlikeOf(OTHER, { symbol: "日本語", name: "日本語" })).toBeNull()

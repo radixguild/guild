@@ -163,7 +163,8 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
   // Fill is offered only for an asset that is not a Guild receipt and whose
   // issuer is read as unable to recall or freeze it.
   const receiptResources = guildReceiptResources(view.receiptResource)
-  const receiptAsset = isReceiptAsset(l.assetResource, receiptResources)
+  const assetName = view.resources[l.assetResource]?.name ?? null
+  const receiptAsset = isReceiptAsset(l.assetResource, receiptResources, assetName)
   const control = issuerControl(view.resources[l.assetResource])
   const noFill = receiptAsset || control !== "locked"
   const locked = tx.busy || behind || noFill
@@ -175,6 +176,7 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
       fillSwapManifest(view.component, account, l.listingId, picked, ask, l.assetResource, l.assetId, {
         control,
         receiptResources,
+        assetName,
       }),
     )
     if (id) {

@@ -1576,15 +1576,19 @@ function depositAllTo(account: string): string {
 export interface SwapAssetGuard {
   control: IssuerControl
   receiptResources: readonly string[]
+  /** The asset resource's metadata name as the caller read it (null = none or
+   *  unread). A name that reads as a Guild receipt is refused too: a receipt
+   *  from another instance of the blueprints is not in the address list. */
+  assetName: string | null
 }
 
 function assertSwapAsset(verb: "list" | "fill", assetResource: string, guard: SwapAssetGuard): void {
   if (guard?.control !== "locked") {
     throw new Error(
-      `Cannot ${verb}: this collection's issuer can recall, freeze or restrict its NFTs, or that could not be confirmed`,
+      `Cannot ${verb}: recall, freezing or transfer restrictions are not permanently off for this collection, or that could not be confirmed`,
     );
   }
-  if (isReceiptAsset(assetResource, guard.receiptResources)) {
+  if (isReceiptAsset(assetResource, guard.receiptResources, guard.assetName)) {
     throw new Error(`Cannot ${verb}: a Guild receipt is not a swap asset here, or the receipt resources could not be confirmed`);
   }
 }

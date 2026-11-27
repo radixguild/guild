@@ -689,7 +689,8 @@ guild-worker fill-swap 3 --alternative 0 --max-price 5000 --live
   only the network fee.
 - **Some NFTs and asks are refused before anything is built.** `list-swap` and `fill-swap` refuse a
   listing whose NFT is a Guild receipt (the swap's listing receipt, or the escrow's task or claim
-  receipt), or whose issuer can recall it, freeze it or restrict its transfers (the `recaller`,
+  receipt, by address, or any resource whose name has both "Guild" and "receipt" in it), or one
+  where recall, freezing or transfer restrictions are not permanently off (the `recaller`,
   `freezer`, `withdrawer` and `depositor` roles and their updaters, read from the Gateway; an
   unreadable role refuses too). `list-swap` applies the same checks to each ask's resource. These
   are the kit's and the site's checks, not the component's: a hand-built manifest is not checked.

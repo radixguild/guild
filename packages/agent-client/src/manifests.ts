@@ -995,25 +995,44 @@ export type IssuerControl = 'locked' | 'recallable' | 'freezable' | 'restrictabl
 export interface SwapAssetGuard {
   control: IssuerControl;
   receiptResources: readonly string[];
+  /** The asset resource's metadata name as the caller read it (null = none or
+   *  unread). A name that reads as a Guild receipt is refused too: a receipt
+   *  from another instance of the blueprints is not in the address list. */
+  assetName: string | null;
 }
 
 const SWAP_RESOURCE_RE = /^resource_rdx1[a-z0-9]{20,}$/;
 
-/** Fails closed on an empty or malformed list: "no receipt resources known"
- *  is not "not a receipt". Same answer as guild-app's isReceiptAsset. */
-export function isReceiptAsset(assetResource: string, receiptResources: readonly string[] | null | undefined): boolean {
+/** A resource whose name reads as a Guild receipt: both "guild" and "receipt"
+ *  in it, the names the blueprints give. Same answer as guild-app's
+ *  isGuildReceiptName; it also catches a stranger's collection using those
+ *  words, which is refused too. */
+export function isGuildReceiptName(name: string | null | undefined): boolean {
+  if (typeof name !== 'string') return false;
+  const n = name.normalize('NFKD').replace(/[^\p{L}]/gu, '').toLowerCase();
+  return n.includes('guild') && n.includes('receipt');
+}
+
+/** A Guild receipt by address, or by `name` when the caller has it. Fails
+ *  closed on an empty or malformed list: "no receipt resources known" is not
+ *  "not a receipt". Same answer as guild-app's isReceiptAsset. */
+export function isReceiptAsset(
+  assetResource: string,
+  receiptResources: readonly string[] | null | undefined,
+  name?: string | null,
+): boolean {
   if (!receiptResources || receiptResources.length === 0) return true;
   if (!receiptResources.every((r) => typeof r === 'string' && SWAP_RESOURCE_RE.test(r))) return true;
-  return receiptResources.includes(assetResource);
+  return receiptResources.includes(assetResource) || isGuildReceiptName(name);
 }
 
 function assertSwapAsset(verb: 'list' | 'fill', assetResource: string, guard: SwapAssetGuard): void {
   if (guard?.control !== 'locked') {
     throw new Error(
-      `Cannot ${verb}: this collection's issuer can recall, freeze or restrict its NFTs, or that could not be confirmed`,
+      `Cannot ${verb}: recall, freezing or transfer restrictions are not permanently off for this collection, or that could not be confirmed`,
     );
   }
-  if (isReceiptAsset(assetResource, guard.receiptResources)) {
+  if (isReceiptAsset(assetResource, guard.receiptResources, guard.assetName)) {
     throw new Error(`Cannot ${verb}: a Guild receipt is not a swap asset here, or the receipt resources could not be confirmed`);
   }
 }

@@ -142,7 +142,7 @@ describe('NFT swap builders — parity with guild-app', () => {
   const NON_FUNGIBLE = { kind: 'nonFungible' as const, resource: NFT, id: '<rare_7>' };
   // What a caller passes for an asset it may list or fill: issuer control read
   // as locked, and the Guild's receipt resources.
-  const GUARD = { control: 'locked' as const, receiptResources: [RECEIPT] };
+  const GUARD = { control: 'locked' as const, receiptResources: [RECEIPT], assetName: null };
 
   test('listSwapManifest — an AnyOf of both kinds', () => {
     const asks = [FUNGIBLE, NON_FUNGIBLE];
@@ -236,10 +236,15 @@ CALL_METHOD
       (clientManifests.fillSwapManifest as unknown as (...a: unknown[]) => string)(SWAP, BUYER, 3, 0, FUNGIBLE, asset, '#2#', guard);
     for (const [verb, build] of [['list', list], ['fill', fill]] as const) {
       for (const control of ['recallable', 'freezable', 'restrictable', 'unknown', 'locked-deny', undefined]) {
-        expect(() => build({ control, receiptResources: [RECEIPT] })).toThrow(new RegExp(`Cannot ${verb}: this collection's issuer`));
+        expect(() => build({ control, receiptResources: [RECEIPT] })).toThrow(new RegExp(`Cannot ${verb}: recall, freezing or transfer restrictions are not permanently off`));
       }
       expect(() => build(undefined)).toThrow(new RegExp(`Cannot ${verb}`));
       expect(() => build(GUARD, RECEIPT)).toThrow(new RegExp(`Cannot ${verb}: a Guild receipt`));
+      // A receipt from another instance of the blueprints: not in the list, same name.
+      for (const assetName of ['Guild Marketplace Task Receipt', 'Guild Marketplace Claim Receipt', 'Guild NFT Swap Listing Receipt', 'guild  RECEIPT']) {
+        expect(() => build({ ...GUARD, assetName })).toThrow(new RegExp(`Cannot ${verb}: a Guild receipt`));
+      }
+      expect(build({ ...GUARD, assetName: 'Ciggie Puffs' })).toContain(`"${verb}"`);
       for (const receiptResources of [[], undefined, [undefined], ['junk']]) {
         expect(() => build({ control: 'locked', receiptResources })).toThrow(/a Guild receipt/);
       }
@@ -266,13 +271,24 @@ CALL_METHOD
     expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 256, FUNGIBLE, NFT, '#2#', GUARD)).toThrow(/alternative/);
     expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, { ...FUNGIBLE, amount: '0.0' }, NFT, '#2#', GUARD)).toThrow(/ask\.amount/);
     expect(() => clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#")', [FUNGIBLE], 1790114665, GUARD)).toThrow(/assetId/);
-    // Same refusal as the app's builder for an NFT whose issuer can recall it
-    // (or whose recall roles could not be read).
-    for (const state of ['recallable', 'unknown', undefined] as const) {
-      const call = (build: unknown) =>
-        (build as typeof clientManifests.listSwapManifest)(SWAP, SELLER, NFT, '#2#', [FUNGIBLE], 1790114665, state as never, GUARD);
-      expect(() => call(clientManifests.listSwapManifest)).toThrow(/Cannot list/);
-      if (!STANDALONE) expect(() => call(server.listSwapManifest)).toThrow(/Cannot list/);
+    // Same refusal, in the same words, as the app's builder for an asset whose
+    // guard does not pass — and for one named like a Guild receipt.
+    for (const guard of [
+      { ...GUARD, control: 'recallable' },
+      { ...GUARD, control: 'unknown' },
+      { ...GUARD, assetName: 'Guild Marketplace Task Receipt' },
+      undefined,
+    ]) {
+      const message = (build: unknown): string => {
+        try {
+          (build as (...a: unknown[]) => string)(SWAP, SELLER, NFT, '#2#', [FUNGIBLE], 1790114665, guard);
+          return 'built';
+        } catch (e) {
+          return (e as Error).message;
+        }
+      };
+      expect(message(clientManifests.listSwapManifest)).toMatch(/^Cannot list: /);
+      if (!STANDALONE) expect(message(clientManifests.listSwapManifest)).toBe(message(server.listSwapManifest));
     }
     // An injected listed-NFT address or id never reaches the manifest text.
     expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, FUNGIBLE, `${NFT}")`, '#2#', GUARD)).toThrow(/Invalid resource_rdx/);

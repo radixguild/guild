@@ -370,11 +370,34 @@ export function guildReceiptResources(swapReceiptResource: string): string[] {
   return [swapReceiptResource, ESCROW_RECEIPT_RESOURCE, ESCROW_CLAIM_RECEIPT_RESOURCE]
 }
 
-/** Fails closed on an empty list: "no receipt resources known" is not "not a
- *  receipt". */
-export function isReceiptAsset(assetResource: string, receiptResources: readonly string[] | null | undefined): boolean {
+/**
+ * A resource whose name reads as a Guild receipt: it has both "guild" and
+ * "receipt" in it ("Guild Marketplace Task Receipt", "Guild Marketplace Claim
+ * Receipt", "Guild NFT Swap Listing Receipt" — the names the blueprints give).
+ * The address list above only knows the CURRENT components' receipts; one from
+ * another instance of either blueprint has a different address and the same
+ * name (mainnet listing 4 was one). A name is issuer-written, so this can
+ * also catch a stranger's collection that uses those words: it is refused too.
+ */
+export function isGuildReceiptName(name: string | null | undefined): boolean {
+  if (typeof name !== "string") return false
+  const n = name.normalize("NFKD").replace(/[^\p{L}]/gu, "").toLowerCase()
+  return n.includes("guild") && n.includes("receipt")
+}
+
+/**
+ * Is this resource a Guild receipt — by address (`receiptResources`), or by
+ * `name` when the caller has the resource's metadata name? Fails closed on an
+ * empty or malformed list: "no receipt resources known" is not "not a
+ * receipt".
+ */
+export function isReceiptAsset(
+  assetResource: string,
+  receiptResources: readonly string[] | null | undefined,
+  name?: string | null,
+): boolean {
   if (!receiptResources || receiptResources.length === 0 || !receiptResources.every(isResourceAddress)) return true
-  return receiptResources.includes(assetResource)
+  return receiptResources.includes(assetResource) || isGuildReceiptName(name)
 }
 
 /** What the list form knows about an ask's resource, read LIVE from the

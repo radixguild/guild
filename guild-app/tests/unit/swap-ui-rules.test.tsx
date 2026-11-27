@@ -763,8 +763,8 @@ const listRes = (recall: Recall, freeze: Freeze | null = "locked-deny", resource
 
 describe("recall guard — list form", () => {
   it.each([
-    ["recallable", /issuer can recall its NFTs, so it cannot be listed/],
-    ["unknown", /could not confirm whether this collection's issuer can recall/],
+    ["recallable", /Recall is not permanently switched off for this collection's NFTs, so it cannot be listed/],
+    ["unknown", /could not confirm that recall, freezing and transfer restrictions are permanently off/],
   ] as const)("a %s collection: the NFT cannot be picked, the reason shows, submit stays disabled", async (state, line) => {
     holdings(listRes(state))
     render(<ListNftForm />)
@@ -780,7 +780,7 @@ describe("recall guard — list form", () => {
     fireEvent.click(await screen.findByRole("button", { name: /#1#/ }))
     fireEvent.change(screen.getByLabelText("Alternative 1 amount"), { target: { value: "5" } })
     await waitFor(() => expect(screen.getByRole("button", { name: /Open my wallet to list/ })).toBeEnabled())
-    expect(screen.queryByText(/can recall its NFTs/)).toBeNull()
+    expect(screen.queryByText(/not permanently switched off/)).toBeNull()
   })
 })
 
@@ -1110,7 +1110,7 @@ describe("SwapDetail — freeze guard, receipt assets and look-alike asks", () =
     await waitFor(() => expect(W.send).toHaveBeenCalledTimes(1))
     expect(W.send.mock.calls[0][0].transactionManifest).toBe("FILL")
     // The builder got the asset check the page made.
-    expect(M.fill[0].at(-1)).toEqual({ control: "locked", receiptResources: [RECEIPT, ESCROW_RECEIPT_RESOURCE, ESCROW_CLAIM_RECEIPT_RESOURCE] })
+    expect(M.fill[0].at(-1)).toEqual({ control: "locked", receiptResources: [RECEIPT, ESCROW_RECEIPT_RESOURCE, ESCROW_CLAIM_RECEIPT_RESOURCE], assetName: "Dinos" })
   })
 
   it.each([
@@ -1278,7 +1278,7 @@ describe("ListNftForm — freeze guard, receipts and ask resources", () => {
     await waitFor(() => expect(W.send).toHaveBeenCalledTimes(1))
     expect(W.send.mock.calls[0][0].transactionManifest).toBe("LIST")
     // The builder got the asset check, with the receipt resource from the read made at submit.
-    expect(M.list[0].at(-1)).toEqual({ control: "locked", receiptResources: [RECEIPT, ESCROW_RECEIPT_RESOURCE, ESCROW_CLAIM_RECEIPT_RESOURCE] })
+    expect(M.list[0].at(-1)).toEqual({ control: "locked", receiptResources: [RECEIPT, ESCROW_RECEIPT_RESOURCE, ESCROW_CLAIM_RECEIPT_RESOURCE], assetName: "Dinos" })
   })
 
   it("a common token shows no pasted-token warning", async () => {
@@ -1342,5 +1342,64 @@ describe("ListNftForm — freeze guard, receipts and ask resources", () => {
     await screen.findByText(ASK_PROBLEM_TEXT.issuer_freeze)
     expect(screen.getByTestId("ask-not-common")).toHaveTextContent(COLL)
     expect(submit()).toBeDisabled()
+  })
+})
+
+// ── 9. Review follow-up (28 Nov 2026): receipts by name, NFT ask addresses ───
+//
+// Mainnet listing 4's asset was a "Guild Marketplace Task Receipt" of an
+// escrow instance that is not the configured one: locked roles, an address in
+// no list. The name is what marks it.
+
+describe("a Guild receipt the address list does not know", () => {
+  const NAME = "Guild Marketplace Task Receipt"
+  const named = { ...assetResource("locked-deny")[ASSET], name: NAME }
+
+  it("listing page: no Fill is offered, the receipt reason shows, the seller keeps cancel", async () => {
+    F.apiFetch.mockResolvedValue(answer(detail({ resources: { [ASSET]: named } })))
+    render(<SwapDetail listingId="7" />)
+    expect(await screen.findByTestId("recall-no-fill")).toHaveTextContent(DETAIL_COPY.receiptNoFill)
+    expect(screen.queryAllByRole("button", { name: /Fill/ })).toHaveLength(0)
+    expect(screen.getByRole("button", { name: "Cancel listing" })).toBeEnabled()
+  })
+  it("board: the card says Fill is not offered", async () => {
+    F.apiFetch.mockResolvedValue(answer(board({ listings: [card(7)], resources: { [ASSET]: named } as never })))
+    render(<SwapBoard />)
+    expect(await screen.findByTestId("card-no-fill")).toBeInTheDocument()
+  })
+  it("list form: it cannot be picked, and it cannot be asked for", async () => {
+    holdings(new Map([[ASSET, { address: ASSET, ...named }]]))
+    const first = render(<ListNftForm />)
+    await screen.findByText(LIST_COPY.isReceipt)
+    expect(screen.getByRole("button", { name: /#1#/ })).toBeDisabled()
+    first.unmount()
+
+    const COLL = "resource_rdx1otherreceipt00000000000000000000000000000000000000000"
+    holdings(listRes("locked-deny"))
+    G.readResourceDisplay.mockImplementation(async (addrs: string[]) =>
+      addrs.includes(ASSET) ? listRes("locked-deny") : new Map<string, unknown>([[XRD, token(XRD, "XRD", "Radix")], [COLL, { address: COLL, ...named }]]),
+    )
+    render(<ListNftForm />)
+    fireEvent.click(await screen.findByRole("button", { name: /#1#/ }))
+    fireEvent.change(screen.getByLabelText("Alternative 1 kind"), { target: { value: "nonFungible" } })
+    fireEvent.change(screen.getByLabelText("Alternative 1 collection"), { target: { value: COLL } })
+    fireEvent.change(screen.getByLabelText("Alternative 1 NFT id"), { target: { value: "#2#" } })
+    await screen.findByText(ASK_PROBLEM_TEXT.receipt_ask)
+    expect(screen.getByRole("button", { name: /Open my wallet to list/ })).toBeDisabled()
+  })
+})
+
+describe("an NFT ask never shows a collection name without its address", () => {
+  const COLL = "resource_rdx1askcoll0000000000000000000000000000000000000000000"
+  const asks = [{ kind: "nonFungible" as const, resource: COLL, id: "#5#" }]
+  it("board card: name and short address; with no name, the address alone", async () => {
+    F.apiFetch.mockResolvedValue(
+      answer(board({ listings: [card(7, { asks }), card(8, { asks: [{ ...asks[0], resource: FAKE_XRD }] })], resources: { [COLL]: { ...assetResource("locked-deny")[ASSET], name: "Ciggie Puffs" } } as never })),
+    )
+    render(<SwapBoard />)
+    await screen.findByText("Fox 7")
+    expect(screen.getByText(`NFT #5# of Ciggie Puffs (${shortAddress(COLL)})`)).toBeInTheDocument()
+    expect(screen.getByText(`NFT #5# of ${shortAddress(FAKE_XRD)}`)).toBeInTheDocument()
+    expect(screen.queryByText("NFT #5# of Ciggie Puffs")).toBeNull()
   })
 })

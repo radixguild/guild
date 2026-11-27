@@ -16,6 +16,7 @@ import {
   formatAmount,
   formatLocalId,
   guildReceiptResources,
+  isGuildReceiptName,
   isHidden,
   isLocalId,
   isReceiptAsset,
@@ -394,5 +395,37 @@ describe("receipts as a listing's asset", () => {
     expect(isReceiptAsset(NFT, [])).toBe(true)
     expect(isReceiptAsset(NFT, guildReceiptResources(undefined as unknown as string))).toBe(true)
     expect(isReceiptAsset(NFT, ["not-an-address"])).toBe(true)
+  })
+})
+
+describe("a Guild receipt the address list does not know is caught by its name", () => {
+  const SWAP_RECEIPT = "resource_rdx1nfq47l0t7glmntfjuandqdmlejzvffq4cvlvrha94kqr52mdrvt2e7"
+  // Mainnet listing 4's asset: a task receipt of an escrow instance that is not
+  // the configured one. Its address is in no list; its name is the blueprint's.
+  const OTHER_TASK_RECEIPT = "resource_rdx1nf57tptrl0ar5vhqzl5ln763ktzg86rcwwxyqh3t7esmd38t5qws7w"
+  const receipts = guildReceiptResources(SWAP_RECEIPT)
+
+  it.each(["Guild Marketplace Task Receipt", "Guild Marketplace Claim Receipt", "Guild NFT Swap Listing Receipt"])("%s", (name) => {
+    expect(isGuildReceiptName(name)).toBe(true)
+    expect(isReceiptAsset(OTHER_TASK_RECEIPT, receipts, name)).toBe(true)
+  })
+  it("the address alone does not catch it — the name is what does", () => {
+    expect(receipts).not.toContain(OTHER_TASK_RECEIPT)
+    expect(isReceiptAsset(OTHER_TASK_RECEIPT, receipts)).toBe(false)
+    expect(isReceiptAsset(OTHER_TASK_RECEIPT, receipts, null)).toBe(false)
+  })
+  it("case, spacing, punctuation, word order and full-width forms do not hide it", () => {
+    for (const name of ["guild receipt", "GUILD-RECEIPT", "Receipt of the Guild", "Ｇｕｉｌｄ Receipt", "G u i l d  R e c e i p t"]) {
+      expect(isGuildReceiptName(name), name).toBe(true)
+    }
+  })
+  it("an ordinary name is not a receipt (live listing 9: Ciggie Puffs), nor is one word of the two", () => {
+    for (const name of ["Ciggie Puffs", "Radix Guild Badge", "Receipt", "Guild", "", null, undefined]) {
+      expect(isGuildReceiptName(name), String(name)).toBe(false)
+    }
+    expect(isReceiptAsset(NFT, receipts, "Ciggie Puffs")).toBe(false)
+  })
+  it("a name does not rescue an unknown receipt list", () => {
+    expect(isReceiptAsset(NFT, [], "Ciggie Puffs")).toBe(true)
   })
 })

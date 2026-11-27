@@ -399,14 +399,26 @@ export function guildReceiptResources(config: GuildClientConfig, swapReceiptReso
   return [swapReceiptResource, config.taskReceiptResource, config.claimReceiptResource];
 }
 
-/** Why `resource` may not be listed, filled or asked for; null = it may. */
+/** The resource's metadata `name`; null = it has none, or it could not be read. */
+export async function readResourceName(config: GuildClientConfig, resource: string): Promise<string | null> {
+  const json = await post(config, '/state/entity/details', { addresses: [resource] });
+  const items = json?.items?.[0]?.metadata?.items;
+  const v = Array.isArray(items) ? items.find((m: any) => m?.key === 'name')?.value?.typed?.value : null;
+  return typeof v === 'string' ? v : null;
+}
+
+/** Why `resource` may not be listed, filled or asked for; null = it may.
+ *  "Not permanently switched off" is what the role read establishes: the
+ *  rule, or its updater, is something other than DenyAll. */
 function controlRefusal(control: IssuerControl, what: string, so: string): string | null {
   if (control === 'locked') return null;
-  if (control === 'recallable') return `${what}'s issuer can recall it, so ${so}`;
-  if (control === 'freezable') return `${what}'s issuer can freeze it, so ${so}`;
-  if (control === 'restrictable') return `${what}'s issuer restricts transfers of it, or can still do so, so ${so}`;
-  return `could not confirm whether ${what}'s issuer can recall, freeze or restrict it, so ${so}`;
+  if (control === 'recallable') return `recall is not permanently switched off for ${what}, so ${so}`;
+  if (control === 'freezable') return `freezing is not permanently switched off for ${what}, so ${so}`;
+  if (control === 'restrictable') return `transfers of ${what} are restricted, or are not permanently open, so ${so}`;
+  return `could not confirm that recall, freezing and transfer restrictions are permanently off for ${what}, so ${so}`;
 }
+
+const RECEIPT_REASON = 'is a Guild receipt by address or by name (or the receipt resources could not be confirmed)';
 
 /** The listing id a committed `list` created, from its ListedEvent (emitter-pinned). */
 export async function readListedListingId(config: GuildClientConfig, intentHash: string): Promise<number | null> {
@@ -431,6 +443,7 @@ export interface SwapDeps {
   readNftHolder: typeof readNftHolder;
   readResourceKind: typeof readResourceKind;
   readResourceControl: typeof readResourceControl;
+  readResourceName: typeof readResourceName;
   readListedListingId: typeof readListedListingId;
   signAndSubmitManifest: typeof signAndSubmitManifest;
   describeCommitFailure: typeof describeCommitFailure;
@@ -442,6 +455,7 @@ const REAL_DEPS: SwapDeps = {
   readNftHolder,
   readResourceKind,
   readResourceControl,
+  readResourceName,
   readListedListingId,
   signAndSubmitManifest,
   describeCommitFailure,
@@ -581,7 +595,9 @@ export async function runListSwap(opts: ListSwapOptions): Promise<SwapLegResult>
       if (kind.kind !== 'nonFungible') return refuse(`ask ${i}: ${ask.resource} is a token — use --price for it`);
       if (ask.resource === nft.resource && canonicalLocalId(ask.id) === canonicalLocalId(nft.id)) return refuse(`ask ${i}: that is the NFT being listed`);
     }
-    if (isReceiptAsset(ask.resource, receipts)) return refuse(`ask ${i}: ${ask.resource} is a Guild receipt, so it cannot be asked for here`);
+    if (isReceiptAsset(ask.resource, receipts, await deps.readResourceName(config, ask.resource))) {
+      return refuse(`ask ${i}: ${ask.resource} ${RECEIPT_REASON}, so it cannot be asked for here`);
+    }
     const askBlock = controlRefusal(await deps.readResourceControl(config, ask.resource), ask.resource, 'it cannot be asked for here');
     if (askBlock) return refuse(`ask ${i}: ${askBlock}`);
   }
@@ -589,7 +605,8 @@ export async function runListSwap(opts: ListSwapOptions): Promise<SwapLegResult>
   // A Guild receipt is not a swap asset, and only an NFT whose issuer cannot
   // recall it, freeze it or restrict its transfers may be listed here; a read
   // that cannot say fails closed.
-  if (isReceiptAsset(nft.resource, receipts)) return refuse(`${nft.resource} is a Guild receipt, so it cannot be listed here`);
+  const assetName = await deps.readResourceName(config, nft.resource);
+  if (isReceiptAsset(nft.resource, receipts, assetName)) return refuse(`${nft.resource} ${RECEIPT_REASON}, so it cannot be listed here`);
   const control = await deps.readResourceControl(config, nft.resource);
   const block = controlRefusal(control, nft.resource, 'it cannot be listed here');
   if (block) return refuse(block);
@@ -604,7 +621,7 @@ export async function runListSwap(opts: ListSwapOptions): Promise<SwapLegResult>
   }
 
   const expiresAt = expiryForDays(state.ledgerNow, days);
-  const manifest = listSwapManifest(config.nftSwapComponent, account, nft.resource, nft.id, asks, expiresAt, { control, receiptResources: receipts });
+  const manifest = listSwapManifest(config.nftSwapComponent, account, nft.resource, nft.id, asks, expiresAt, { control, receiptResources: receipts, assetName });
   log(`list ${nft.id} of ${nft.resource} for ${asks.map(askText).join(' OR ')}`);
   log(`expires ${new Date(expiresAt * 1000).toISOString()} (ledger clock + ${days} day${days === 1 ? '' : 's'}); proceeds will be paid to ${account}`);
   if (!live) {
@@ -686,8 +703,9 @@ export async function runFillSwap(opts: FillSwapOptions): Promise<SwapLegResult>
   // No fill of a Guild receipt, or of an NFT whose issuer can recall it, freeze
   // it or restrict its transfers; a read that cannot say fails closed.
   const receipts = guildReceiptResources(config, state.receiptResource);
-  if (isReceiptAsset(listing.assetResource, receipts)) {
-    return refuse(`listing ${listingId}'s NFT (${listing.assetResource}) is a Guild receipt, so a fill is not offered for it`, { listingId });
+  const assetName = await deps.readResourceName(config, listing.assetResource);
+  if (isReceiptAsset(listing.assetResource, receipts, assetName)) {
+    return refuse(`listing ${listingId}'s NFT (${listing.assetResource}) ${RECEIPT_REASON}, so a fill is not offered for it`, { listingId });
   }
   const control = await deps.readResourceControl(config, listing.assetResource);
   const block = controlRefusal(control, listing.assetResource, 'a fill is not offered for it');
@@ -712,6 +730,7 @@ export async function runFillSwap(opts: FillSwapOptions): Promise<SwapLegResult>
   const manifest = fillSwapManifest(config.nftSwapComponent, account, listingId, alt, ask, listing.assetResource, listing.assetId, {
     control,
     receiptResources: receipts,
+    assetName,
   });
   const feeBlock = feeRefusal(state.fees.fill, 'fill');
   const bound = spendCheck(ask, opts.maxPrice, opts.expectNft);
