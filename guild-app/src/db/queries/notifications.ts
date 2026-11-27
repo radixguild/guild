@@ -1,6 +1,7 @@
 import { and, count, desc, eq, inArray, isNull, lt } from "drizzle-orm"
 import { db, type DbExecutor } from "@/db"
 import { notifications, type NotificationEvent, type NotificationPayload } from "@/db/schema"
+import { clampPageLimit } from "./page-limit"
 
 export interface CreateNotificationInput {
   recipientId: string
@@ -51,7 +52,7 @@ export async function listNotificationsForUser(
   recipientId: string,
   opts: ListNotificationsOptions = {},
 ): Promise<ListNotificationsResult> {
-  const limit = Math.min(opts.limit || 20, 100)
+  const limit = clampPageLimit(opts.limit)
   const conditions = [eq(notifications.recipientId, recipientId)]
   if (opts.unreadOnly) conditions.push(isNull(notifications.readAt))
   if (opts.cursor) {

@@ -42,6 +42,21 @@ describe("extractPrUrl", () => {
     expect(extractPrUrl("see https://github.com/o/r/issues/4")).toBeNull()
     expect(extractPrUrl("plain text")).toBeNull()
   })
+
+  it("returns null for dot-only owner/repo segments (never a real repo; URL resolution would collapse them)", () => {
+    expect(extractPrUrl("https://github.com/../../pull/1")).toBeNull()
+    expect(extractPrUrl("https://github.com/o/../pull/1")).toBeNull()
+    expect(extractPrUrl("https://github.com/./r/pull/1")).toBeNull()
+    expect(extractPrUrl("https://github.com/o/.git/pull/1")).toBeNull()
+  })
+
+  it("still accepts names that merely contain dots", () => {
+    expect(extractPrUrl("https://github.com/my.org/repo.js/pull/3")).toMatchObject({
+      owner: "my.org",
+      repo: "repo.js",
+      number: 3,
+    })
+  })
 })
 
 describe("prMatchesRepo — the repo pin", () => {
@@ -56,6 +71,27 @@ describe("prMatchesRepo — the repo pin", () => {
   it("rejects a PR from any other repo (no borrowing green PRs)", () => {
     expect(prMatchesRepo(ref, "https://github.com/bigdevxrd/guild-public")).toBe(false)
     expect(prMatchesRepo(ref, "https://github.com/someone-else/guild-saas")).toBe(false)
+  })
+
+  it("pins the host: github.com/ inside another host's URL is not a GitHub repo", () => {
+    expect(prMatchesRepo(ref, "https://evil.example/github.com/bigdevxrd/guild-saas")).toBe(false)
+    expect(prMatchesRepo(ref, "https://notgithub.com/bigdevxrd/guild-saas")).toBe(false)
+    expect(prMatchesRepo(ref, "https://github.com.evil.example/bigdevxrd/guild-saas")).toBe(false)
+    expect(prMatchesRepo(ref, "https://evil.example/?u=https://github.com/bigdevxrd/guild-saas")).toBe(false)
+    expect(prMatchesRepo(ref, "https://user@github.com/bigdevxrd/guild-saas")).toBe(false)
+    expect(prMatchesRepo(ref, "http://github.com/bigdevxrd/guild-saas")).toBe(false)
+    expect(prMatchesRepo(ref, "not a url")).toBe(false)
+  })
+
+  it("accepts the www host GitHub redirects from", () => {
+    expect(prMatchesRepo(ref, "https://www.github.com/bigdevxrd/guild-saas")).toBe(true)
+  })
+
+  it("rejects dot-only segments on either side of the pin", () => {
+    const dots = { owner: "..", repo: "..", number: 1, url: "x" }
+    expect(prMatchesRepo(dots, "https://github.com/../..")).toBe(false)
+    expect(prMatchesRepo({ ...dots, repo: "guild-saas" }, "https://github.com/../guild-saas")).toBe(false)
+    expect(prMatchesRepo(ref, "https://github.com/bigdevxrd/guild-saas/..")).toBe(false)
   })
 })
 
@@ -168,5 +204,22 @@ describe("fetchPrVerification — stubbed GitHub", () => {
   it("surfaces GitHub errors as throws (route maps to 502)", async () => {
     stubGitHub({})
     await expect(fetchPrVerification(ref, [])).rejects.toThrow("GitHub 404")
+  })
+
+  it("bounds every GitHub call with a timeout signal", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      merged: false, merged_at: null, state: "open", head: { sha: "abc" }, base: PUBLIC,
+    }), { status: 200 }))
+    vi.stubGlobal("fetch", fetchMock)
+    await fetchPrVerification(ref, [])
+    const init = (fetchMock.mock.calls[0] as unknown[])[1] as RequestInit
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it("a hung GitHub call fails as a timeout (route maps to 502), not a stuck handler", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new DOMException("The operation was aborted due to timeout", "TimeoutError")
+    }))
+    await expect(fetchPrVerification(ref, [])).rejects.toThrow(/GitHub timed out after \d+ms/)
   })
 })

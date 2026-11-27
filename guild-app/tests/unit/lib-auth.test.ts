@@ -74,7 +74,7 @@ describe('lib/auth', () => {
 
       const result = await verifySession('valid-token')
 
-      expect(mockJwtVerify).toHaveBeenCalledWith('valid-token', expect.any(Uint8Array))
+      expect(mockJwtVerify).toHaveBeenCalledWith('valid-token', expect.any(Uint8Array), { algorithms: ['HS256'] })
       expect(result).toEqual({ userId: 'test-user' })
     })
 

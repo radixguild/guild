@@ -10,6 +10,7 @@ import {
   taskKeysetWhere,
   taskOrderBy,
 } from "@/db/task-cursor"
+import { clampPageLimit } from "./page-limit"
 
 // R3-1 soft-hide read filter: exclude rows the unfunded-create sweep has hidden,
 // but ONLY while they are still a stale OPEN, UNLINKED create — i.e. hide iff
@@ -87,7 +88,7 @@ interface TaskFilters {
 }
 
 export async function listTasks(filters: TaskFilters = {}) {
-  const limit = Math.min(filters.limit || 20, 100)
+  const limit = clampPageLimit(filters.limit)
   const conditions = []
 
   if (filters.status) conditions.push(eq(tasks.status, filters.status))

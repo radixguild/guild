@@ -453,6 +453,14 @@ async function applyEscrowConfirmInner(
     return fail("NOT_FUNDED", 409, "Task has no on-chain escrow id — confirm 'create' first")
   }
 
+  // Every post-create event is checked against the component THIS row is
+  // pinned to (captured at create). The on-chain task id is only unique per
+  // component — `(onChainTaskId, escrowComponent)` is the row's identity — so a
+  // row on a retired component must never be matched by a same-numbered task
+  // on the live one. A row with no stored component (pre-backfill legacy)
+  // falls back to the live component, as the claim live-read always has.
+  const component = task.escrowComponent ?? ESCROW_COMPONENT
+
   // Lifecycle gate: reject confirms that would regress the current status
   // (see ALLOWED_FROM). Fails closed for any kind without an entry.
   if (!ALLOWED_FROM[kind]?.includes(task.status)) {
@@ -475,7 +483,7 @@ async function applyEscrowConfirmInner(
     // raised_by parse the finalize flow will need from this tx anyway), and
     // it surfaces the tx's consensus timestamp — the on-chain disputed_at the
     // blueprint's auto-resolve window keys off.
-    const raised = await readDisputeRaised(intentHash, ESCROW_COMPONENT, task.onChainTaskId)
+    const raised = await readDisputeRaised(intentHash, component, task.onChainTaskId)
     if (raised === null) {
       return fail(
         "EVENT_NOT_VERIFIED",
@@ -554,8 +562,8 @@ async function applyEscrowConfirmInner(
       return fail("FORBIDDEN", 403, "Only the task creator can confirm a cancel")
     }
     const verified =
-      (await verifyEscrowEvent(intentHash, "TaskCancelledEvent", ESCROW_COMPONENT, task.onChainTaskId)) ||
-      (await verifyEscrowEvent(intentHash, "TaskCancelledAfterClaimEvent", ESCROW_COMPONENT, task.onChainTaskId))
+      (await verifyEscrowEvent(intentHash, "TaskCancelledEvent", component, task.onChainTaskId)) ||
+      (await verifyEscrowEvent(intentHash, "TaskCancelledAfterClaimEvent", component, task.onChainTaskId))
     if (!verified) {
       return fail(
         "EVENT_NOT_VERIFIED",
@@ -617,7 +625,7 @@ async function applyEscrowConfirmInner(
     const verified = await verifyEscrowEvent(
       intentHash,
       "ClaimExpiredEvent",
-      ESCROW_COMPONENT,
+      component,
       task.onChainTaskId,
     )
     if (!verified) {
@@ -654,8 +662,8 @@ async function applyEscrowConfirmInner(
     // and they cannot drift. The arbiter event additionally carries the fee.
     const resolved =
       kind === "arbitrate"
-        ? await readDisputeResolved(intentHash, ESCROW_COMPONENT, task.onChainTaskId)
-        : await readDisputeAutoResolved(intentHash, ESCROW_COMPONENT, task.onChainTaskId)
+        ? await readDisputeResolved(intentHash, component, task.onChainTaskId)
+        : await readDisputeAutoResolved(intentHash, component, task.onChainTaskId)
     if (resolved === null) {
       return fail(
         "EVENT_NOT_VERIFIED",
@@ -746,7 +754,7 @@ async function applyEscrowConfirmInner(
       : kind === "submit"
         ? "WorkSubmittedEvent"
         : "TaskReleasedEvent"
-  const verified = await verifyEscrowEvent(intentHash, eventName, ESCROW_COMPONENT, task.onChainTaskId)
+  const verified = await verifyEscrowEvent(intentHash, eventName, component, task.onChainTaskId)
   if (!verified) {
     return fail(
       "EVENT_NOT_VERIFIED",
@@ -798,7 +806,7 @@ async function applyEscrowConfirmInner(
       try {
         live = await readOnChainClaimInfo(
           task.onChainTaskId,
-          task.escrowComponent ?? ESCROW_COMPONENT,
+          component,
         )
       } catch {
         // Fail closed but RETRYABLE: an unreadable live state must not mint an

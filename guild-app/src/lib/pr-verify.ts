@@ -38,18 +38,31 @@ export interface PrVerification {
 const PR_URL_RE =
   /https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pull\/(\d+)/
 
+/**
+ * A path segment made only of dots ("." / ".." / "...") is never a GitHub
+ * owner or repo name, and "." / ".." are collapsed by URL resolution — so a
+ * request built from one would not stay under /repos/{owner}/{repo}.
+ */
+function isDotSegment(segment: string): boolean {
+  return /^\.+$/.test(segment)
+}
+
 /** First GitHub PR link in free-text submission content (agents already write these). */
 export function extractPrUrl(content: string): PrRef | null {
   const m = content.match(PR_URL_RE)
   if (!m) return null
-  const [, owner, repo, num] = m
+  const [, owner, rawRepo, num] = m
+  const repo = rawRepo.replace(/\.git$/, "")
+  if (!repo || isDotSegment(owner) || isDotSegment(repo)) return null
   return {
     owner,
-    repo: repo.replace(/\.git$/, ""),
+    repo,
     number: parseInt(num, 10),
-    url: `https://github.com/${owner}/${repo.replace(/\.git$/, "")}/pull/${num}`,
+    url: `https://github.com/${owner}/${repo}/pull/${num}`,
   }
 }
+
+const GITHUB_HOSTS = new Set(["github.com", "www.github.com"])
 
 /**
  * The PR must live under the repo the terms committed to — otherwise any
@@ -57,8 +70,19 @@ export function extractPrUrl(content: string): PrRef | null {
  * of committing repoUrl into the brief hash).
  */
 export function prMatchesRepo(ref: PrRef, repoUrl: string): boolean {
-  const m = repoUrl.match(/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/)
-  if (!m) return false
+  if (isDotSegment(ref.owner) || isDotSegment(ref.repo)) return false
+  // Parse, then pin the HOST: "github.com/" appearing somewhere in the string
+  // (another host's path, a query value) is not a GitHub repo.
+  let u: URL
+  try {
+    u = new URL(repoUrl.trim())
+  } catch {
+    return false
+  }
+  if (u.protocol !== "https:" || !GITHUB_HOSTS.has(u.hostname.toLowerCase())) return false
+  if (u.username || u.password || u.port || u.search || u.hash) return false
+  const m = u.pathname.match(/^\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/)
+  if (!m || isDotSegment(m[1]) || isDotSegment(m[2])) return false
   return (
     m[1].toLowerCase() === ref.owner.toLowerCase() &&
     m[2].toLowerCase() === ref.repo.toLowerCase()
@@ -119,6 +143,9 @@ export function evaluatePr(
 
 // ── GitHub API (server-side only — the verify route) ──────────────────────────
 
+/** Bound every GitHub call, like the other outbound readers (gateway.ts). */
+export const GITHUB_TIMEOUT_MS = 10_000
+
 async function gh(path: string): Promise<unknown> {
   const headers: Record<string, string> = {
     accept: "application/vnd.github+json",
@@ -127,7 +154,18 @@ async function gh(path: string): Promise<unknown> {
   // Optional: raises the rate limit. It may also reach private repos; see the
   // private-repo gate in fetchPrVerification.
   if (process.env.GITHUB_TOKEN) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`
-  const res = await fetch(`https://api.github.com${path}`, { headers })
+  let res: Response
+  try {
+    res = await fetch(`https://api.github.com${path}`, {
+      headers,
+      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+    })
+  } catch (err) {
+    if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+      throw new Error(`GitHub timed out after ${GITHUB_TIMEOUT_MS}ms for ${path}`)
+    }
+    throw err
+  }
   if (!res.ok) throw new Error(`GitHub ${res.status} for ${path}`)
   return res.json()
 }
