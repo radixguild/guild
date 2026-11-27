@@ -33,10 +33,10 @@ const LEDGER_ISO = "2026-10-06T07:00:00.000Z";
 const LEDGER = Date.parse(LEDGER_ISO) / 1000;
 
 const RESOURCES = {
-  [XRD]: { kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open", recall: "locked-deny" },
-  [NFT]: { kind: "nonFungible", divisibility: null, name: "Guild Swap Throwaway NFT", symbol: null, iconUrl: null, withdraw: "open", recall: "locked-deny" },
-  [EARLY]: { kind: "fungible", divisibility: 18, name: "EARLY", symbol: "EARLY", iconUrl: null, withdraw: "open", recall: "locked-deny" },
-  [OTHER_TOKEN]: { kind: "fungible", divisibility: 18, name: "Some Token", symbol: "SOME", iconUrl: null, withdraw: "open", recall: "locked-deny" },
+  [XRD]: { kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open", recall: "locked-deny", freeze: "locked-deny" },
+  [NFT]: { kind: "nonFungible", divisibility: null, name: "Guild Swap Throwaway NFT", symbol: null, iconUrl: null, withdraw: "open", recall: "locked-deny", freeze: "locked-deny" },
+  [EARLY]: { kind: "fungible", divisibility: 18, name: "EARLY", symbol: "EARLY", iconUrl: null, withdraw: "open", recall: "locked-deny", freeze: "locked-deny" },
+  [OTHER_TOKEN]: { kind: "fungible", divisibility: 18, name: "Some Token", symbol: "SOME", iconUrl: null, withdraw: "open", recall: "locked-deny", freeze: "locked-deny" },
 };
 
 const ASKS = [
@@ -673,6 +673,8 @@ async function stubGateway(page: Page, opts: { packageAddress?: string; accountN
                       { role_key: { module: "Main", name: "recaller" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
                       { role_key: { module: "Main", name: "recaller_updater" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
                     ]),
+                { role_key: { module: "Main", name: "freezer" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
+                { role_key: { module: "Main", name: "freezer_updater" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
               ],
             },
           },

@@ -19,6 +19,7 @@ import {
   readSwapBoard,
   readSwapComponentState,
   readSwapListingsById,
+  freezeRule,
   recallRule,
 } from "@/lib/nft-swap-gateway"
 import { __resetSwapCachesForTests, DETAIL_ASK_DISPLAY_CAP, getSwapBoard, getSwapDetail } from "@/lib/nft-swap-service"
@@ -969,5 +970,61 @@ describe("recallRule — the issuer's recall roles, from role_assignments", () =
       ok({ items: [{ address: NFT, metadata: { items: [] }, details: details(role("recaller", "Protected"), role("recaller_updater", "DenyAll")) }] }),
     )
     expect((await readResourceDisplay([NFT]))!.get(NFT)).toMatchObject({ recall: "recallable" })
+  })
+})
+
+describe("freezeRule — the issuer's freeze roles, read the same way as recall", () => {
+  const role = (name: string, rule: string, resolution = "Explicit") => ({
+    role_key: { module: "Main", name },
+    assignment: resolution === "Explicit" ? { explicit_rule: { type: rule }, resolution } : { resolution },
+    updater_roles: [{ module: "Main", name: `${name}_updater` }],
+  })
+  const LOCKED_RECALL = [role("recaller", "DenyAll"), role("recaller_updater", "DenyAll")]
+  const details = (freezer: unknown, updater: unknown, type = "NonFungibleResource") => ({
+    type,
+    role_assignments: {
+      owner: { rule: { type: "Protected" }, updater: "None" },
+      entries: [role("withdrawer", "AllowAll"), ...LOCKED_RECALL, freezer, updater].filter(Boolean),
+    },
+  })
+
+  it("DenyAll freezer and DenyAll freezer_updater is locked-deny", () => {
+    expect(freezeRule(details(role("freezer", "DenyAll"), role("freezer_updater", "DenyAll")))).toBe("locked-deny")
+  })
+  it.each(["Protected", "AllowAll"])("a %s freezer is freezable", (rule) => {
+    expect(freezeRule(details(role("freezer", rule), role("freezer_updater", "DenyAll")))).toBe("freezable")
+  })
+  it("a freezer on the owner's rule is freezable", () => {
+    expect(freezeRule(details(role("freezer", "", "Owner"), role("freezer_updater", "DenyAll")))).toBe("freezable")
+  })
+  it("a DenyAll freezer whose updater is not DenyAll is freezable (it could be changed)", () => {
+    expect(freezeRule(details(role("freezer", "DenyAll"), role("freezer_updater", "Protected")))).toBe("freezable")
+    expect(freezeRule(details(role("freezer", "DenyAll"), role("freezer_updater", "", "Owner")))).toBe("freezable")
+  })
+  it("absent or unreadable roles are unknown", () => {
+    expect(freezeRule(undefined)).toBe("unknown")
+    expect(freezeRule({ role_assignments: {} })).toBe("unknown")
+    expect(freezeRule(details(null, role("freezer_updater", "DenyAll")))).toBe("unknown")
+    expect(freezeRule(details(role("freezer", "DenyAll"), null))).toBe("unknown")
+    expect(freezeRule(details({ role_key: { module: "Main", name: "freezer" }, assignment: {} }, role("freezer_updater", "DenyAll")))).toBe("unknown")
+    expect(freezeRule(details({ ...role("freezer", "DenyAll"), role_key: { module: "Metadata", name: "freezer" } }, role("freezer_updater", "DenyAll")))).toBe("unknown")
+  })
+  it("the recall roles do not stand in for the freeze roles, or the other way round", () => {
+    const d = details(role("freezer", "Protected"), role("freezer_updater", "DenyAll"))
+    expect(recallRule(d)).toBe("locked-deny")
+    expect(freezeRule(d)).toBe("freezable")
+  })
+  it("readResourceDisplay carries both, for a token as for a collection", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      ok({
+        items: [
+          { address: NFT, metadata: { items: [] }, details: details(role("freezer", "DenyAll"), role("freezer_updater", "DenyAll")) },
+          { address: XRD, metadata: { items: [] }, details: { ...details(role("freezer", "Protected"), role("freezer_updater", "DenyAll"), "FungibleResource"), divisibility: 18 } },
+        ],
+      }),
+    )
+    const read = (await readResourceDisplay([NFT, XRD]))!
+    expect(read.get(NFT)).toMatchObject({ recall: "locked-deny", freeze: "locked-deny" })
+    expect(read.get(XRD)).toMatchObject({ kind: "fungible", recall: "locked-deny", freeze: "freezable" })
   })
 })

@@ -33,6 +33,17 @@ const OTHER = "account_rdx12other00000000000000000000000000000000000000000000000
 const ASSET = "resource_rdx1asset000000000000000000000000000000000000000000000000"
 const XRD = "resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd"
 const T = 1_800_000_000
+// The swap component's listing-receipt resource, as its state reports it.
+const RECEIPT = "resource_rdx1receipt00000000000000000000000000000000000000000000"
+// A token that is not on the common list, with recall and freeze both locked
+// (the shape of live listing 9's ask, CIGGIE), and one that calls itself XRD.
+const CIGGIE = "resource_rdx1ciggie000000000000000000000000000000000000000000000"
+const FAKE_XRD = "resource_rdx1fakexrd00000000000000000000000000000000000000000000"
+type Recall = "locked-deny" | "recallable" | "unknown"
+type Freeze = "locked-deny" | "freezable" | "unknown"
+const token = (address: string, symbol: string, name: string, recall: Recall = "locked-deny", freeze: Freeze | null = "locked-deny") => ({
+  address, kind: "fungible", divisibility: 18, name, symbol, iconUrl: null, withdraw: "open", recall, ...(freeze ? { freeze } : {}),
+})
 
 const W = vi.hoisted(() => ({ account: null as string | null, send: vi.fn() }))
 vi.mock("@/hooks/useWallet", () => ({
@@ -109,7 +120,8 @@ import { ListNftForm } from "@/components/swaps/list-nft-form"
 import { humanizeTxError } from "@/lib/escrow-utils"
 import { shortAddress } from "@/lib/nft-swap"
 import * as swapsCopy from "@/content/swaps"
-import { BOARD_COPY, DETAIL_COPY } from "@/content/swaps"
+import { ASK_PROBLEM_TEXT, BOARD_COPY, DETAIL_COPY, LIST_COPY } from "@/content/swaps"
+import { ESCROW_CLAIM_RECEIPT_RESOURCE, ESCROW_RECEIPT_RESOURCE } from "@/lib/config"
 import type { SwapBoardView, SwapDetailView } from "@/lib/nft-swap-service"
 
 const committed = (hash = "txid_rdx1committed") => ({
@@ -123,26 +135,38 @@ function deferred<V>() {
   return { promise, resolve }
 }
 
-const assetResource = (recall: "locked-deny" | "recallable" | "unknown") => ({
-  [ASSET]: { kind: "nonFungible", divisibility: null, name: "Dinos", symbol: null, iconUrl: null, withdraw: "open", recall },
+const assetResource = (recall: Recall, freeze: Freeze | null = "locked-deny") => ({
+  // freeze: null = a read that carries no `freeze` at all.
+  [ASSET]: { kind: "nonFungible", divisibility: null, name: "Dinos", symbol: null, iconUrl: null, withdraw: "open", recall, ...(freeze ? { freeze } : {}) },
 })
 
 function detail(
-  over: { receipt?: SwapDetailView["receipt"]; expiresAt?: number; recall?: "locked-deny" | "recallable" | "unknown" | null } = {},
+  over: {
+    receipt?: SwapDetailView["receipt"]
+    expiresAt?: number
+    recall?: Recall | null
+    freeze?: Freeze | null
+    assetResource?: string
+    asks?: SwapDetailView["listing"]["asks"]
+    resources?: Record<string, unknown>
+  } = {},
 ): SwapDetailView {
   return {
     component: "component_rdx1swap",
-    receiptResource: "resource_rdx1receipt",
+    receiptResource: RECEIPT,
     ledgerTime: T,
     fees: { fill: { unit: "XRD", amount: "5" }, extend: { unit: "XRD", amount: "1" } },
     // recall: null = the asset's resource is missing from the read.
-    resources: (over.recall === null ? {} : assetResource(over.recall ?? "locked-deny")) as SwapDetailView["resources"],
+    resources: {
+      ...(over.recall === null ? {} : assetResource(over.recall ?? "locked-deny", over.freeze === undefined ? "locked-deny" : over.freeze)),
+      ...over.resources,
+    } as SwapDetailView["resources"],
     listing: {
       listingId: 7,
       seller: SELLER,
-      assetResource: ASSET,
+      assetResource: over.assetResource ?? ASSET,
       assetId: "#1#",
-      asks: [
+      asks: over.asks ?? [
         { kind: "fungible", resource: XRD, amount: "100" },
         { kind: "fungible", resource: XRD, amount: "200" },
       ],
@@ -492,7 +516,7 @@ describe("SwapDetail", () => {
 function board(over: Partial<SwapBoardView> = {}): SwapBoardView {
   return {
     component: "component_rdx1swap",
-    receiptResource: "resource_rdx1receipt",
+    receiptResource: RECEIPT,
     ledgerTime: T,
     fees: { fill: null, extend: null },
     resources: {},
@@ -719,16 +743,16 @@ describe("SwapBoard — cards, sort and collection filter", () => {
 // ── 5. The List form ─────────────────────────────────────────────────────────
 
 function holdings(resourceRead: Map<string, unknown> | null) {
-  G.readSwapComponentState.mockResolvedValue({ ledgerNow: T })
+  G.readSwapComponentState.mockResolvedValue({ ledgerNow: T, receiptResource: RECEIPT })
   G.readAccountNonFungibles.mockResolvedValue({ groups: [{ resource: ASSET, ids: ["#1#"], more: false }], moreResources: false })
   G.readNftDisplay.mockResolvedValue(new Map())
   G.readResourceDisplay.mockImplementation(async (addrs: string[]) =>
-    addrs.includes(ASSET) ? resourceRead : new Map([[XRD, { address: XRD, kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open", recall: "locked-deny" }]]),
+    addrs.includes(ASSET) ? resourceRead : new Map([[XRD, { address: XRD, kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open", recall: "locked-deny", freeze: "locked-deny" }]]),
   )
 }
 
-const listRes = (recall: "locked-deny" | "recallable" | "unknown") =>
-  new Map([[ASSET, { address: ASSET, kind: "nonFungible", divisibility: null, name: "Dinos", symbol: null, iconUrl: null, withdraw: "open", recall }]])
+const listRes = (recall: Recall, freeze: Freeze | null = "locked-deny", resource = ASSET) =>
+  new Map([[resource, { address: resource, kind: "nonFungible", divisibility: null, name: "Dinos", symbol: null, iconUrl: null, withdraw: "open", recall, ...(freeze ? { freeze } : {}) }]])
 
 describe("recall guard — list form", () => {
   it.each([
@@ -763,11 +787,11 @@ describe("ListNftForm", () => {
   })
 
   it("a failed ask-resource lookup says so with Try again, which re-reads it — never 'Looking up…' for good", async () => {
-    holdings(new Map([[ASSET, { address: ASSET, kind: "nonFungible", divisibility: null, name: "Dinos", symbol: null, iconUrl: null, withdraw: "open", recall: "locked-deny" }]]))
-    const xrd = { address: XRD, kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open", recall: "locked-deny" }
+    holdings(new Map([[ASSET, { address: ASSET, kind: "nonFungible", divisibility: null, name: "Dinos", symbol: null, iconUrl: null, withdraw: "open", recall: "locked-deny", freeze: "locked-deny" }]]))
+    const xrd = { address: XRD, kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open", recall: "locked-deny", freeze: "locked-deny" }
     let askReads = 0
     G.readResourceDisplay.mockImplementation(async (addrs: string[]) => {
-      if (addrs.includes(ASSET)) return new Map([[ASSET, { address: ASSET, kind: "nonFungible", divisibility: null, name: "Dinos", symbol: null, iconUrl: null, withdraw: "open", recall: "locked-deny" }]])
+      if (addrs.includes(ASSET)) return new Map([[ASSET, { address: ASSET, kind: "nonFungible", divisibility: null, name: "Dinos", symbol: null, iconUrl: null, withdraw: "open", recall: "locked-deny", freeze: "locked-deny" }]])
       askReads++
       return askReads === 1 ? null : new Map([[XRD, xrd]])
     })
@@ -789,7 +813,7 @@ describe("ListNftForm", () => {
   })
 
   it("stays disarmed from a committed list until the listing id is read back, showing the transaction", async () => {
-    holdings(new Map([[ASSET, { address: ASSET, kind: "nonFungible", divisibility: null, name: "Dinos", symbol: null, iconUrl: null, withdraw: "open", recall: "locked-deny" }]]))
+    holdings(new Map([[ASSET, { address: ASSET, kind: "nonFungible", divisibility: null, name: "Dinos", symbol: null, iconUrl: null, withdraw: "open", recall: "locked-deny", freeze: "locked-deny" }]]))
     const readBack = deferred<number | null>()
     G.readListedListingId.mockReturnValue(readBack.promise)
     W.send.mockResolvedValue(committed("txid_rdx1listed"))
@@ -1015,5 +1039,207 @@ describe("short addresses", () => {
     const row = screen.getByText("Proceeds to").parentElement as HTMLElement
     fireEvent.click(within(row).getByRole("button", { name: "Copy address" }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(SELLER))
+  })
+})
+
+// ── 8. 28 Nov 2026: freeze, ask-resource safety, receipts as assets ──────────
+//
+// The three rules, on the pages. Live listing 9 (an NFT for an amount of a
+// token that is not on the common list; recall and freeze locked-deny on both
+// resources) is the shape that must keep listing and filling.
+
+describe("SwapDetail — freeze guard, receipt assets and look-alike asks", () => {
+  const noFillButtons = () => expect(screen.queryAllByRole("button", { name: /Fill/ })).toHaveLength(0)
+
+  it.each([
+    ["freezable", DETAIL_COPY.freezeNoFill],
+    ["unknown", DETAIL_COPY.recallNoFillUnknown],
+    [null, DETAIL_COPY.recallNoFillUnknown], // a read that carries no freeze at all
+  ] as const)("freeze %s: no Fill is offered, the reason shows, cancel and extend stay", async (freeze, line) => {
+    F.apiFetch.mockResolvedValue(answer(detail({ freeze })))
+    render(<SwapDetail listingId="7" />)
+    expect(await screen.findByTestId("recall-no-fill")).toHaveTextContent(line)
+    noFillButtons()
+    expect(screen.getByRole("button", { name: "Cancel listing" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Extend by 30 days" })).toBeEnabled()
+  })
+
+  it.each([
+    ["the swap's own listing receipt (from the view's receiptResource)", RECEIPT],
+    ["the escrow's task receipt (config)", ESCROW_RECEIPT_RESOURCE],
+    ["the escrow's claim receipt (config)", ESCROW_CLAIM_RECEIPT_RESOURCE],
+  ])("a listing whose asset is %s: no Fill is offered, even with locked roles; the seller keeps cancel", async (_what, receipt) => {
+    F.apiFetch.mockResolvedValue(
+      answer(detail({ assetResource: receipt, resources: { [receipt]: assetResource("locked-deny")[ASSET] } })),
+    )
+    render(<SwapDetail listingId="7" />)
+    expect(await screen.findByTestId("recall-no-fill")).toHaveTextContent(DETAIL_COPY.receiptNoFill)
+    noFillButtons()
+    expect(screen.getByRole("button", { name: "Cancel listing" })).toBeEnabled()
+  })
+
+  it("a view with no readable receipt resource offers no Fill (the receipt check cannot fail open)", async () => {
+    F.apiFetch.mockResolvedValue(answer({ ...detail(), receiptResource: undefined }))
+    render(<SwapDetail listingId="7" />)
+    await screen.findByTestId("recall-no-fill")
+    noFillButtons()
+  })
+
+  it("the shape of live listing 9 — both resources locked, the ask a token off the common list — still fills", async () => {
+    W.account = OTHER
+    W.send.mockResolvedValue(committed("txid_rdx1filled"))
+    F.apiFetch.mockResolvedValue(
+      answer(detail({ asks: [{ kind: "fungible", resource: CIGGIE, amount: "420" }], resources: { [CIGGIE]: token(CIGGIE, "CIGGIE", "Ciggie") } })),
+    )
+    render(<SwapDetail listingId="7" />)
+    fireEvent.click(await screen.findByRole("button", { name: "Fill" }))
+    expect(screen.queryByTestId("recall-no-fill")).toBeNull()
+    expect(screen.queryByTestId("look-alike-ask")).toBeNull()
+    expect(screen.getAllByText("420 CIGGIE").length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole("checkbox"))
+    fireEvent.click(screen.getByRole("button", { name: /Open my wallet to fill/ }))
+    await waitFor(() => expect(W.send).toHaveBeenCalledTimes(1))
+    expect(W.send.mock.calls[0][0].transactionManifest).toBe("FILL")
+  })
+
+  it("an ask in a token that calls itself XRD never reads as XRD: it shows by address, with a warning and the full address", async () => {
+    W.account = OTHER
+    F.apiFetch.mockResolvedValue(
+      answer(detail({ asks: [{ kind: "fungible", resource: FAKE_XRD, amount: "100" }], resources: { [FAKE_XRD]: token(FAKE_XRD, "XRD", "Radix") } })),
+    )
+    render(<SwapDetail listingId="7" />)
+    expect(await screen.findByTestId("look-alike-ask")).toHaveTextContent(DETAIL_COPY.lookAlikeAsk("XRD"))
+    expect(screen.queryByText("100 XRD")).toBeNull()
+    expect(screen.getByText(`100 of ${shortAddress(FAKE_XRD)} (calls itself “XRD”)`)).toBeInTheDocument()
+    // The full address is on the page, not only in a hover title.
+    expect(screen.getByRole("link", { name: FAKE_XRD })).toBeInTheDocument()
+  })
+
+  it("the real XRD still reads as XRD", async () => {
+    F.apiFetch.mockResolvedValue(answer(detail({ resources: { [XRD]: token(XRD, "XRD", "Radix") } })))
+    render(<SwapDetail listingId="7" />)
+    expect((await screen.findAllByText("100 XRD")).length).toBeGreaterThan(0)
+    expect(screen.queryByTestId("look-alike-ask")).toBeNull()
+  })
+})
+
+describe("SwapBoard — look-alike asks", () => {
+  it("a card whose ask is a token calling itself XRD shows the address, not '100 XRD'; a real XRD card is unchanged", async () => {
+    const fake = card(8, { asks: [{ kind: "fungible", resource: FAKE_XRD, amount: "100" }] })
+    const real = card(9, { asks: [{ kind: "fungible", resource: XRD, amount: "100" }] })
+    F.apiFetch.mockResolvedValue(
+      answer(board({ listings: [fake, real], resources: { [FAKE_XRD]: token(FAKE_XRD, "XRD", "Radix"), [XRD]: token(XRD, "XRD", "Radix") } as never })),
+    )
+    render(<SwapBoard />)
+    await screen.findByText("Fox 8")
+    expect(screen.getByText(`100 of ${shortAddress(FAKE_XRD)} (calls itself “XRD”)`)).toBeInTheDocument()
+    expect(screen.getAllByText("100 XRD")).toHaveLength(1)
+  })
+})
+
+describe("ListNftForm — freeze guard, receipts and ask resources", () => {
+  const submit = () => screen.getByRole("button", { name: /Open my wallet to list/ })
+  /** Arm the form with the asset picked, then paste `address` as the ask's token. */
+  async function pasteAsk(askRead: Record<string, unknown>, address: string, amount = "420") {
+    holdings(listRes("locked-deny"))
+    G.readResourceDisplay.mockImplementation(async (addrs: string[]) =>
+      addrs.includes(ASSET) ? listRes("locked-deny") : new Map(Object.entries({ [XRD]: token(XRD, "XRD", "Radix"), ...askRead })),
+    )
+    render(<ListNftForm />)
+    fireEvent.click(await screen.findByRole("button", { name: /#1#/ }))
+    fireEvent.change(screen.getByLabelText("Alternative 1 token"), { target: { value: "other" } })
+    fireEvent.change(screen.getByLabelText("Alternative 1 token address"), { target: { value: address } })
+    if (amount) fireEvent.change(screen.getByLabelText("Alternative 1 amount"), { target: { value: amount } })
+  }
+
+  it.each([
+    ["freezable", LIST_COPY.freezable],
+    ["unknown", LIST_COPY.recallUnknown],
+    [null, LIST_COPY.recallUnknown], // a read that carries no freeze at all
+  ] as const)("a collection whose freeze is %s: the NFT cannot be picked, the reason shows, submit stays disabled", async (freeze, line) => {
+    holdings(listRes("locked-deny", freeze))
+    render(<ListNftForm />)
+    await screen.findByText(line)
+    expect(screen.getByRole("button", { name: /#1#/ })).toBeDisabled()
+    expect(submit()).toBeDisabled()
+  })
+
+  it.each([
+    ["the swap's own listing receipts (read from the component)", RECEIPT],
+    ["the escrow's task receipts (config)", ESCROW_RECEIPT_RESOURCE],
+    ["the escrow's claim receipts (config)", ESCROW_CLAIM_RECEIPT_RESOURCE],
+  ])("%s in the account cannot be picked, even with locked roles", async (_what, receipt) => {
+    holdings(listRes("locked-deny", "locked-deny", receipt))
+    G.readAccountNonFungibles.mockResolvedValue({ groups: [{ resource: receipt, ids: ["#1#"], more: false }], moreResources: false })
+    G.readResourceDisplay.mockResolvedValue(listRes("locked-deny", "locked-deny", receipt))
+    render(<ListNftForm />)
+    await screen.findByText(LIST_COPY.isReceipt)
+    expect(screen.getByRole("button", { name: /#1#/ })).toBeDisabled()
+    expect(submit()).toBeDisabled()
+  })
+
+  it("nothing can be picked while the component's receipt resource is unread", async () => {
+    holdings(listRes("locked-deny"))
+    G.readSwapComponentState.mockResolvedValue(null)
+    render(<ListNftForm />)
+    expect(await screen.findByRole("button", { name: /#1#/ })).toBeDisabled()
+    expect(submit()).toBeDisabled()
+  })
+
+  it("the shape of live listing 9 — a locked collection for a pasted, locked token off the common list — still lists, with the address and warning shown", async () => {
+    W.send.mockResolvedValue(committed("txid_rdx1listed"))
+    G.readListedListingId.mockResolvedValue(9)
+    await pasteAsk({ [CIGGIE]: token(CIGGIE, "CIGGIE", "Ciggie") }, CIGGIE)
+    const note = await screen.findByTestId("ask-not-common")
+    expect(note).toHaveTextContent(LIST_COPY.notCommonWarning)
+    expect(note).toHaveTextContent(CIGGIE)
+    await waitFor(() => expect(submit()).toBeEnabled())
+    fireEvent.click(submit())
+    await waitFor(() => expect(W.send).toHaveBeenCalledTimes(1))
+    expect(W.send.mock.calls[0][0].transactionManifest).toBe("LIST")
+  })
+
+  it("a common token shows no pasted-token warning", async () => {
+    holdings(listRes("locked-deny"))
+    render(<ListNftForm />)
+    await screen.findByText("Radix (XRD)")
+    expect(screen.queryByTestId("ask-not-common")).toBeNull()
+  })
+
+  it.each([
+    ["recallable", token(CIGGIE, "CIGGIE", "Ciggie", "recallable"), ASK_PROBLEM_TEXT.issuer_recall],
+    ["freezable", token(CIGGIE, "CIGGIE", "Ciggie", "locked-deny", "freezable"), ASK_PROBLEM_TEXT.issuer_freeze],
+    ["unreadable", token(CIGGIE, "CIGGIE", "Ciggie", "locked-deny", "unknown"), ASK_PROBLEM_TEXT.issuer_unknown],
+    ["missing from the read", token(CIGGIE, "CIGGIE", "Ciggie", "locked-deny", null), ASK_PROBLEM_TEXT.issuer_unknown],
+  ])("a pasted ask token whose recall or freeze is %s blocks the listing and says why, before an amount is typed", async (_what, read, line) => {
+    await pasteAsk({ [CIGGIE]: read }, CIGGIE, "")
+    await screen.findByText(line)
+    fireEvent.change(screen.getByLabelText("Alternative 1 amount"), { target: { value: "5" } })
+    expect(screen.getByText(line)).toBeInTheDocument()
+    expect(submit()).toBeDisabled()
+    expect(W.send).not.toHaveBeenCalled()
+  })
+
+  it("a pasted token that calls itself XRD at another address is blocked as a look-alike, with its address shown", async () => {
+    await pasteAsk({ [FAKE_XRD]: token(FAKE_XRD, "XRD", "Radix") }, FAKE_XRD)
+    await screen.findByText(ASK_PROBLEM_TEXT.look_alike)
+    expect(screen.getByTestId("ask-not-common")).toHaveTextContent(FAKE_XRD)
+    expect(submit()).toBeDisabled()
+  })
+
+  it("an NFT ask in a collection whose issuer can freeze it is blocked too", async () => {
+    const COLL = "resource_rdx1askcoll0000000000000000000000000000000000000000000"
+    holdings(listRes("locked-deny"))
+    G.readResourceDisplay.mockImplementation(async (addrs: string[]) =>
+      addrs.includes(ASSET) ? listRes("locked-deny") : new Map<string, unknown>([[XRD, token(XRD, "XRD", "Radix")], ...listRes("locked-deny", "freezable", COLL)]),
+    )
+    render(<ListNftForm />)
+    fireEvent.click(await screen.findByRole("button", { name: /#1#/ }))
+    fireEvent.change(screen.getByLabelText("Alternative 1 kind"), { target: { value: "nonFungible" } })
+    fireEvent.change(screen.getByLabelText("Alternative 1 collection"), { target: { value: COLL } })
+    fireEvent.change(screen.getByLabelText("Alternative 1 NFT id"), { target: { value: "#2#" } })
+    await screen.findByText(ASK_PROBLEM_TEXT.issuer_freeze)
+    expect(screen.getByTestId("ask-not-common")).toHaveTextContent(COLL)
+    expect(submit()).toBeDisabled()
   })
 })

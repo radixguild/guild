@@ -5,6 +5,7 @@
 import { useCallback, useRef, useState } from "react"
 import { Check, Copy, ImageOff } from "lucide-react"
 import { useWallet } from "@/hooks/useWallet"
+import { lookAlikeOf } from "@/lib/common-tokens"
 import { humanizeTxError, type HumanizedTxError } from "@/lib/escrow-utils"
 import { formatAmount, formatLocalId, shortAddress, type SwapAsk, type SwapStatus } from "@/lib/nft-swap"
 import type { SwapListingView, SwapResourceView } from "@/lib/nft-swap-service"
@@ -167,11 +168,18 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
   )
 }
 
-/** "5,000 XRD" / "1 × Wefty V2 #12#" — the full address stays in the title. */
+/**
+ * "5,000 XRD" / "NFT #12# of Wefty V2" — the full address stays in the title.
+ * A token whose name or symbol matches a common token it is not never reads as
+ * that token: it shows by address, with the name it gave itself in quotes.
+ */
 export function askText(ask: SwapAsk, resources: Record<string, SwapResourceView>): string {
   const r = resources[ask.resource]
   if (ask.kind === "fungible") {
     const unit = r?.symbol ?? r?.name ?? shortAddress(ask.resource)
+    if (lookAlikeOf(ask.resource, r)) {
+      return `${formatAmount(ask.amount)} of ${shortAddress(ask.resource)} (calls itself “${unit}”)`
+    }
     return `${formatAmount(ask.amount)} ${unit}`
   }
   const coll = r?.name ?? shortAddress(ask.resource)

@@ -8,14 +8,18 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   askProblems,
+  ASK_RESOURCE_PROBLEMS,
   canonicalLocalId,
   displayText,
   expiryForDays,
   extendedExpiry,
   formatAmount,
   formatLocalId,
+  guildReceiptResources,
   isHidden,
   isLocalId,
+  isReceiptAsset,
+  issuerControl,
   MAX_LISTING_HORIZON_SECS,
   normalizeDecimal,
   parseHiddenList,
@@ -152,9 +156,9 @@ describe("expiryForDays stays inside the 30-day ceiling list() enforces", () => 
 
 describe("askProblems — the list() checks, before the wallet opens", () => {
   const kinds: Record<string, AskResourceKind> = {
-    [XRD]: { kind: "fungible", divisibility: 18 },
-    [NFT]: { kind: "nonFungible" },
-    resource_rdx1tfakedivisibilitytwoxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx: { kind: "fungible", divisibility: 2 },
+    [XRD]: { kind: "fungible", divisibility: 18, control: "locked" },
+    [NFT]: { kind: "nonFungible", control: "locked" },
+    resource_rdx1tfakedivisibilitytwoxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx: { kind: "fungible", divisibility: 2, control: "locked" },
   }
   const kindOf = (r: string) => kinds[r] ?? null
   const XUSD = "resource_rdx1tfakedivisibilitytwoxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
@@ -302,5 +306,84 @@ describe("formatLocalId — the four Radix local-id forms, for people", () => {
     const raw = "#9897#"
     formatLocalId(raw)
     expect(raw).toBe("#9897#")
+  })
+})
+
+// ── 28 Nov 2026: freeze, ask-resource safety, receipts as assets ─────────────
+
+describe("issuerControl — recall and freeze as one state", () => {
+  it("is locked only when both are read and both locked-deny (the shape of live listing 9's two resources)", () => {
+    expect(issuerControl({ recall: "locked-deny", freeze: "locked-deny" })).toBe("locked")
+  })
+  it("names the power the issuer holds", () => {
+    expect(issuerControl({ recall: "recallable", freeze: "locked-deny" })).toBe("recallable")
+    expect(issuerControl({ recall: "locked-deny", freeze: "freezable" })).toBe("freezable")
+    expect(issuerControl({ recall: "recallable", freeze: "freezable" })).toBe("recallable")
+    expect(issuerControl({ recall: "unknown", freeze: "freezable" })).toBe("freezable")
+    expect(issuerControl({ recall: "recallable", freeze: "unknown" })).toBe("recallable")
+  })
+  it("fails closed: either unread, a read with no freeze, or no resource at all is unknown", () => {
+    expect(issuerControl({ recall: "locked-deny", freeze: "unknown" })).toBe("unknown")
+    expect(issuerControl({ recall: "unknown", freeze: "locked-deny" })).toBe("unknown")
+    expect(issuerControl({ recall: "locked-deny" })).toBe("unknown")
+    expect(issuerControl({ freeze: "locked-deny" })).toBe("unknown")
+    expect(issuerControl({})).toBe("unknown")
+    expect(issuerControl(undefined)).toBe("unknown")
+    expect(issuerControl(null)).toBe("unknown")
+  })
+})
+
+describe("askProblems — the ask resource's issuer and look-alikes", () => {
+  const CIGGIE = "resource_rdx1t4ciggiexxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  const one = (info: AskResourceKind | null, ask: SwapAsk) => askProblems([ask], () => info)[0]
+  const amount = (resource: string, amt = "5"): SwapAsk => ({ kind: "fungible", resource, amount: amt })
+  const nft = (resource: string): SwapAsk => ({ kind: "nonFungible", resource, id: "#2#" })
+
+  it("a token and an NFT whose recall and freeze are locked pass (live listing 9: Ciggie Puffs for CIGGIE)", () => {
+    expect(one({ kind: "fungible", divisibility: 18, control: "locked", lookAlikeOf: null }, amount(CIGGIE, "420"))).toBeNull()
+    expect(one({ kind: "nonFungible", control: "locked" }, nft(NFT))).toBeNull()
+  })
+  it.each([
+    ["recallable", "issuer_recall"],
+    ["freezable", "issuer_freeze"],
+    ["unknown", "issuer_unknown"],
+  ] as const)("an ask resource that is %s is blocked as %s, token or NFT", (control, problem) => {
+    expect(one({ kind: "fungible", divisibility: 18, control }, amount(CIGGIE))).toBe(problem)
+    expect(one({ kind: "nonFungible", control }, nft(NFT))).toBe(problem)
+  })
+  it("a read that carries no control at all is blocked, not passed", () => {
+    expect(one({ kind: "fungible", divisibility: 18 } as AskResourceKind, amount(CIGGIE))).toBe("issuer_unknown")
+  })
+  it("a token that imitates a common token is blocked as a look-alike, even with locked roles", () => {
+    expect(one({ kind: "fungible", divisibility: 18, control: "locked", lookAlikeOf: "XRD" }, amount(CIGGIE))).toBe("look_alike")
+  })
+  it("the resource problems show before anything is typed beside them; the kind mismatch still comes first", () => {
+    expect(one({ kind: "fungible", divisibility: 18, control: "freezable" }, amount(CIGGIE, ""))).toBe("issuer_freeze")
+    expect(one({ kind: "fungible", divisibility: 18, control: "locked", lookAlikeOf: "XRD" }, amount(CIGGIE, ""))).toBe("look_alike")
+    expect(one({ kind: "nonFungible", control: "recallable" }, amount(NFT))).toBe("not_fungible")
+    for (const p of ["look_alike", "issuer_recall", "issuer_freeze", "issuer_unknown"] as const) {
+      expect(ASK_RESOURCE_PROBLEMS.has(p)).toBe(true)
+    }
+    expect(ASK_RESOURCE_PROBLEMS.has("bad_amount")).toBe(false)
+  })
+})
+
+describe("receipts as a listing's asset", () => {
+  const SWAP_RECEIPT = "resource_rdx1nfq47l0t7glmntfjuandqdmlejzvffq4cvlvrha94kqr52mdrvt2e7"
+  it("the Guild's receipt resources are the swap's listing receipt (as passed) plus the escrow's two from config", async () => {
+    const { ESCROW_RECEIPT_RESOURCE, ESCROW_CLAIM_RECEIPT_RESOURCE } = await import("@/lib/config")
+    expect(guildReceiptResources(SWAP_RECEIPT)).toEqual([SWAP_RECEIPT, ESCROW_RECEIPT_RESOURCE, ESCROW_CLAIM_RECEIPT_RESOURCE])
+  })
+  it("each of them is a receipt asset; an ordinary collection is not", () => {
+    const receipts = guildReceiptResources(SWAP_RECEIPT)
+    for (const r of receipts) expect(isReceiptAsset(r, receipts)).toBe(true)
+    expect(isReceiptAsset(NFT, receipts)).toBe(false)
+  })
+  it("fails closed while the receipt resources are not known", () => {
+    expect(isReceiptAsset(NFT, null)).toBe(true)
+    expect(isReceiptAsset(NFT, undefined)).toBe(true)
+    expect(isReceiptAsset(NFT, [])).toBe(true)
+    expect(isReceiptAsset(NFT, guildReceiptResources(undefined as unknown as string))).toBe(true)
+    expect(isReceiptAsset(NFT, ["not-an-address"])).toBe(true)
   })
 })

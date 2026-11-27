@@ -13,7 +13,7 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { COMMON_TOKENS, commonTokenFor } from "@/lib/common-tokens"
+import { COMMON_TOKENS, commonTokenFor, lookAlikeOf } from "@/lib/common-tokens"
 import { XRD_ADDRESS } from "@/lib/radix"
 import { isResourceAddress } from "@/lib/nft-swap"
 
@@ -78,4 +78,34 @@ describe.skipIf(!process.env.GUILD_LIVE_GATEWAY)("COMMON_TOKENS against mainnet 
     )
     expect(compare(read)).toEqual([])
   }, 20_000)
+})
+
+describe("lookAlikeOf — a token whose name or symbol imitates a common token", () => {
+  const OTHER = "resource_rdx1t4someothertokenxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  const HUSDC = COMMON_TOKENS.find((t) => t.symbol === "hUSDC")!
+
+  it("a common token is never a look-alike of itself or of another", () => {
+    for (const t of COMMON_TOKENS) expect(lookAlikeOf(t.address, t)).toBeNull()
+  })
+  it("the same symbol or name at another address is a look-alike", () => {
+    expect(lookAlikeOf(OTHER, { symbol: "XRD", name: "Totally Radix" })?.symbol).toBe("XRD")
+    expect(lookAlikeOf(OTHER, { symbol: "RDX", name: "Radix" })?.symbol).toBe("XRD")
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "Hyperlane USD Coin" })?.address).toBe(HUSDC.address)
+    // A symbol that is a common token's NAME, and the other way round.
+    expect(lookAlikeOf(OTHER, { symbol: "RADIX", name: null })?.symbol).toBe("XRD")
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "husdc" })?.symbol).toBe("hUSDC")
+  })
+  it("case, spacing, punctuation, accents, full-width forms and the usual look-alike letters do not hide it", () => {
+    for (const symbol of ["xrd", " X R D ", "X-R-D", "$XRD", "ＸＲＤ", "X\u200bRD", "ХRD" /* Cyrillic Х */, "ΧRD" /* Greek Χ */, "X̂RD"]) {
+      expect(lookAlikeOf(OTHER, { symbol, name: "x" })?.symbol, symbol).toBe("XRD")
+    }
+    expect(lookAlikeOf(OTHER, { symbol: "0CI", name: null })?.symbol).toBe("OCI")
+  })
+  it("a token that matches none is not a look-alike (live listing 9's ask, CIGGIE)", () => {
+    expect(lookAlikeOf(OTHER, { symbol: "CIGGIE", name: "Ciggie" })).toBeNull()
+    expect(lookAlikeOf(OTHER, { symbol: "XRDX", name: "Radix Two" })).toBeNull()
+    expect(lookAlikeOf(OTHER, { symbol: "USDC", name: "USD Coin" })).toBeNull()
+    expect(lookAlikeOf(OTHER, { symbol: null, name: null })).toBeNull()
+    expect(lookAlikeOf(OTHER, null)).toBeNull()
+  })
 })

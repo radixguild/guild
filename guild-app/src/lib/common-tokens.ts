@@ -40,3 +40,40 @@ export const COMMON_TOKENS: readonly CommonToken[] = [
 export function commonTokenFor(address: string): CommonToken | null {
   return COMMON_TOKENS.find((t) => t.address === address) ?? null
 }
+
+// Letters from other scripts that draw like a Latin one, and the two digits
+// that do. A short list of the usual stand-ins, not the Unicode confusables
+// table: it catches the cheap imitation, and the full address beside every
+// token that is not on the list above is what covers the rest.
+const DRAWS_LIKE: Record<string, string> = {
+  а: "a", в: "b", с: "c", ԁ: "d", е: "e", һ: "h", н: "h", і: "i", ј: "j", к: "k", м: "m", о: "o", р: "p",
+  ԛ: "q", ѕ: "s", т: "t", ѵ: "v", ԝ: "w", х: "x", у: "y",
+  α: "a", β: "b", ε: "e", η: "h", ι: "i", κ: "k", μ: "m", ν: "v", ο: "o", ρ: "p", τ: "t", υ: "u", χ: "x",
+  "0": "o", "1": "l",
+}
+
+/** A name or symbol reduced to what a reader sees: compatibility forms and
+ *  accents folded, case dropped, spacing and punctuation removed, look-alike
+ *  letters mapped to the Latin one. */
+function folded(s: string | null | undefined): string {
+  if (!s) return ""
+  const base = s.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")
+  return [...base].map((ch) => DRAWS_LIKE[ch] ?? ch).join("")
+}
+
+/**
+ * The common token a resource's metadata imitates: its name or symbol reads
+ * the same as a common token's name or symbol, and its address is not that
+ * token's. null for a common token itself and for anything that matches none.
+ * Name and symbol are metadata the issuer writes; only the address says which
+ * token it is.
+ */
+export function lookAlikeOf(
+  address: string,
+  meta: { name?: string | null; symbol?: string | null } | null | undefined,
+): CommonToken | null {
+  if (!meta || commonTokenFor(address)) return null
+  const mine = [folded(meta.symbol), folded(meta.name)].filter(Boolean)
+  if (mine.length === 0) return null
+  return COMMON_TOKENS.find((t) => mine.includes(folded(t.symbol)) || mine.includes(folded(t.name))) ?? null
+}

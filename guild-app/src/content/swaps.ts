@@ -133,8 +133,15 @@ export const DETAIL_COPY = {
   fillIntro:
     "Pick one of the seller's terms. You send exactly that, and the NFT comes to your account in the same transaction — or the transaction fails and only the network fee is spent.",
   recallNoFill: "This collection's issuer can recall its NFTs, so Fill is not offered for it here.",
+  freezeNoFill: "This collection's issuer can freeze its NFTs, so Fill is not offered for it here.",
   recallNoFillUnknown:
-    "This page could not confirm whether this collection's issuer can recall its NFTs, so Fill is not offered. Try again shortly.",
+    "This page could not confirm whether this collection's issuer can recall or freeze its NFTs, so Fill is not offered. Try again shortly.",
+  /** The listed asset is a Guild receipt (nft-swap.ts guildReceiptResources). */
+  receiptNoFill:
+    "This listing's NFT is a Guild receipt, not a collectible. What a receipt stands for can be settled or emptied while the receipt sits here, leaving it worth nothing, so Fill is not offered for it here.",
+  /** Under a fungible ask whose name or symbol matches a common token it is not. */
+  lookAlikeAsk: (symbol: string) =>
+    `This token's name or symbol matches ${symbol}, but it is a different resource. Name and symbol are set by the issuer; the address below is what you would send.`,
   fillConfirmCheck:
     "I compared the collection's resource address with the one its creator publishes, and I understand a fill cannot be undone.",
   fillNoWallet: "Connect your Radix Wallet to fill this listing.",
@@ -191,8 +198,14 @@ export const LIST_COPY = {
     "Creator royalties are not collected here, and nobody reviews your price. What you type is what a buyer must pay.",
   notWithdrawable: "This NFT cannot be withdrawn from your account, so it cannot be listed.",
   recallable: "This collection's issuer can recall its NFTs, so it cannot be listed here.",
+  freezable: "This collection's issuer can freeze its NFTs, so it cannot be listed here.",
   recallUnknown:
-    "This page could not confirm whether this collection's issuer can recall its NFTs, so it cannot be listed here. Try again shortly.",
+    "This page could not confirm whether this collection's issuer can recall or freeze its NFTs, so it cannot be listed here. Try again shortly.",
+  isReceipt:
+    "These are Guild receipts (for a swap listing or a task), not collectibles, so they cannot be listed here.",
+  /** Under an ask whose resource is not one of the common tokens. */
+  notCommonWarning:
+    "This is not one of the common tokens above. Its name and symbol are set by its issuer and can imitate another token. Check the full address:",
   restricted:
     "A rule controls who may move this NFT. Your wallet will say whether this account satisfies it.",
 } as const
@@ -208,4 +221,12 @@ export const ASK_PROBLEM_TEXT: Record<string, string> = {
   bad_id: "NFT ids look like #1#, <name>, [hex] or {…}.",
   duplicate: "This alternative is the same as one above.",
   same_as_asset: "This is the NFT you are listing.",
+  look_alike:
+    "This token's name or symbol matches one of the common tokens, but it is a different resource, so it cannot be asked for here. Pick the common token from the list if that is the one you mean.",
+  issuer_recall:
+    "This resource's issuer can recall it, or can still turn recall on, so what a buyer pays you could be taken back. It cannot be asked for here.",
+  issuer_freeze:
+    "This resource's issuer can freeze it, or can still turn freezing on, so what a buyer pays you could be locked. It cannot be asked for here.",
+  issuer_unknown:
+    "This page could not confirm that this resource's issuer cannot recall or freeze it, so it cannot be asked for here. Try again shortly.",
 }

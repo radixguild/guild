@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Wallet } from "lucide-react"
 import { apiFetch } from "@/lib/api-fetch"
+import { lookAlikeOf } from "@/lib/common-tokens"
 import {
   burnListingReceiptManifest,
   cancelSwapManifest,
@@ -25,6 +26,9 @@ import {
   filledAsk,
   formatAmount,
   formatLocalId,
+  guildReceiptResources,
+  isReceiptAsset,
+  issuerControl,
   proceedsOwed,
   receiptBurnable,
   type SwapAsk,
@@ -113,14 +117,20 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 function AskBlock({ ask, view }: { ask: SwapAsk; view: SwapDetailView }) {
   if (ask.kind === "fungible") {
+    const imitates = lookAlikeOf(ask.resource, view.resources[ask.resource])
     return (
       <div className="min-w-0">
         <p className="font-semibold tabular-nums">
           {askText(ask, view.resources)}
           <UsdApprox ask={ask} />
         </p>
+        {imitates && (
+          <p data-testid="look-alike-ask" className="text-xs text-destructive">
+            {DETAIL_COPY.lookAlikeAsk(imitates.symbol)}
+          </p>
+        )}
         <p className="text-xs text-muted-foreground">
-          Exactly this amount of <AddressLink address={ask.resource} />
+          Exactly this amount of <AddressLink address={ask.resource} full={Boolean(imitates)} />
         </p>
       </div>
     )
@@ -150,8 +160,11 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
   const [picked, setPicked] = useState<number | null>(null)
   const [checked, setChecked] = useState(false)
   const own = tx.account === l.seller
-  const recall = view.resources[l.assetResource]?.recall ?? "unknown"
-  const noFill = recall !== "locked-deny"
+  // Fill is offered only for an asset that is not a Guild receipt and whose
+  // issuer is read as unable to recall or freeze it.
+  const receiptAsset = isReceiptAsset(l.assetResource, guildReceiptResources(view.receiptResource))
+  const control = issuerControl(view.resources[l.assetResource])
+  const noFill = receiptAsset || control !== "locked"
   const locked = tx.busy || behind || noFill
 
   const fill = async () => {
@@ -176,7 +189,13 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
         <p className="text-muted-foreground">{DETAIL_COPY.fillIntro}</p>
         {noFill && (
           <p data-testid="recall-no-fill" className="rounded-lg border p-3">
-            {recall === "recallable" ? DETAIL_COPY.recallNoFill : DETAIL_COPY.recallNoFillUnknown}
+            {receiptAsset
+              ? DETAIL_COPY.receiptNoFill
+              : control === "recallable"
+                ? DETAIL_COPY.recallNoFill
+                : control === "freezable"
+                  ? DETAIL_COPY.freezeNoFill
+                  : DETAIL_COPY.recallNoFillUnknown}
           </p>
         )}
         <ol className="space-y-2">

@@ -1,7 +1,7 @@
 import { XRD_ADDRESS } from "./radix"
 import { INSTANTIATE_SPEC } from "./generated/instantiate-spec"
 import { isPositiveXrd, normalizeXrd } from "./xrd-decimal"
-import type { RecallState, SwapAsk } from "./nft-swap"
+import { isReceiptAsset, type IssuerControl, type SwapAsk } from "./nft-swap"
 
 // Sanitize string values used in transaction manifests
 function sanitize(val: string): string {
@@ -1568,10 +1568,14 @@ function depositAllTo(account: string): string {
  * `expiresAt` is unix seconds, at most 30 days after the ledger clock when
  * the transaction executes (nft_swap.rs `list`) — use nft-swap.ts expiryForDays.
  *
- * `recall` is the asset resource's RecallState as the Gateway reported it
- * (readResourceDisplay). The builder refuses anything but "locked-deny", so a
- * stale or skipped form check cannot build a listing for an NFT whose issuer
- * can recall it, or whose recall roles could not be read.
+ * `guard` is what the caller read about the asset before building:
+ *  - `control`: the asset resource's IssuerControl (nft-swap.ts issuerControl
+ *    over readResourceDisplay). Anything but "locked" is refused, so a stale or
+ *    skipped form check cannot build a listing for an NFT whose issuer can
+ *    recall or freeze it, or whose roles could not be read.
+ *  - `receiptResources`: the Guild's receipt resources (nft-swap.ts
+ *    guildReceiptResources, with the listing receipt read from the component).
+ *    A receipt is refused as the asset, and so is an empty or malformed list.
  */
 export function listSwapManifest(
   swapComponent: string,
@@ -1580,10 +1584,13 @@ export function listSwapManifest(
   assetId: string,
   asks: SwapAsk[],
   expiresAt: number,
-  recall: RecallState,
+  guard: { control: IssuerControl; receiptResources: readonly string[] },
 ): string {
-  if (recall !== "locked-deny") {
-    throw new Error("Cannot list: this collection's issuer can recall its NFTs, or that could not be confirmed")
+  if (guard?.control !== "locked") {
+    throw new Error("Cannot list: this collection's issuer can recall or freeze its NFTs, or that could not be confirmed")
+  }
+  if (isReceiptAsset(assetResource, guard.receiptResources)) {
+    throw new Error("Cannot list: a Guild receipt cannot be listed, or the receipt resources could not be confirmed")
   }
   const c = validateAddress(swapComponent, "component_rdx");
   const a = validateAddress(seller, "account_rdx");
