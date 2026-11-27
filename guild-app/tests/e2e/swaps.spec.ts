@@ -818,7 +818,10 @@ test.describe("NFT swap — List an NFT", () => {
     await page.goto("/swaps/list");
 
     await expect(page.getByRole("alert").filter({ hasText: "listing is unavailable right now" })).toBeVisible();
-    await page.getByRole("button", { name: /Guild swap throwaway 2/ }).click();
+    // With no component read there is no receipt resource to check an NFT
+    // against, so nothing can be picked at all (28 Nov 2026).
+    await expect(page.getByRole("button", { name: /Guild swap throwaway 2/ })).toBeDisabled();
+    await page.getByRole("button", { name: /Guild swap throwaway 2/ }).click({ force: true });
     await page.getByLabel("Alternative 1 amount").fill("5000");
     await expect(page.getByText("Radix (XRD)")).toBeVisible();
     const go = page.getByRole("button", { name: "Open my wallet to list" });
