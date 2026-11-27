@@ -13,7 +13,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Images, Plus, RefreshCw } from "lucide-react"
 import { useWallet } from "@/hooks/useWallet"
 import { apiFetch } from "@/lib/api-fetch"
-import { isResourceAddress, shortAddress, SWAP_SCAN_CAP } from "@/lib/nft-swap"
+import { guildReceiptResources, isReceiptAsset, isResourceAddress, issuerControl, shortAddress, SWAP_SCAN_CAP } from "@/lib/nft-swap"
 import { isSwapSort, SWAP_SORTS, type SwapSort } from "@/lib/nft-swap-sort"
 import type { SwapBoardView, SwapFilter, SwapListingView } from "@/lib/nft-swap-service"
 import { BOARD_COPY } from "@/content/swaps"
@@ -73,6 +73,13 @@ function SwapCard({ l, board }: { l: SwapListingView; board: SwapBoardView }) {
   const p = nftParts(l, board.resources)
   const line = `${p.collection} ${p.id}`
   const name = l.hidden ? BOARD_COPY.hiddenCard : (p.name ?? line)
+  // The same asset check the listing's page makes before it offers Fill, so
+  // a listing nobody can fill here does not look like one that can be.
+  const noFill =
+    l.status === "open" &&
+    !l.hidden &&
+    (isReceiptAsset(l.assetResource, guildReceiptResources(board.receiptResource), board.resources[l.assetResource]?.name) ||
+      issuerControl(board.resources[l.assetResource]) !== "locked")
   return (
     <Link href={`/swaps/${l.listingId}`} className="group block no-underline">
       <Card className="h-full overflow-hidden transition-colors group-hover:border-primary/50">
@@ -99,6 +106,11 @@ function SwapCard({ l, board }: { l: SwapListingView; board: SwapBoardView }) {
           <p className="text-sm font-semibold tabular-nums">
             <AskSummary asks={l.asks} resources={board.resources} />
           </p>
+          {noFill && (
+            <p data-testid="card-no-fill" className="text-xs text-muted-foreground">
+              {BOARD_COPY.noFillCard}
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">
             Listing {l.listingId} ·{" "}
             {l.status === "open"

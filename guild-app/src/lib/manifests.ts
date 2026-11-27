@@ -1,7 +1,7 @@
 import { XRD_ADDRESS } from "./radix"
 import { INSTANTIATE_SPEC } from "./generated/instantiate-spec"
 import { isPositiveXrd, normalizeXrd } from "./xrd-decimal"
-import type { RecallState, SwapAsk } from "./nft-swap"
+import { isReceiptAsset, type IssuerControl, type SwapAsk } from "./nft-swap"
 
 // Sanitize string values used in transaction manifests
 function sanitize(val: string): string {
@@ -1562,16 +1562,49 @@ function depositAllTo(account: string): string {
 }
 
 /**
+ * What the caller read about a listing's ASSET before building a `list` or a
+ * `fill`. Both builders refuse to build without it, so a stale or skipped page
+ * check cannot put a manifest in front of a wallet.
+ *  - `control`: the asset resource's IssuerControl (nft-swap.ts issuerControl
+ *    over readResourceDisplay). Anything but "locked" is refused: an NFT whose
+ *    issuer can recall it, freeze it or restrict its transfers, or whose roles
+ *    could not be read.
+ *  - `receiptResources`: the Guild's receipt resources (nft-swap.ts
+ *    guildReceiptResources, with the listing receipt read from the component).
+ *    A receipt is refused as the asset, and so is an empty or malformed list.
+ */
+export interface SwapAssetGuard {
+  control: IssuerControl
+  receiptResources: readonly string[]
+  /** The asset resource's metadata name as the caller read it (null = none or
+   *  unread). A name that reads as a Guild receipt is refused too: a receipt
+   *  from another instance of the blueprints is not in the address list. */
+  assetName: string | null
+}
+
+function assertSwapAsset(verb: "list" | "fill", assetResource: string, guard: SwapAssetGuard): void {
+  if (guard?.control !== "locked") {
+    throw new Error(
+      `Cannot ${verb}: recall, freezing or transfer restrictions are not permanently off for this collection, or that could not be confirmed`,
+    );
+  }
+  // `assetName` must be given, as a name or as null: a guard that leaves it
+  // out has not said what the asset is called, and is refused like an
+  // unknown receipt list.
+  if (guard.assetName === undefined || isReceiptAsset(assetResource, guard.receiptResources, guard.assetName)) {
+    throw new Error(`Cannot ${verb}: a Guild receipt is not a swap asset here, or the receipt resources could not be confirmed`);
+  }
+}
+
+/**
  * List one NFT. `seller` is the account the NFT leaves AND the account the
  * blueprint pins as the only proceeds destination; the listing receipt (the
  * credential for cancel / extend / withdraw) is deposited back to it.
  * `expiresAt` is unix seconds, at most 30 days after the ledger clock when
  * the transaction executes (nft_swap.rs `list`) — use nft-swap.ts expiryForDays.
  *
- * `recall` is the asset resource's RecallState as the Gateway reported it
- * (readResourceDisplay). The builder refuses anything but "locked-deny", so a
- * stale or skipped form check cannot build a listing for an NFT whose issuer
- * can recall it, or whose recall roles could not be read.
+ * `guard`: see SwapAssetGuard — the builder refuses an asset the caller did
+ * not read as safe.
  */
 export function listSwapManifest(
   swapComponent: string,
@@ -1580,11 +1613,9 @@ export function listSwapManifest(
   assetId: string,
   asks: SwapAsk[],
   expiresAt: number,
-  recall: RecallState,
+  guard: SwapAssetGuard,
 ): string {
-  if (recall !== "locked-deny") {
-    throw new Error("Cannot list: this collection's issuer can recall its NFTs, or that could not be confirmed")
-  }
+  assertSwapAsset("list", assetResource, guard);
   const c = validateAddress(swapComponent, "component_rdx");
   const a = validateAddress(seller, "account_rdx");
   const r = validateAddress(assetResource, "resource_rdx");
@@ -1627,6 +1658,9 @@ ${depositAllTo(a)}`;
  * the NFT they are paying for arrives in it. The wallet shows the assertion
  * as a guaranteed deposit. The 2026-09-15 proving run predates it; the rest
  * of the manifest is that run's shape unchanged.
+ *
+ * `guard`: see SwapAssetGuard — the same asset check `listSwapManifest` makes,
+ * for a listing that was not made through this app.
  */
 export function fillSwapManifest(
   swapComponent: string,
@@ -1636,7 +1670,9 @@ export function fillSwapManifest(
   ask: SwapAsk,
   assetResource: string,
   assetId: string,
+  guard: SwapAssetGuard,
 ): string {
+  assertSwapAsset("fill", assetResource, guard);
   const c = validateAddress(swapComponent, "component_rdx");
   const a = validateAddress(buyer, "account_rdx");
   const lid = validatePositiveInt(listingId, "listingId");

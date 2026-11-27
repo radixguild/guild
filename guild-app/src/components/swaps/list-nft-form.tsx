@@ -11,11 +11,15 @@ import { Plus, Trash2, Wallet } from "lucide-react"
 import { NFT_SWAP_COMPONENT } from "@/lib/config"
 import { XRD_ADDRESS } from "@/lib/radix"
 import { listSwapManifest } from "@/lib/manifests"
-import { COMMON_TOKENS, commonTokenFor } from "@/lib/common-tokens"
+import { COMMON_TOKENS, commonTokenFor, lookAlikeOf } from "@/lib/common-tokens"
 import {
+  ASK_RESOURCE_PROBLEMS,
   askProblems,
   expiryForDays,
+  guildReceiptResources,
+  isReceiptAsset,
   isResourceAddress,
+  issuerControl,
   MAX_ASKS,
   shortAddress,
   type AskResourceKind,
@@ -93,6 +97,9 @@ export function ListNftForm() {
   const [days, setDays] = useState<number>(7)
   const [ledgerNow, setLedgerNow] = useState<number | null>(null)
   const [componentOk, setComponentOk] = useState<boolean | null>(null)
+  // The Guild's receipt resources, the listing receipt read from the
+  // component: null until that read lands, and nothing is listable until then.
+  const [receipts, setReceipts] = useState<string[] | null>(null)
   const [after, setAfter] = useState<string | null>(null)
   // From the first press until the listing id is read back (or the form is
   // disarmed). tx.busy covers only the wallet leg; around it are two ledger
@@ -106,7 +113,10 @@ export function ListNftForm() {
     void readSwapComponentState(NFT_SWAP_COMPONENT).then((s) => {
       if (!live) return
       setComponentOk(Boolean(s))
-      if (s) setLedgerNow(s.ledgerNow)
+      if (s) {
+        setLedgerNow(s.ledgerNow)
+        setReceipts(guildReceiptResources(s.receiptResource))
+      }
     })
     return () => {
       live = false
@@ -157,10 +167,15 @@ export function ListNftForm() {
     (r: string): AskResourceKind | null => {
       const d = askRes.get(r)
       if (!d) return null
-      if (d.kind === "nonFungible") return { kind: "nonFungible" }
-      return d.divisibility === null ? null : { kind: "fungible", divisibility: d.divisibility }
+      const control = issuerControl(d)
+      // A known receipt list only: while it is unread nothing can be listed
+      // anyway (canList), and every ask would read as a receipt.
+      const receipt = receipts !== null && isReceiptAsset(r, receipts, d.name)
+      if (d.kind === "nonFungible") return { kind: "nonFungible", control, receipt }
+      if (d.divisibility === null) return null
+      return { kind: "fungible", divisibility: d.divisibility, control, receipt, lookAlikeOf: lookAlikeOf(r, d)?.symbol ?? null }
     },
-    [askRes],
+    [askRes, receipts],
   )
   const problems = askProblems(asks, kindOf, picked ?? undefined)
   // An unknown resource is only a problem once the Gateway has answered.
@@ -173,7 +188,16 @@ export function ListNftForm() {
 
   const pickedRes = picked && holdings.state === "ok" ? holdings.res.get(picked.resource) : undefined
   const pickedNft = picked && holdings.state === "ok" ? holdings.nfts.get(key(picked.resource, picked.id)) : undefined
-  const canList = Boolean(picked && asksOk && ledgerNow !== null && pickedRes?.withdraw !== "denied" && pickedRes?.recall === "locked-deny" && componentOk)
+  const pickedControl = issuerControl(pickedRes)
+  const canList = Boolean(
+    picked &&
+      asksOk &&
+      ledgerNow !== null &&
+      pickedRes?.withdraw !== "denied" &&
+      pickedControl === "locked" &&
+      !isReceiptAsset(picked.resource, receipts, pickedRes?.name) &&
+      componentOk,
+  )
 
   const resourcesForText = useMemo(() => {
     const out: Record<string, SwapResourceView> = {}
@@ -197,7 +221,13 @@ export function ListNftForm() {
       }
       const expiresAt = expiryForDays(fresh.ledgerNow, days)
       const txId = await tx.send((acct) =>
-        listSwapManifest(NFT_SWAP_COMPONENT, acct, picked.resource, picked.id, asks.map(normalizeAsk), expiresAt, pickedRes?.recall ?? "unknown"),
+        // The receipt resource comes from the read made just now, not the
+        // one the form opened with.
+        listSwapManifest(NFT_SWAP_COMPONENT, acct, picked.resource, picked.id, asks.map(normalizeAsk), expiresAt, {
+          control: pickedControl,
+          receiptResources: guildReceiptResources(fresh.receiptResource),
+          assetName: pickedRes?.name ?? null,
+        }),
       )
       if (!txId) return
       // Disarm at once: the NFT has left this account, and a second press
@@ -261,18 +291,30 @@ export function ListNftForm() {
             holdings.groups.map((g) => {
               const r = holdings.res.get(g.resource)
               const denied = r?.withdraw === "denied"
-              // Only a collection whose recall roles are read and locked can be
-              // listed; a collection the Gateway could not say about is shut too.
-              const noRecall = r?.recall !== "locked-deny"
+              // Only a collection whose recall and freeze roles are read and
+              // locked can be listed; one the Gateway could not say about is
+              // shut too, and so is a Guild receipt.
+              const control = issuerControl(r)
+              const receipt = isReceiptAsset(g.resource, receipts, r?.name)
+              const shut = denied || receipt || control !== "locked"
               return (
                 <div key={g.resource} className="space-y-1.5">
                   <p className="text-xs text-muted-foreground" title={g.resource}>
                     {r?.name ?? "Unnamed collection"} · <span className="font-mono">{shortAddress(g.resource)}</span>
                   </p>
                   {denied && <p className="text-[11px] text-muted-foreground">{LIST_COPY.notWithdrawable}</p>}
-                  {!denied && noRecall && (
+                  {!denied && receipt && receipts !== null && (
+                    <p className="text-[11px] text-muted-foreground">{LIST_COPY.isReceipt}</p>
+                  )}
+                  {!denied && !receipt && control !== "locked" && (
                     <p className="text-[11px] text-muted-foreground">
-                      {r?.recall === "recallable" ? LIST_COPY.recallable : LIST_COPY.recallUnknown}
+                      {control === "recallable"
+                        ? LIST_COPY.recallable
+                        : control === "freezable"
+                          ? LIST_COPY.freezable
+                          : control === "restrictable"
+                            ? LIST_COPY.restrictable
+                            : LIST_COPY.recallUnknown}
                     </p>
                   )}
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
@@ -283,7 +325,7 @@ export function ListNftForm() {
                         <button
                           key={id}
                           type="button"
-                          disabled={denied || noRecall}
+                          disabled={shut}
                           onClick={() => account && setPicked({ account, resource: g.resource, id })}
                           aria-pressed={on}
                           className={`overflow-hidden rounded-lg border text-left disabled:opacity-40 ${on ? "border-primary ring-2 ring-primary/40" : ""}`}
@@ -306,7 +348,6 @@ export function ListNftForm() {
           {holdings.state === "ok" && holdings.moreResources && (
             <p className="text-[11px] text-muted-foreground">The account holds more collections than are shown.</p>
           )}
-          {pickedRes?.withdraw === "restricted" && <p className="text-xs text-muted-foreground">{LIST_COPY.restricted}</p>}
         </CardContent>
       </Card>
 
@@ -420,7 +461,14 @@ export function ListNftForm() {
                     {d ? `${d.name ?? "Unnamed"}${d.symbol ? ` (${d.symbol})` : ""}` : isResourceAddress(a.resource) ? "Looking up…" : ""}
                   </p>
                 )}
-                {p && !empty(a) && <p className="text-xs text-destructive">{ASK_PROBLEM_TEXT[p]}</p>}
+                {d && !commonTokenFor(a.resource) && (
+                  <p data-testid="ask-not-common" className="text-xs text-muted-foreground">
+                    {LIST_COPY.notCommonWarning} <span className="font-mono break-all text-foreground">{a.resource}</span>
+                  </p>
+                )}
+                {p && (!empty(a) || ASK_RESOURCE_PROBLEMS.has(p)) && (
+                  <p className="text-xs text-destructive">{ASK_PROBLEM_TEXT[p]}</p>
+                )}
               </div>
             )
           })}

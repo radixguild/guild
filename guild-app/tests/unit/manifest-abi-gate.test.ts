@@ -166,16 +166,17 @@ const GATED: Record<string, () => string> = {
 // blueprint; the completeness test counts them.
 const SWAP = "component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4"
 const XRD_RES = "resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd"
+const LIST_GUARD = { control: "locked" as const, receiptResources: [RECEIPT_RES], assetName: null }
 const SWAP_GATED: Record<string, () => string> = {
   listSwapManifest: () =>
     manifests.listSwapManifest(SWAP, POSTER, BADGE_RES, "#1#", [
       { kind: "fungible", resource: XRD_RES, amount: "5000" },
       { kind: "nonFungible", resource: RECEIPT_RES, id: "#2#" },
-    ], 1790114665, "locked-deny"),
+    ], 1790114665, LIST_GUARD),
   fillSwapManifest: () =>
-    manifests.fillSwapManifest(SWAP, WORKER, 1, 0, { kind: "fungible", resource: XRD_RES, amount: "5000" }, BADGE_RES, "#1#"),
+    manifests.fillSwapManifest(SWAP, WORKER, 1, 0, { kind: "fungible", resource: XRD_RES, amount: "5000" }, BADGE_RES, "#1#", LIST_GUARD),
   fillSwapManifestNonFungible: () =>
-    manifests.fillSwapManifest(SWAP, WORKER, 1, 1, { kind: "nonFungible", resource: RECEIPT_RES, id: "#2#" }, BADGE_RES, "#1#"),
+    manifests.fillSwapManifest(SWAP, WORKER, 1, 1, { kind: "nonFungible", resource: RECEIPT_RES, id: "#2#" }, BADGE_RES, "#1#", LIST_GUARD),
   cancelSwapManifest: () => manifests.cancelSwapManifest(SWAP, POSTER, RECEIPT_RES, 1),
   withdrawSwapProceedsManifest: () => manifests.withdrawSwapProceedsManifest(SWAP, POSTER, RECEIPT_RES, 1),
   extendSwapListingManifest: () => manifests.extendSwapListingManifest(SWAP, POSTER, RECEIPT_RES, 1),

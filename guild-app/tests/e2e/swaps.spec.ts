@@ -9,7 +9,7 @@ import {
   withdrawSwapProceedsManifest,
 } from "../../src/lib/manifests";
 import { NFT_SWAP_PACKAGE } from "../../src/lib/config";
-import { expiryForDays, extendedExpiry, shortAddress } from "../../src/lib/nft-swap";
+import { expiryForDays, extendedExpiry, guildReceiptResources, shortAddress } from "../../src/lib/nft-swap";
 import { BOARD_COPY, DETAIL_COPY } from "../../src/content/swaps";
 
 // The NFT swap wallet flows (P7-04), end to end in a browser with the mock
@@ -33,10 +33,10 @@ const LEDGER_ISO = "2026-10-06T07:00:00.000Z";
 const LEDGER = Date.parse(LEDGER_ISO) / 1000;
 
 const RESOURCES = {
-  [XRD]: { kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open", recall: "locked-deny" },
-  [NFT]: { kind: "nonFungible", divisibility: null, name: "Guild Swap Throwaway NFT", symbol: null, iconUrl: null, withdraw: "open", recall: "locked-deny" },
-  [EARLY]: { kind: "fungible", divisibility: 18, name: "EARLY", symbol: "EARLY", iconUrl: null, withdraw: "open", recall: "locked-deny" },
-  [OTHER_TOKEN]: { kind: "fungible", divisibility: 18, name: "Some Token", symbol: "SOME", iconUrl: null, withdraw: "open", recall: "locked-deny" },
+  [XRD]: { kind: "fungible", divisibility: 18, name: "Radix", symbol: "XRD", iconUrl: null, withdraw: "open", recall: "locked-deny", freeze: "locked-deny", transfer: "locked-open" },
+  [NFT]: { kind: "nonFungible", divisibility: null, name: "Guild Swap Throwaway NFT", symbol: null, iconUrl: null, withdraw: "open", recall: "locked-deny", freeze: "locked-deny", transfer: "locked-open" },
+  [EARLY]: { kind: "fungible", divisibility: 18, name: "EARLY", symbol: "EARLY", iconUrl: null, withdraw: "open", recall: "locked-deny", freeze: "locked-deny", transfer: "locked-open" },
+  [OTHER_TOKEN]: { kind: "fungible", divisibility: 18, name: "Some Token", symbol: "SOME", iconUrl: null, withdraw: "open", recall: "locked-deny", freeze: "locked-deny", transfer: "locked-open" },
 };
 
 const ASKS = [
@@ -188,7 +188,7 @@ test.describe("NFT swap — the listing page", () => {
     await go.click();
 
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
-    expect((await sentManifests(page))[0]).toBe(fillSwapManifest(SWAP, MOCK_ACCOUNT, 3, 0, ASKS[0], NFT, "#2#"));
+    expect((await sentManifests(page))[0]).toBe(fillSwapManifest(SWAP, MOCK_ACCOUNT, 3, 0, ASKS[0], NFT, "#2#", { control: "locked", receiptResources: guildReceiptResources(RECEIPT), assetName: RESOURCES[NFT].name }));
     // The listing's own NFT (detail(): NFT #2#) is asserted on the worktop before the deposit.
     expect((await sentManifests(page))[0]).toMatch(
       new RegExp(`"fill"[\\s\\S]*ASSERT_WORKTOP_CONTAINS_NON_FUNGIBLES\\s+Address\\("${NFT}"\\)\\s+Array<NonFungibleLocalId>\\(NonFungibleLocalId\\("#2#"\\)\\)[\\s\\S]*"try_deposit_batch_or_abort"`),
@@ -223,7 +223,7 @@ test.describe("NFT swap — the listing page", () => {
     await page.getByRole("button", { name: "Open my wallet to fill" }).click();
 
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
-    expect((await sentManifests(page))[0]).toBe(fillSwapManifest(SWAP, MOCK_ACCOUNT, 3, 1, ASKS[1], NFT, "#2#"));
+    expect((await sentManifests(page))[0]).toBe(fillSwapManifest(SWAP, MOCK_ACCOUNT, 3, 1, ASKS[1], NFT, "#2#", { control: "locked", receiptResources: guildReceiptResources(RECEIPT), assetName: RESOURCES[NFT].name }));
   });
 
   // nft_swap.rs keeps cancel and extend open after expiry so the NFT is never
@@ -582,7 +582,7 @@ test.describe("NFT swap — ≈US$ beside XRD asks", () => {
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: "Open my wallet to fill" }).click();
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
-    expect((await sentManifests(page))[0]).toBe(fillSwapManifest(SWAP, MOCK_ACCOUNT, 3, 0, ASKS[0], NFT, "#2#"));
+    expect((await sentManifests(page))[0]).toBe(fillSwapManifest(SWAP, MOCK_ACCOUNT, 3, 0, ASKS[0], NFT, "#2#", { control: "locked", receiptResources: guildReceiptResources(RECEIPT), assetName: RESOURCES[NFT].name }));
   });
 });
 
@@ -664,6 +664,9 @@ async function stubGateway(page: Page, opts: { packageAddress?: string; accountN
             role_assignments: {
               entries: [
                 { role_key: { module: "Main", name: "withdrawer" }, assignment: { explicit_rule: { type: "AllowAll" }, resolution: "Explicit" } },
+                { role_key: { module: "Main", name: "withdrawer_updater" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
+                { role_key: { module: "Main", name: "depositor" }, assignment: { explicit_rule: { type: "AllowAll" }, resolution: "Explicit" } },
+                { role_key: { module: "Main", name: "depositor_updater" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
                 ...(opts.recallable?.includes(address)
                   ? [
                       { role_key: { module: "Main", name: "recaller" }, assignment: { explicit_rule: { type: "Protected" }, resolution: "Explicit" } },
@@ -673,6 +676,8 @@ async function stubGateway(page: Page, opts: { packageAddress?: string; accountN
                       { role_key: { module: "Main", name: "recaller" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
                       { role_key: { module: "Main", name: "recaller_updater" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
                     ]),
+                { role_key: { module: "Main", name: "freezer" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
+                { role_key: { module: "Main", name: "freezer_updater" }, assignment: { explicit_rule: { type: "DenyAll" }, resolution: "Explicit" } },
               ],
             },
           },
@@ -729,7 +734,7 @@ test.describe("NFT swap — List an NFT", () => {
 
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
     expect((await sentManifests(page))[0]).toBe(
-      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: XRD, amount: "5000" }], expiryForDays(LEDGER, 7), "locked-deny"),
+      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: XRD, amount: "5000" }], expiryForDays(LEDGER, 7), { control: "locked", receiptResources: guildReceiptResources(RECEIPT), assetName: RESOURCES[NFT].name }),
     );
     await expect(page).toHaveURL(/\/swaps\/3\?listed=1$/);
   });
@@ -754,7 +759,7 @@ test.describe("NFT swap — List an NFT", () => {
 
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
     expect((await sentManifests(page))[0]).toBe(
-      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: EARLY, amount: "250" }], expiryForDays(LEDGER, 7), "locked-deny"),
+      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: EARLY, amount: "250" }], expiryForDays(LEDGER, 7), { control: "locked", receiptResources: guildReceiptResources(RECEIPT), assetName: RESOURCES[NFT].name }),
     );
   });
 
@@ -779,7 +784,7 @@ test.describe("NFT swap — List an NFT", () => {
 
     await expect.poll(async () => (await sentManifests(page)).length).toBe(1);
     expect((await sentManifests(page))[0]).toBe(
-      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: OTHER_TOKEN, amount: "7" }], expiryForDays(LEDGER, 7), "locked-deny"),
+      listSwapManifest(SWAP, MOCK_ACCOUNT, NFT, "#2#", [{ kind: "fungible", resource: OTHER_TOKEN, amount: "7" }], expiryForDays(LEDGER, 7), { control: "locked", receiptResources: guildReceiptResources(RECEIPT), assetName: RESOURCES[NFT].name }),
     );
   });
 
@@ -799,7 +804,7 @@ test.describe("NFT swap — List an NFT", () => {
     await stubGateway(page, { recallable: [NFT] });
     await page.goto("/swaps/list");
 
-    await expect(page.getByText("issuer can recall its NFTs, so it cannot be listed here.")).toBeVisible();
+    await expect(page.getByText("Recall is not permanently switched off for this collection's NFTs, so it cannot be listed here.")).toBeVisible();
     await expect(page.getByRole("button", { name: /Guild swap throwaway 2/ })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Open my wallet to list" })).toBeDisabled();
     expect(await sentManifests(page)).toEqual([]);
@@ -813,7 +818,10 @@ test.describe("NFT swap — List an NFT", () => {
     await page.goto("/swaps/list");
 
     await expect(page.getByRole("alert").filter({ hasText: "listing is unavailable right now" })).toBeVisible();
-    await page.getByRole("button", { name: /Guild swap throwaway 2/ }).click();
+    // With no component read there is no receipt resource to check an NFT
+    // against, so nothing can be picked at all (28 Nov 2026).
+    await expect(page.getByRole("button", { name: /Guild swap throwaway 2/ })).toBeDisabled();
+    await page.getByRole("button", { name: /Guild swap throwaway 2/ }).click({ force: true });
     await page.getByLabel("Alternative 1 amount").fill("5000");
     await expect(page.getByText("Radix (XRD)")).toBeVisible();
     const go = page.getByRole("button", { name: "Open my wallet to list" });

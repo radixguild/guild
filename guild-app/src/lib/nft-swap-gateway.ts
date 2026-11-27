@@ -12,7 +12,9 @@ import { NFT_SWAP_COMPONENT, NFT_SWAP_PACKAGE } from "./config"
 import { GATEWAY } from "./constants"
 import { GATEWAY_READ_TIMEOUT_MS, readNonFungibleHolder, readTxEventFields } from "./gateway"
 import {
+  type FreezeState,
   type RecallState,
+  type TransferState,
   SWAP_SCAN_CAP,
   canonicalLocalId,
   displayText,
@@ -281,6 +283,10 @@ export interface ResourceDisplay {
   withdraw: "open" | "restricted" | "denied"
   /** Whether the issuer can recall this resource's NFTs; see RecallState. */
   recall: RecallState
+  /** Whether the issuer can freeze vaults of this resource; see FreezeState. */
+  freeze: FreezeState
+  /** Whether transfers are open and locked that way; see TransferState. */
+  transfer: TransferState
 }
 
 function metadataValue(items: any[], key: string): unknown {
@@ -307,23 +313,52 @@ function roleRuleType(entries: any[], name: string): string | "none" {
 }
 
 /**
- * Can the issuer recall this resource's NFTs? Read from the same
- * `role_assignments` the Gateway already returns: `recaller` and
- * `recaller_updater` are both entries. Both DenyAll = locked; any other rule
- * on either = recallable (an updater that is not DenyAll could grant recall
- * later); an absent or unreadable entry = unknown, which callers treat as
- * not safe.
+ * A power the issuer holds through a role and its updater (`recaller` /
+ * `recaller_updater`, `freezer` / `freezer_updater`), read from the same
+ * `role_assignments` the Gateway already returns. Both DenyAll = "locked-deny";
+ * any other readable rule on either = "open" (an updater that is not DenyAll
+ * could grant the power later); an absent or unreadable entry = "unknown",
+ * which callers treat as not safe.
  */
-export function recallRule(details: any): RecallState {
+function issuerPower(details: any, role: string): "locked-deny" | "open" | "unknown" {
   const entries = details?.role_assignments?.entries
   if (!Array.isArray(entries)) return "unknown"
-  const recaller = roleRuleType(entries, "recaller")
-  const updater = roleRuleType(entries, "recaller_updater")
-  if (recaller === "none" || updater === "none") return "unknown"
-  if (recaller === "DenyAll" && updater === "DenyAll") return "locked-deny"
-  // Any other readable rule (AllowAll, Protected, the owner's) is recallable;
-  // an unreadable one ("other") is unknown.
-  return recaller === "other" || updater === "other" ? "unknown" : "recallable"
+  const holder = roleRuleType(entries, role)
+  const updater = roleRuleType(entries, `${role}_updater`)
+  if (holder === "none" || updater === "none") return "unknown"
+  if (holder === "DenyAll" && updater === "DenyAll") return "locked-deny"
+  // Any other readable rule (AllowAll, Protected, the owner's) is open; an
+  // unreadable one ("other") is unknown.
+  return holder === "other" || updater === "other" ? "unknown" : "open"
+}
+
+/** Can the issuer recall this resource? See RecallState. */
+export function recallRule(details: any): RecallState {
+  const p = issuerPower(details, "recaller")
+  return p === "open" ? "recallable" : p
+}
+
+/** Can the issuer freeze vaults of this resource? See FreezeState. */
+export function freezeRule(details: any): FreezeState {
+  const p = issuerPower(details, "freezer")
+  return p === "open" ? "freezable" : p
+}
+
+/**
+ * Are transfers open, and can the issuer never close them? `withdrawer` and
+ * `depositor` must both be AllowAll and both their updaters DenyAll. Any other
+ * readable rule on any of the four = "restrictable"; an absent or unreadable
+ * one = "unknown". See TransferState.
+ */
+export function transferRule(details: any): TransferState {
+  const entries = details?.role_assignments?.entries
+  if (!Array.isArray(entries)) return "unknown"
+  const rules = ["withdrawer", "withdrawer_updater", "depositor", "depositor_updater"].map((n) => roleRuleType(entries, n))
+  if (rules.some((r) => r === "none" || r === "other")) return "unknown"
+  const [withdrawer, withdrawerUpdater, depositor, depositorUpdater] = rules
+  return withdrawer === "AllowAll" && depositor === "AllowAll" && withdrawerUpdater === "DenyAll" && depositorUpdater === "DenyAll"
+    ? "locked-open"
+    : "restrictable"
 }
 
 /** Name, symbol, icon, kind and divisibility for resources, batched. */
@@ -352,6 +387,8 @@ export async function readResourceDisplay(addresses: string[]): Promise<Map<stri
         iconUrl: safeImageUrl(metadataValue(md, "icon_url")),
         withdraw: withdrawRule(details),
         recall: recallRule(details),
+        freeze: freezeRule(details),
+        transfer: transferRule(details),
       })
     }
   }

@@ -8,7 +8,7 @@ import { describe, test, expect } from 'bun:test';
 import { loadConfig, MAINNET_XRD } from './config.js';
 import { AgentIdentity } from './identity.js';
 import { fillSwapManifest, type SwapAsk } from './manifests.js';
-import { parseMaxPrice, runFillSwap, spendCheck, type SwapDeps, type SwapListing, type SwapState } from './swap.js';
+import { guildReceiptResources, parseMaxPrice, runFillSwap, spendCheck, type SwapDeps, type SwapListing, type SwapState } from './swap.js';
 import { main as workerMain } from './guild-worker.js';
 
 const CONFIG = loadConfig();
@@ -45,6 +45,9 @@ function deps(ask: SwapAsk, state: SwapState = STATE) {
   const signed: string[] = [];
   const d: Partial<SwapDeps> = {
     readSwapListing: async () => ({ kind: 'ok', state, listing: listing(ask) }),
+    // The asset reads as safe and unnamed, without a Gateway call.
+    readResourceControl: async () => 'locked',
+    readResourceName: async () => null,
     signAndSubmitManifest: async (m) => {
       signed.push(m);
       return { intentHash: 'txid_rdx1test', status: 'CommittedSuccess' };
@@ -104,7 +107,7 @@ describe('runFillSwap --live — the bound', () => {
       const { d, signed } = deps(ask);
       const r = await runFillSwap({ listingId: 3, live: true, identity: id, config: CONFIG, deps: d, ...bound });
       expect(r).toMatchObject({ dryRun: false, status: 'CommittedSuccess' });
-      expect(signed).toEqual([fillSwapManifest(CONFIG.nftSwapComponent, id.address, 3, 0, ask, NFT, '#2#')]);
+      expect(signed).toEqual([fillSwapManifest(CONFIG.nftSwapComponent, id.address, 3, 0, ask, NFT, '#2#', { control: 'locked', receiptResources: guildReceiptResources(CONFIG, STATE.receiptResource), assetName: null })]);
     }
   });
 

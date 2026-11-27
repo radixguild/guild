@@ -8,14 +8,19 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   askProblems,
+  ASK_RESOURCE_PROBLEMS,
   canonicalLocalId,
   displayText,
   expiryForDays,
   extendedExpiry,
   formatAmount,
   formatLocalId,
+  guildReceiptResources,
+  isGuildReceiptName,
   isHidden,
   isLocalId,
+  isReceiptAsset,
+  issuerControl,
   MAX_LISTING_HORIZON_SECS,
   normalizeDecimal,
   parseHiddenList,
@@ -152,9 +157,9 @@ describe("expiryForDays stays inside the 30-day ceiling list() enforces", () => 
 
 describe("askProblems — the list() checks, before the wallet opens", () => {
   const kinds: Record<string, AskResourceKind> = {
-    [XRD]: { kind: "fungible", divisibility: 18 },
-    [NFT]: { kind: "nonFungible" },
-    resource_rdx1tfakedivisibilitytwoxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx: { kind: "fungible", divisibility: 2 },
+    [XRD]: { kind: "fungible", divisibility: 18, control: "locked" },
+    [NFT]: { kind: "nonFungible", control: "locked" },
+    resource_rdx1tfakedivisibilitytwoxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx: { kind: "fungible", divisibility: 2, control: "locked" },
   }
   const kindOf = (r: string) => kinds[r] ?? null
   const XUSD = "resource_rdx1tfakedivisibilitytwoxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
@@ -302,5 +307,125 @@ describe("formatLocalId — the four Radix local-id forms, for people", () => {
     const raw = "#9897#"
     formatLocalId(raw)
     expect(raw).toBe("#9897#")
+  })
+})
+
+// ── 28 Nov 2026: freeze, ask-resource safety, receipts as assets ─────────────
+
+describe("issuerControl — recall, freeze and transfer rules as one state", () => {
+  const L = { recall: "locked-deny", freeze: "locked-deny", transfer: "locked-open" } as const
+  it("is locked only when all three are read and locked (the shape of live listing 9's two resources)", () => {
+    expect(issuerControl(L)).toBe("locked")
+  })
+  it("names the power the issuer holds", () => {
+    expect(issuerControl({ ...L, recall: "recallable" })).toBe("recallable")
+    expect(issuerControl({ ...L, freeze: "freezable" })).toBe("freezable")
+    expect(issuerControl({ ...L, transfer: "restrictable" })).toBe("restrictable")
+    expect(issuerControl({ recall: "recallable", freeze: "freezable", transfer: "restrictable" })).toBe("recallable")
+    expect(issuerControl({ recall: "unknown", freeze: "freezable", transfer: "unknown" })).toBe("freezable")
+    expect(issuerControl({ recall: "unknown", freeze: "unknown", transfer: "restrictable" })).toBe("restrictable")
+  })
+  it("fails closed: any one unread, a read missing a field, or no resource at all is unknown", () => {
+    expect(issuerControl({ ...L, recall: "unknown" })).toBe("unknown")
+    expect(issuerControl({ ...L, freeze: "unknown" })).toBe("unknown")
+    expect(issuerControl({ ...L, transfer: "unknown" })).toBe("unknown")
+    expect(issuerControl({ recall: "locked-deny", freeze: "locked-deny" })).toBe("unknown")
+    expect(issuerControl({ recall: "locked-deny", transfer: "locked-open" })).toBe("unknown")
+    expect(issuerControl({ freeze: "locked-deny", transfer: "locked-open" })).toBe("unknown")
+    expect(issuerControl({})).toBe("unknown")
+    expect(issuerControl(undefined)).toBe("unknown")
+    expect(issuerControl(null)).toBe("unknown")
+  })
+})
+
+describe("askProblems — the ask resource's issuer and look-alikes", () => {
+  const CIGGIE = "resource_rdx1t4ciggiexxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  const one = (info: AskResourceKind | null, ask: SwapAsk) => askProblems([ask], () => info)[0]
+  const amount = (resource: string, amt = "5"): SwapAsk => ({ kind: "fungible", resource, amount: amt })
+  const nft = (resource: string): SwapAsk => ({ kind: "nonFungible", resource, id: "#2#" })
+
+  it("a token and an NFT whose recall and freeze are locked pass (live listing 9: Ciggie Puffs for CIGGIE)", () => {
+    expect(one({ kind: "fungible", divisibility: 18, control: "locked", lookAlikeOf: null }, amount(CIGGIE, "420"))).toBeNull()
+    expect(one({ kind: "nonFungible", control: "locked" }, nft(NFT))).toBeNull()
+  })
+  it.each([
+    ["recallable", "issuer_recall"],
+    ["freezable", "issuer_freeze"],
+    ["restrictable", "issuer_transfer"],
+    ["unknown", "issuer_unknown"],
+  ] as const)("an ask resource that is %s is blocked as %s, token or NFT", (control, problem) => {
+    expect(one({ kind: "fungible", divisibility: 18, control }, amount(CIGGIE))).toBe(problem)
+    expect(one({ kind: "nonFungible", control }, nft(NFT))).toBe(problem)
+  })
+  it("a read that carries no control at all is blocked, not passed", () => {
+    expect(one({ kind: "fungible", divisibility: 18 } as AskResourceKind, amount(CIGGIE))).toBe("issuer_unknown")
+  })
+  it("a token that imitates a common token is blocked as a look-alike, even with locked roles", () => {
+    expect(one({ kind: "fungible", divisibility: 18, control: "locked", lookAlikeOf: "XRD" }, amount(CIGGIE))).toBe("look_alike")
+  })
+  it("a Guild receipt is blocked as an ask, token-shaped or NFT, whatever its roles", () => {
+    expect(one({ kind: "nonFungible", control: "locked", receipt: true }, nft(NFT))).toBe("receipt_ask")
+    expect(one({ kind: "nonFungible", control: "locked", receipt: false }, nft(NFT))).toBeNull()
+  })
+  it("the resource problems show before anything is typed beside them; the kind mismatch still comes first", () => {
+    expect(one({ kind: "fungible", divisibility: 18, control: "freezable" }, amount(CIGGIE, ""))).toBe("issuer_freeze")
+    expect(one({ kind: "fungible", divisibility: 18, control: "locked", lookAlikeOf: "XRD" }, amount(CIGGIE, ""))).toBe("look_alike")
+    expect(one({ kind: "nonFungible", control: "recallable" }, amount(NFT))).toBe("not_fungible")
+    for (const p of ["look_alike", "issuer_recall", "issuer_freeze", "issuer_transfer", "issuer_unknown", "receipt_ask"] as const) {
+      expect(ASK_RESOURCE_PROBLEMS.has(p)).toBe(true)
+    }
+    expect(ASK_RESOURCE_PROBLEMS.has("bad_amount")).toBe(false)
+  })
+})
+
+describe("receipts as a listing's asset", () => {
+  const SWAP_RECEIPT = "resource_rdx1nfq47l0t7glmntfjuandqdmlejzvffq4cvlvrha94kqr52mdrvt2e7"
+  it("the Guild's receipt resources are the swap's listing receipt (as passed) plus the escrow's two from config", async () => {
+    const { ESCROW_RECEIPT_RESOURCE, ESCROW_CLAIM_RECEIPT_RESOURCE } = await import("@/lib/config")
+    expect(guildReceiptResources(SWAP_RECEIPT)).toEqual([SWAP_RECEIPT, ESCROW_RECEIPT_RESOURCE, ESCROW_CLAIM_RECEIPT_RESOURCE])
+  })
+  it("each of them is a receipt asset; an ordinary collection is not", () => {
+    const receipts = guildReceiptResources(SWAP_RECEIPT)
+    for (const r of receipts) expect(isReceiptAsset(r, receipts)).toBe(true)
+    expect(isReceiptAsset(NFT, receipts)).toBe(false)
+  })
+  it("fails closed while the receipt resources are not known", () => {
+    expect(isReceiptAsset(NFT, null)).toBe(true)
+    expect(isReceiptAsset(NFT, undefined)).toBe(true)
+    expect(isReceiptAsset(NFT, [])).toBe(true)
+    expect(isReceiptAsset(NFT, guildReceiptResources(undefined as unknown as string))).toBe(true)
+    expect(isReceiptAsset(NFT, ["not-an-address"])).toBe(true)
+  })
+})
+
+describe("a Guild receipt the address list does not know is caught by its name", () => {
+  const SWAP_RECEIPT = "resource_rdx1nfq47l0t7glmntfjuandqdmlejzvffq4cvlvrha94kqr52mdrvt2e7"
+  // Mainnet listing 4's asset: a task receipt of an escrow instance that is not
+  // the configured one. Its address is in no list; its name is the blueprint's.
+  const OTHER_TASK_RECEIPT = "resource_rdx1nf57tptrl0ar5vhqzl5ln763ktzg86rcwwxyqh3t7esmd38t5qws7w"
+  const receipts = guildReceiptResources(SWAP_RECEIPT)
+
+  it.each(["Guild Marketplace Task Receipt", "Guild Marketplace Claim Receipt", "Guild NFT Swap Listing Receipt"])("%s", (name) => {
+    expect(isGuildReceiptName(name)).toBe(true)
+    expect(isReceiptAsset(OTHER_TASK_RECEIPT, receipts, name)).toBe(true)
+  })
+  it("the address alone does not catch it — the name is what does", () => {
+    expect(receipts).not.toContain(OTHER_TASK_RECEIPT)
+    expect(isReceiptAsset(OTHER_TASK_RECEIPT, receipts)).toBe(false)
+    expect(isReceiptAsset(OTHER_TASK_RECEIPT, receipts, null)).toBe(false)
+  })
+  it("case, spacing, punctuation, word order and full-width forms do not hide it", () => {
+    for (const name of ["guild receipt", "GUILD-RECEIPT", "Receipt of the Guild", "Ｇｕｉｌｄ Receipt", "G u i l d  R e c e i p t"]) {
+      expect(isGuildReceiptName(name), name).toBe(true)
+    }
+  })
+  it("an ordinary name is not a receipt (live listing 9: Ciggie Puffs), nor is one word of the two", () => {
+    for (const name of ["Ciggie Puffs", "Radix Guild Badge", "Receipt", "Guild", "", null, undefined]) {
+      expect(isGuildReceiptName(name), String(name)).toBe(false)
+    }
+    expect(isReceiptAsset(NFT, receipts, "Ciggie Puffs")).toBe(false)
+  })
+  it("a name does not rescue an unknown receipt list", () => {
+    expect(isReceiptAsset(NFT, [], "Ciggie Puffs")).toBe(true)
   })
 })

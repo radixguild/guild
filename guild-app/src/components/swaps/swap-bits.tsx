@@ -5,6 +5,7 @@
 import { useCallback, useRef, useState } from "react"
 import { Check, Copy, ImageOff } from "lucide-react"
 import { useWallet } from "@/hooks/useWallet"
+import { commonTokenFor, lookAlikeOf } from "@/lib/common-tokens"
 import { humanizeTxError, type HumanizedTxError } from "@/lib/escrow-utils"
 import { formatAmount, formatLocalId, shortAddress, type SwapAsk, type SwapStatus } from "@/lib/nft-swap"
 import type { SwapListingView, SwapResourceView } from "@/lib/nft-swap-service"
@@ -167,15 +168,29 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
   )
 }
 
-/** "5,000 XRD" / "1 × Wefty V2 #12#" — the full address stays in the title. */
+/**
+ * "5,000 XRD" / "NFT #12# of Wefty V2 (resource_rdx1n…abc123)" — the full
+ * address stays in the title.
+ * Only a common token (common-tokens.ts, matched by ADDRESS) reads by symbol
+ * alone. Any other token carries its short address, because its name and
+ * symbol are whatever its issuer wrote: "420 CIGGIE (resource_rdx1t4abc…l48s)".
+ * One whose name or symbol matches a common token it is not shows by address
+ * first, with the name it gave itself in quotes.
+ */
 export function askText(ask: SwapAsk, resources: Record<string, SwapResourceView>): string {
   const r = resources[ask.resource]
   if (ask.kind === "fungible") {
     const unit = r?.symbol ?? r?.name ?? shortAddress(ask.resource)
+    if (lookAlikeOf(ask.resource, r)) {
+      return `${formatAmount(ask.amount)} of ${shortAddress(ask.resource)} (calls itself “${unit}”)`
+    }
+    if (!commonTokenFor(ask.resource) && (r?.symbol || r?.name)) {
+      return `${formatAmount(ask.amount)} ${unit} (${shortAddress(ask.resource)})`
+    }
     return `${formatAmount(ask.amount)} ${unit}`
   }
-  const coll = r?.name ?? shortAddress(ask.resource)
-  return `NFT ${ask.id} of ${coll}`
+  // A collection's name is issuer-written too, so it never stands alone.
+  return r?.name ? `NFT ${ask.id} of ${r.name} (${shortAddress(ask.resource)})` : `NFT ${ask.id} of ${shortAddress(ask.resource)}`
 }
 
 /**

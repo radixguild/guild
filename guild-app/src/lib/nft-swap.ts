@@ -17,6 +17,8 @@
 // Shapes below were read off mainnet 2026-10-06 (listings 1 and 2 on
 // component_rdx1cq80zarwh84mmrkn95xc7glgg5yvz0vkvqs9amxsnpwxuhkldd5mp4).
 
+import { ESCROW_CLAIM_RECEIPT_RESOURCE, ESCROW_RECEIPT_RESOURCE } from "./config"
+
 /** One alternative the seller accepts (blueprint `Ask`). Amounts are exact
  *  decimal STRINGS — money, never a JS number. */
 export type SwapAsk =
@@ -277,6 +279,23 @@ export type AskProblem =
   | "bad_id"
   | "duplicate"
   | "same_as_asset"
+  | "look_alike"
+  | "issuer_recall"
+  | "issuer_freeze"
+  | "issuer_transfer"
+  | "issuer_unknown"
+  | "receipt_ask"
+
+/** The problems that are about the ask's RESOURCE rather than what was typed
+ *  beside it — shown as soon as the resource is read, amount or no amount. */
+export const ASK_RESOURCE_PROBLEMS: ReadonlySet<AskProblem> = new Set<AskProblem>([
+  "look_alike",
+  "issuer_recall",
+  "issuer_freeze",
+  "issuer_transfer",
+  "issuer_unknown",
+  "receipt_ask",
+])
 
 /**
  * Whether a resource's issuer can recall its NFTs, read from the resource's
@@ -289,9 +308,112 @@ export type AskProblem =
  */
 export type RecallState = "locked-deny" | "recallable" | "unknown"
 
+/**
+ * Whether a resource's issuer can freeze vaults of it (a frozen vault can be
+ * barred from withdrawing, depositing or burning), read the same way from the
+ * `freezer` and `freezer_updater` roles: both DenyAll = "locked-deny", any
+ * other readable rule on either = "freezable", absent or unreadable =
+ * "unknown".
+ */
+export type FreezeState = "locked-deny" | "freezable" | "unknown"
+
+/**
+ * Whether the resource moves freely and always will, read from `withdrawer` /
+ * `withdrawer_updater` and `depositor` / `depositor_updater`. Those rules bind
+ * every vault of the resource, the swap component's included, so an issuer
+ * who can change them can strand a listed NFT or a seller's proceeds without
+ * recalling or freezing anything.
+ *  - "locked-open":  withdraw and deposit are both AllowAll and both updaters
+ *                    are DenyAll.
+ *  - "restrictable": any of the four is some other readable rule (transfers
+ *                    are restricted now, or the issuer can restrict them).
+ *  - "unknown":      any of the four was absent or unreadable.
+ */
+export type TransferState = "locked-open" | "restrictable" | "unknown"
+
+/**
+ * Recall, freeze and transfer rules together — the one state the swap pages
+ * gate on.
+ *  - "locked":       all three are read, recall and freeze are locked-deny and
+ *                    transfers are locked-open.
+ *  - "recallable":   the issuer can recall it (or can still grant that).
+ *  - "freezable":    the issuer can freeze it (or can still grant that).
+ *  - "restrictable": the issuer restricts transfers of it (or still can).
+ *  - "unknown":      one of them could not be read, or the read is missing.
+ * Only "locked" may be listed, filled or asked for through this app.
+ */
+export type IssuerControl = "locked" | "recallable" | "freezable" | "restrictable" | "unknown"
+
+/** Fails closed: a resource missing from the read, or a read that lacks any
+ *  of the three fields (an older cached shape), is "unknown". */
+export function issuerControl(
+  r: { recall?: RecallState; freeze?: FreezeState; transfer?: TransferState } | null | undefined,
+): IssuerControl {
+  if (r?.recall === "recallable") return "recallable"
+  if (r?.freeze === "freezable") return "freezable"
+  if (r?.transfer === "restrictable") return "restrictable"
+  return r?.recall === "locked-deny" && r?.freeze === "locked-deny" && r?.transfer === "locked-open"
+    ? "locked"
+    : "unknown"
+}
+
+/**
+ * The Guild's own receipt resources, which must never be a listing's ASSET:
+ * the swap component's listing receipt (`swapReceiptResource`, read from the
+ * component's state, never hardcoded) and the escrow's task and claim receipts
+ * (config). A receipt is a credential over something else, and that something
+ * can be emptied while the receipt sits in a listing — a listing receipt's
+ * underlying listing can be filled by anyone, the seller included — so a buyer
+ * would pay for a receipt with nothing behind it.
+ */
+export function guildReceiptResources(swapReceiptResource: string): string[] {
+  return [swapReceiptResource, ESCROW_RECEIPT_RESOURCE, ESCROW_CLAIM_RECEIPT_RESOURCE]
+}
+
+/**
+ * A resource whose name reads as a Guild receipt: it has both "guild" and
+ * "receipt" in it ("Guild Marketplace Task Receipt", "Guild Marketplace Claim
+ * Receipt", "Guild NFT Swap Listing Receipt" — the names the blueprints give).
+ * The address list above only knows the CURRENT components' receipts; one from
+ * another instance of either blueprint has a different address and the same
+ * name (mainnet listing 4 was one). A name is issuer-written, so this can
+ * also catch a stranger's collection that uses those words: it is refused too.
+ */
+export function isGuildReceiptName(name: string | null | undefined): boolean {
+  if (typeof name !== "string") return false
+  const n = name.normalize("NFKD").replace(/[^\p{L}]/gu, "").toLowerCase()
+  return n.includes("guild") && n.includes("receipt")
+}
+
+/**
+ * Is this resource a Guild receipt — by address (`receiptResources`), or by
+ * `name` when the caller has the resource's metadata name? Fails closed on an
+ * empty or malformed list: "no receipt resources known" is not "not a
+ * receipt".
+ */
+export function isReceiptAsset(
+  assetResource: string,
+  receiptResources: readonly string[] | null | undefined,
+  name?: string | null,
+): boolean {
+  if (!receiptResources || receiptResources.length === 0 || !receiptResources.every(isResourceAddress)) return true
+  return receiptResources.includes(assetResource) || isGuildReceiptName(name)
+}
+
 /** What the list form knows about an ask's resource, read LIVE from the
  *  Gateway (readResourceDisplay) — never assumed. */
-export type AskResourceKind = { kind: "fungible"; divisibility: number } | { kind: "nonFungible" }
+export type AskResourceKind = ({ kind: "fungible"; divisibility: number } | { kind: "nonFungible" }) & {
+  /** Whether the ask resource's issuer could pull or freeze what the buyer
+   *  pays; see IssuerControl. Anything but "locked" blocks the ask. */
+  control: IssuerControl
+  /** Set when a fungible's name or symbol matches a common token whose
+   *  address it does not have (common-tokens.ts lookAlikeOf): that token's
+   *  symbol. Blocks the ask. */
+  lookAlikeOf?: string | null
+  /** The resource is one of the Guild's receipts (guildReceiptResources): a
+   *  receipt taken as payment can have nothing left behind it. Blocks the ask. */
+  receipt?: boolean
+}
 
 /**
  * The blueprint's `list` checks, run before the wallet opens so a typo costs
@@ -300,6 +422,13 @@ export type AskResourceKind = { kind: "fungible"; divisibility: number } | { kin
  * listing nobody can ever fill: a non-fungible ask naming a fungible resource
  * (`fill` takes the payment `as_non_fungible`), and an ask for the very NFT
  * being listed. An unknown resource (`kindOf` → null) is "bad_resource".
+ *
+ * Three more are about the seller's proceeds, not the chain's rules: a Guild
+ * receipt ("receipt_ask"), a token that imitates a common token
+ * ("look_alike"), and a resource whose issuer can recall it, freeze it or
+ * restrict its transfers, or whose roles could not be read ("issuer_*") — the
+ * payment sits in the component until withdrawn, then in the seller's account,
+ * and its issuer could take or lock it in either place.
  */
 export function askProblems(
   asks: SwapAsk[],
@@ -310,14 +439,20 @@ export function askProblems(
     if (!isResourceAddress(ask.resource)) return "bad_resource"
     const info = kindOf(ask.resource)
     if (!info) return "bad_resource"
-    if (ask.kind === "fungible") {
-      if (info.kind !== "fungible") return "not_fungible"
+    if (ask.kind === "fungible" && info.kind !== "fungible") return "not_fungible"
+    if (ask.kind === "nonFungible" && info.kind !== "nonFungible") return "not_non_fungible"
+    if (info.receipt) return "receipt_ask"
+    if (info.lookAlikeOf) return "look_alike"
+    if (info.control === "recallable") return "issuer_recall"
+    if (info.control === "freezable") return "issuer_freeze"
+    if (info.control === "restrictable") return "issuer_transfer"
+    if (info.control !== "locked") return "issuer_unknown"
+    if (ask.kind === "fungible" && info.kind === "fungible") {
       if (!isDecimalString(ask.amount)) return "bad_amount"
       if (normalizeDecimal(ask.amount) === "0") return "zero_amount"
       const frac = normalizeDecimal(ask.amount).split(".")[1] ?? ""
       if (frac.length > info.divisibility) return "too_precise"
-    } else {
-      if (info.kind !== "nonFungible") return "not_non_fungible"
+    } else if (ask.kind === "nonFungible") {
       if (!isLocalId(ask.id)) return "bad_id"
       if (asset && ask.resource === asset.resource && canonicalLocalId(ask.id) === canonicalLocalId(asset.id)) {
         return "same_as_asset"

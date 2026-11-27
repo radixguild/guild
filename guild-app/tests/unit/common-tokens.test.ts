@@ -13,7 +13,7 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { COMMON_TOKENS, commonTokenFor } from "@/lib/common-tokens"
+import { COMMON_TOKENS, commonTokenFor, lookAlikeOf } from "@/lib/common-tokens"
 import { XRD_ADDRESS } from "@/lib/radix"
 import { isResourceAddress } from "@/lib/nft-swap"
 
@@ -78,4 +78,72 @@ describe.skipIf(!process.env.GUILD_LIVE_GATEWAY)("COMMON_TOKENS against mainnet 
     )
     expect(compare(read)).toEqual([])
   }, 20_000)
+})
+
+describe("lookAlikeOf — a token whose name or symbol imitates a common token", () => {
+  const OTHER = "resource_rdx1t4someothertokenxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  const HUSDC = COMMON_TOKENS.find((t) => t.symbol === "hUSDC")!
+
+  it("a common token is never a look-alike of itself or of another", () => {
+    for (const t of COMMON_TOKENS) expect(lookAlikeOf(t.address, t)).toBeNull()
+  })
+  it("the same symbol or name at another address is a look-alike", () => {
+    expect(lookAlikeOf(OTHER, { symbol: "XRD", name: "Totally Radix" })?.symbol).toBe("XRD")
+    expect(lookAlikeOf(OTHER, { symbol: "RDX", name: "Radix" })?.symbol).toBe("XRD")
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "Hyperlane USD Coin" })?.address).toBe(HUSDC.address)
+    // A symbol that is a common token's NAME, and the other way round.
+    expect(lookAlikeOf(OTHER, { symbol: "RADIX", name: null })?.symbol).toBe("XRD")
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "husdc" })?.symbol).toBe("hUSDC")
+  })
+  it("case, spacing, punctuation, accents, full-width forms and the usual look-alike letters do not hide it", () => {
+    for (const symbol of ["xrd", " X R D ", "X-R-D", "$XRD", "ＸＲＤ", "X\u200bRD", "ХRD" /* Cyrillic Х */, "ΧRD" /* Greek Χ */, "X̂RD"]) {
+      expect(lookAlikeOf(OTHER, { symbol, name: "x" })?.symbol, symbol).toBe("XRD")
+    }
+    expect(lookAlikeOf(OTHER, { symbol: "0CI", name: null })?.symbol).toBe("OCI")
+  })
+  it("invisible characters do not hide it: zero-width ones and the blank 'letters'", () => {
+    // U+3164 / U+FFA0 / U+115F / U+1160 are Hangul fillers: letters by category, blank on screen.
+    for (const symbol of ["XRD\u3164", "\uFFA0XRD", "X\u115FR\u1160D", "XRD\u2060", "XRD\uFEFF", "X\u00ADRD", "XRD\u{E0020}"]) {
+      expect(lookAlikeOf(OTHER, { symbol, name: null })?.symbol, JSON.stringify(symbol)).toBe("XRD")
+    }
+  })
+  it("small capitals and stand-in letters this file has no mapping for are still caught", () => {
+    expect(lookAlikeOf(OTHER, { symbol: "xʀᴅ", name: null })?.symbol).toBe("XRD")
+    // Cherokee Ꭱ and Ꭰ draw like R and D; neither is in the map.
+    expect(lookAlikeOf(OTHER, { symbol: "XᎡD", name: null })?.symbol).toBe("XRD")
+    // Every letter a stand-in, all from Latin-like scripts: still claimed.
+    expect(lookAlikeOf(OTHER, { symbol: "XᎡᎠ", name: null })?.symbol).toBe("XRD")
+    expect(lookAlikeOf(OTHER, { symbol: "ꓫꓣꓓ", name: null })).not.toBeNull() // Lisu
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "RadᎥx" })?.symbol).toBe("XRD")
+  })
+  it("plain ASCII stand-ins: l / I / 1 for each other, VV for W, rn for m", () => {
+    expect(lookAlikeOf(OTHER, { symbol: "OCl", name: null })?.symbol).toBe("OCI")
+    expect(lookAlikeOf(OTHER, { symbol: "OC1", name: null })?.symbol).toBe("OCI")
+    expect(lookAlikeOf(OTHER, { symbol: "oci", name: null })?.symbol).toBe("OCI")
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "DefiPIaza" })?.symbol).toBe("DFP2")
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "AstroIescent" })?.symbol).toBe("ASTRL")
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "HyperIane USD Coin" })?.symbol).toBe("hUSDC")
+    expect(lookAlikeOf(OTHER, { symbol: "VVOVVO", name: null })?.symbol).toBe("WOWO")
+    expect(lookAlikeOf(OTHER, { symbol: "VVEFT", name: null })?.symbol).toBe("WEFT")
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "Weft Finance".replace("n", "ri") })).toBeNull()
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "Hyperlane USD Coin".replace("m", "rn") })?.symbol).toBe("hUSDC")
+  })
+  it("letter-shaped symbols, trademark marks, modifier letters and lettered emoji", () => {
+    for (const symbol of ["×RD", "✕RD", "XRD™", "XRD®", "XRDˈ", "🇽🇷🇩", "🆇🆁🅳", "🅇🅁🄳", "🅧🅡🅓"]) {
+      expect(lookAlikeOf(OTHER, { symbol, name: null })?.symbol, symbol).toBe("XRD")
+    }
+    expect(lookAlikeOf(OTHER, { symbol: "OC|", name: null })?.symbol).toBe("OCI")
+  })
+  it("a symbol in another script is not a look-alike of every token of its length", () => {
+    expect(lookAlikeOf(OTHER, { symbol: "日本語", name: "日本語" })).toBeNull()
+    expect(lookAlikeOf(OTHER, { symbol: "コイン", name: null })).toBeNull()
+    expect(lookAlikeOf(OTHER, { symbol: "XRP", name: "Ripple" })).toBeNull()
+  })
+  it("a token that matches none is not a look-alike (live listing 9's ask, CIGGIE)", () => {
+    expect(lookAlikeOf(OTHER, { symbol: "CIGGIE", name: "Ciggie" })).toBeNull()
+    expect(lookAlikeOf(OTHER, { symbol: "XRDX", name: "Radix Two" })).toBeNull()
+    expect(lookAlikeOf(OTHER, { symbol: "USDC", name: "USD Coin" })).toBeNull()
+    expect(lookAlikeOf(OTHER, { symbol: null, name: null })).toBeNull()
+    expect(lookAlikeOf(OTHER, null)).toBeNull()
+  })
 })
