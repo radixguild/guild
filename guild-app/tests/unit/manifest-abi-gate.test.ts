@@ -174,9 +174,9 @@ const SWAP_GATED: Record<string, () => string> = {
       { kind: "nonFungible", resource: RECEIPT_RES, id: "#2#" },
     ], 1790114665, LIST_GUARD),
   fillSwapManifest: () =>
-    manifests.fillSwapManifest(SWAP, WORKER, 1, 0, { kind: "fungible", resource: XRD_RES, amount: "5000" }, BADGE_RES, "#1#"),
+    manifests.fillSwapManifest(SWAP, WORKER, 1, 0, { kind: "fungible", resource: XRD_RES, amount: "5000" }, BADGE_RES, "#1#", LIST_GUARD),
   fillSwapManifestNonFungible: () =>
-    manifests.fillSwapManifest(SWAP, WORKER, 1, 1, { kind: "nonFungible", resource: RECEIPT_RES, id: "#2#" }, BADGE_RES, "#1#"),
+    manifests.fillSwapManifest(SWAP, WORKER, 1, 1, { kind: "nonFungible", resource: RECEIPT_RES, id: "#2#" }, BADGE_RES, "#1#", LIST_GUARD),
   cancelSwapManifest: () => manifests.cancelSwapManifest(SWAP, POSTER, RECEIPT_RES, 1),
   withdrawSwapProceedsManifest: () => manifests.withdrawSwapProceedsManifest(SWAP, POSTER, RECEIPT_RES, 1),
   extendSwapListingManifest: () => manifests.extendSwapListingManifest(SWAP, POSTER, RECEIPT_RES, 1),

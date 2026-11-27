@@ -282,7 +282,9 @@ export type AskProblem =
   | "look_alike"
   | "issuer_recall"
   | "issuer_freeze"
+  | "issuer_transfer"
   | "issuer_unknown"
+  | "receipt_ask"
 
 /** The problems that are about the ask's RESOURCE rather than what was typed
  *  beside it — shown as soon as the resource is read, amount or no amount. */
@@ -290,7 +292,9 @@ export const ASK_RESOURCE_PROBLEMS: ReadonlySet<AskProblem> = new Set<AskProblem
   "look_alike",
   "issuer_recall",
   "issuer_freeze",
+  "issuer_transfer",
   "issuer_unknown",
+  "receipt_ask",
 ])
 
 /**
@@ -314,23 +318,43 @@ export type RecallState = "locked-deny" | "recallable" | "unknown"
 export type FreezeState = "locked-deny" | "freezable" | "unknown"
 
 /**
- * Recall and freeze together — the one state the swap pages gate on.
- *  - "locked":     recall AND freeze are both read and both locked-deny.
- *  - "recallable": the issuer can recall it (or can still grant that).
- *  - "freezable":  the issuer can freeze it (or can still grant that).
- *  - "unknown":    either could not be read, or the read is missing.
+ * Whether the resource moves freely and always will, read from `withdrawer` /
+ * `withdrawer_updater` and `depositor` / `depositor_updater`. Those rules bind
+ * every vault of the resource, the swap component's included, so an issuer
+ * who can change them can strand a listed NFT or a seller's proceeds without
+ * recalling or freezing anything.
+ *  - "locked-open":  withdraw and deposit are both AllowAll and both updaters
+ *                    are DenyAll.
+ *  - "restrictable": any of the four is some other readable rule (transfers
+ *                    are restricted now, or the issuer can restrict them).
+ *  - "unknown":      any of the four was absent or unreadable.
+ */
+export type TransferState = "locked-open" | "restrictable" | "unknown"
+
+/**
+ * Recall, freeze and transfer rules together — the one state the swap pages
+ * gate on.
+ *  - "locked":       all three are read, recall and freeze are locked-deny and
+ *                    transfers are locked-open.
+ *  - "recallable":   the issuer can recall it (or can still grant that).
+ *  - "freezable":    the issuer can freeze it (or can still grant that).
+ *  - "restrictable": the issuer restricts transfers of it (or still can).
+ *  - "unknown":      one of them could not be read, or the read is missing.
  * Only "locked" may be listed, filled or asked for through this app.
  */
-export type IssuerControl = "locked" | "recallable" | "freezable" | "unknown"
+export type IssuerControl = "locked" | "recallable" | "freezable" | "restrictable" | "unknown"
 
-/** Fails closed: a resource missing from the read, or a read that carries no
- *  `freeze` (an older cached shape), is "unknown". */
+/** Fails closed: a resource missing from the read, or a read that lacks any
+ *  of the three fields (an older cached shape), is "unknown". */
 export function issuerControl(
-  r: { recall?: RecallState; freeze?: FreezeState } | null | undefined,
+  r: { recall?: RecallState; freeze?: FreezeState; transfer?: TransferState } | null | undefined,
 ): IssuerControl {
   if (r?.recall === "recallable") return "recallable"
   if (r?.freeze === "freezable") return "freezable"
-  return r?.recall === "locked-deny" && r?.freeze === "locked-deny" ? "locked" : "unknown"
+  if (r?.transfer === "restrictable") return "restrictable"
+  return r?.recall === "locked-deny" && r?.freeze === "locked-deny" && r?.transfer === "locked-open"
+    ? "locked"
+    : "unknown"
 }
 
 /**
@@ -363,6 +387,9 @@ export type AskResourceKind = ({ kind: "fungible"; divisibility: number } | { ki
    *  address it does not have (common-tokens.ts lookAlikeOf): that token's
    *  symbol. Blocks the ask. */
   lookAlikeOf?: string | null
+  /** The resource is one of the Guild's receipts (guildReceiptResources): a
+   *  receipt taken as payment can have nothing left behind it. Blocks the ask. */
+  receipt?: boolean
 }
 
 /**
@@ -373,9 +400,10 @@ export type AskResourceKind = ({ kind: "fungible"; divisibility: number } | { ki
  * (`fill` takes the payment `as_non_fungible`), and an ask for the very NFT
  * being listed. An unknown resource (`kindOf` → null) is "bad_resource".
  *
- * Two more are about the seller's proceeds, not the chain's rules: a token
- * that imitates a common token ("look_alike"), and a resource whose issuer can
- * recall or freeze it, or whose roles could not be read ("issuer_*") — the
+ * Three more are about the seller's proceeds, not the chain's rules: a Guild
+ * receipt ("receipt_ask"), a token that imitates a common token
+ * ("look_alike"), and a resource whose issuer can recall it, freeze it or
+ * restrict its transfers, or whose roles could not be read ("issuer_*") — the
  * payment sits in the component until withdrawn, then in the seller's account,
  * and its issuer could take or lock it in either place.
  */
@@ -390,9 +418,11 @@ export function askProblems(
     if (!info) return "bad_resource"
     if (ask.kind === "fungible" && info.kind !== "fungible") return "not_fungible"
     if (ask.kind === "nonFungible" && info.kind !== "nonFungible") return "not_non_fungible"
+    if (info.receipt) return "receipt_ask"
     if (info.lookAlikeOf) return "look_alike"
     if (info.control === "recallable") return "issuer_recall"
     if (info.control === "freezable") return "issuer_freeze"
+    if (info.control === "restrictable") return "issuer_transfer"
     if (info.control !== "locked") return "issuer_unknown"
     if (ask.kind === "fungible" && info.kind === "fungible") {
       if (!isDecimalString(ask.amount)) return "bad_amount"

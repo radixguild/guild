@@ -21,6 +21,7 @@ import {
   readSwapListingsById,
   freezeRule,
   recallRule,
+  transferRule,
 } from "@/lib/nft-swap-gateway"
 import { __resetSwapCachesForTests, DETAIL_ASK_DISPLAY_CAP, getSwapBoard, getSwapDetail } from "@/lib/nft-swap-service"
 import { GET as getBoardRoute } from "@/app/api/v1/swaps/route"
@@ -1026,5 +1027,49 @@ describe("freezeRule — the issuer's freeze roles, read the same way as recall"
     const read = (await readResourceDisplay([NFT, XRD]))!
     expect(read.get(NFT)).toMatchObject({ recall: "locked-deny", freeze: "locked-deny" })
     expect(read.get(XRD)).toMatchObject({ kind: "fungible", recall: "locked-deny", freeze: "freezable" })
+  })
+})
+
+describe("transferRule — withdraw and deposit open, and locked that way", () => {
+  const role = (name: string, rule: string, resolution = "Explicit") => ({
+    role_key: { module: "Main", name },
+    assignment: resolution === "Explicit" ? { explicit_rule: { type: rule }, resolution } : { resolution },
+  })
+  const OPEN = { withdrawer: "AllowAll", withdrawer_updater: "DenyAll", depositor: "AllowAll", depositor_updater: "DenyAll" }
+  const details = (over: Record<string, string | null | [string, string]> = {}) => ({
+    type: "NonFungibleResource",
+    role_assignments: {
+      entries: Object.entries({ ...OPEN, ...over }).flatMap(([name, rule]) =>
+        rule === null ? [] : [Array.isArray(rule) ? role(name, rule[0], rule[1]) : role(name, rule)],
+      ),
+    },
+  })
+
+  it("AllowAll withdraw and deposit with DenyAll updaters (live listing 9's NFT and its ask token) is locked-open", () => {
+    expect(transferRule(details())).toBe("locked-open")
+  })
+  it.each(["withdrawer", "depositor"])("a %s that is not AllowAll is restrictable", (name) => {
+    expect(transferRule(details({ [name]: "Protected" }))).toBe("restrictable")
+    expect(transferRule(details({ [name]: "DenyAll" }))).toBe("restrictable")
+    expect(transferRule(details({ [name]: ["", "Owner"] }))).toBe("restrictable")
+  })
+  it.each(["withdrawer_updater", "depositor_updater"])("a %s that is not DenyAll is restrictable (the issuer could close transfers later)", (name) => {
+    expect(transferRule(details({ [name]: "Protected" }))).toBe("restrictable")
+    expect(transferRule(details({ [name]: "AllowAll" }))).toBe("restrictable")
+    expect(transferRule(details({ [name]: ["", "Owner"] }))).toBe("restrictable")
+  })
+  it.each(Object.keys(OPEN))("an absent or unreadable %s is unknown", (name) => {
+    expect(transferRule(details({ [name]: null }))).toBe("unknown")
+    expect(transferRule(details({ [name]: ["", "Weird"] }))).toBe("unknown")
+  })
+  it("no role assignments at all is unknown", () => {
+    expect(transferRule(undefined)).toBe("unknown")
+    expect(transferRule({ role_assignments: {} })).toBe("unknown")
+  })
+  it("readResourceDisplay carries it", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      ok({ items: [{ address: NFT, metadata: { items: [] }, details: details({ withdrawer_updater: "Protected" }) }] }),
+    )
+    expect((await readResourceDisplay([NFT]))!.get(NFT)).toMatchObject({ withdraw: "open", transfer: "restrictable" })
   })
 })

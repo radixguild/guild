@@ -51,7 +51,7 @@ describe("the builders reproduce the proving run", () => {
 
   it("fill 1 — txid_rdx1qma458rp…wuntq, plus the assertion on listing 1's NFT", () => {
     // Listing 1 listed THROWAWAY_NFT #1# (list 1 above).
-    const m = fillSwapManifest(SWAP, POSTER_2, 1, 0, { kind: "fungible", resource: XRD, amount: "1" }, THROWAWAY_NFT, "#1#")
+    const m = fillSwapManifest(SWAP, POSTER_2, 1, 0, { kind: "fungible", resource: XRD, amount: "1" }, THROWAWAY_NFT, "#1#", LIST_GUARD)
     const run = proven("proving-run-fill-1.rtm")
     const deposit = run.lastIndexOf("CALL_METHOD")
     expect(run.slice(deposit)).toContain('"try_deposit_batch_or_abort"')
@@ -84,7 +84,7 @@ describe("shapes the proving run did not exercise", () => {
   })
 
   it("a non-fungible fill withdraws exactly that one id and passes it as the payment bucket", () => {
-    const m = fillSwapManifest(SWAP, POSTER_2, 9, 1, NFT_ASK, THROWAWAY_NFT, "#4#")
+    const m = fillSwapManifest(SWAP, POSTER_2, 9, 1, NFT_ASK, THROWAWAY_NFT, "#4#", LIST_GUARD)
     expect(norm(m)).toBe(
       norm(`CALL_METHOD Address("${POSTER_2}") "withdraw_non_fungibles" Address("${RECEIPT}")
         Array<NonFungibleLocalId>(NonFungibleLocalId("<rare_7>")) ;
@@ -102,7 +102,7 @@ describe("shapes the proving run did not exercise", () => {
     // the listed id, and the payment id has already left in Bucket("payment").
     const sameCollection = { kind: "nonFungible" as const, resource: THROWAWAY_NFT, id: "#1#" }
     for (const ask of [{ kind: "fungible" as const, resource: XRD, amount: "5000.25" }, NFT_ASK, sameCollection]) {
-      const m = norm(fillSwapManifest(SWAP, POSTER_2, 9, 0, ask, THROWAWAY_NFT, "#2#"))
+      const m = norm(fillSwapManifest(SWAP, POSTER_2, 9, 0, ask, THROWAWAY_NFT, "#2#", LIST_GUARD))
       const fill = m.indexOf(norm(`Address("${SWAP}") "fill"`))
       const check = m.indexOf(norm(assertListed(THROWAWAY_NFT, "#2#")))
       const deposit = m.indexOf(norm(`"try_deposit_batch_or_abort"`))
@@ -172,7 +172,7 @@ describe("every builder compiles in the real Radix Engine Toolkit", () => {
   })
 
   it("non-fungible fill: fill(u64, u8, Bucket) with exactly that one id, then the listed-NFT assertion", async () => {
-    const ins = await compile(fillSwapManifest(SWAP, POSTER_2, 9, 1, NFT_ASK, THROWAWAY_NFT, "#4#"))
+    const ins = await compile(fillSwapManifest(SWAP, POSTER_2, 9, 1, NFT_ASK, THROWAWAY_NFT, "#4#", LIST_GUARD))
     expect(outline(ins)).toEqual([
       "CallMethod withdraw_non_fungibles",
       "TakeNonFungiblesFromWorktop",
@@ -187,7 +187,7 @@ describe("every builder compiles in the real Radix Engine Toolkit", () => {
   })
 
   it("fungible fill compiles with the assertion too", async () => {
-    const ins = await compile(fillSwapManifest(SWAP, POSTER_2, 1, 0, XRD_ASK, THROWAWAY_NFT, "#1#"))
+    const ins = await compile(fillSwapManifest(SWAP, POSTER_2, 1, 0, XRD_ASK, THROWAWAY_NFT, "#1#", LIST_GUARD))
     expect(outline(ins)).toEqual([
       "CallMethod withdraw",
       "TakeFromWorktop",
@@ -219,7 +219,7 @@ describe("every builder compiles in the real Radix Engine Toolkit", () => {
   })
 
   it("the gate has teeth: a bucket name used but never declared does not compile", async () => {
-    const m = fillSwapManifest(SWAP, POSTER_2, 9, 1, NFT_ASK, THROWAWAY_NFT, "#4#").replace(/Bucket\("payment"\)/, 'Bucket("pay")')
+    const m = fillSwapManifest(SWAP, POSTER_2, 9, 1, NFT_ASK, THROWAWAY_NFT, "#4#", LIST_GUARD).replace(/Bucket\("payment"\)/, 'Bucket("pay")')
     await expect(compile(m)).rejects.toThrow(/UndefinedBucket/)
   })
 })
@@ -235,7 +235,7 @@ describe("the builders refuse what the chain would refuse, or worse, accept", ()
     expect(() =>
       listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#1#", [{ ...ok, amount }], 1790114665, LIST_GUARD),
     ).toThrow(/Invalid asks\[0\]\.amount/)
-    expect(() => fillSwapManifest(SWAP, POSTER_2, 1, 0, { ...ok, amount }, THROWAWAY_NFT, "#1#")).toThrow(/Invalid ask\.amount/)
+    expect(() => fillSwapManifest(SWAP, POSTER_2, 1, 0, { ...ok, amount }, THROWAWAY_NFT, "#1#", LIST_GUARD)).toThrow(/Invalid ask\.amount/)
   })
 
   it("an injected address or local id never reaches the manifest text", () => {
@@ -243,53 +243,56 @@ describe("the builders refuse what the chain would refuse, or worse, accept", ()
     expect(() => listSwapManifest(SWAP, GUILD_ADMIN_2, evil, "#1#", [ok], 1790114665, LIST_GUARD)).toThrow(/Invalid resource_rdx/)
     expect(() => listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, '#1#")', [ok], 1790114665, LIST_GUARD)).toThrow(/assetId/)
     expect(() =>
-      fillSwapManifest(SWAP, POSTER_2, 1, 0, { kind: "nonFungible", resource: RECEIPT, id: "<a>\n;" }, THROWAWAY_NFT, "#1#"),
+      fillSwapManifest(SWAP, POSTER_2, 1, 0, { kind: "nonFungible", resource: RECEIPT, id: "<a>\n;" }, THROWAWAY_NFT, "#1#", LIST_GUARD),
     ).toThrow(/ask\.id/)
-    expect(() => fillSwapManifest(SWAP, POSTER_2, 1, 0, ok, evil, "#1#")).toThrow(/Invalid resource_rdx/)
-    expect(() => fillSwapManifest(SWAP, POSTER_2, 1, 0, ok, THROWAWAY_NFT, '#1#")')).toThrow(/assetId/)
+    expect(() => fillSwapManifest(SWAP, POSTER_2, 1, 0, ok, evil, "#1#", LIST_GUARD)).toThrow(/Invalid resource_rdx/)
+    expect(() => fillSwapManifest(SWAP, POSTER_2, 1, 0, ok, THROWAWAY_NFT, '#1#")', LIST_GUARD)).toThrow(/assetId/)
   })
 
   it("a fill cannot be built without the listed NFT, so the assertion cannot be left out", () => {
     const build = fillSwapManifest as unknown as (...a: unknown[]) => string
-    expect(() => build(SWAP, POSTER_2, 1, 0, ok)).toThrow(/Invalid resource_rdx/)
-    expect(() => build(SWAP, POSTER_2, 1, 0, ok, THROWAWAY_NFT)).toThrow(/assetId/)
-    expect(() => build(SWAP, POSTER_2, 1, 0, ok, THROWAWAY_NFT, "")).toThrow(/assetId/)
+    expect(() => build(SWAP, POSTER_2, 1, 0, ok, undefined, undefined, LIST_GUARD)).toThrow(/Invalid resource_rdx/)
+    expect(() => build(SWAP, POSTER_2, 1, 0, ok, THROWAWAY_NFT, undefined, LIST_GUARD)).toThrow(/assetId/)
+    expect(() => build(SWAP, POSTER_2, 1, 0, ok, THROWAWAY_NFT, "", LIST_GUARD)).toThrow(/assetId/)
   })
 
   it("listing, alternative and expiry numbers are bounded", () => {
-    expect(() => fillSwapManifest(SWAP, POSTER_2, 0, 0, ok, THROWAWAY_NFT, "#1#")).toThrow(/listingId/)
-    expect(() => fillSwapManifest(SWAP, POSTER_2, 1, 256, ok, THROWAWAY_NFT, "#1#")).toThrow(/alternative/)
-    expect(() => fillSwapManifest(SWAP, POSTER_2, 1, -1, ok, THROWAWAY_NFT, "#1#")).toThrow(/alternative/)
-    expect(() => fillSwapManifest(SWAP, POSTER_2, 1, 0.5, ok, THROWAWAY_NFT, "#1#")).toThrow(/alternative/)
+    expect(() => fillSwapManifest(SWAP, POSTER_2, 0, 0, ok, THROWAWAY_NFT, "#1#", LIST_GUARD)).toThrow(/listingId/)
+    expect(() => fillSwapManifest(SWAP, POSTER_2, 1, 256, ok, THROWAWAY_NFT, "#1#", LIST_GUARD)).toThrow(/alternative/)
+    expect(() => fillSwapManifest(SWAP, POSTER_2, 1, -1, ok, THROWAWAY_NFT, "#1#", LIST_GUARD)).toThrow(/alternative/)
+    expect(() => fillSwapManifest(SWAP, POSTER_2, 1, 0.5, ok, THROWAWAY_NFT, "#1#", LIST_GUARD)).toThrow(/alternative/)
     expect(() => listSwapManifest(SWAP, GUILD_ADMIN_2, THROWAWAY_NFT, "#1#", [ok], 0, LIST_GUARD)).toThrow(/expiresAt/)
     expect(() => cancelSwapManifest(SWAP, GUILD_ADMIN_2, RECEIPT, 1.5)).toThrow(/listingId/)
   })
 })
 
-describe("listSwapManifest — asset guard", () => {
-  const ok = { kind: "fungible" as const, resource: XRD, amount: "1" }
-  const build = (guard: unknown, asset = THROWAWAY_NFT) =>
-    listSwapManifest(SWAP, GUILD_ADMIN_2, asset, "#1#", [ok], 1790114665, guard as typeof LIST_GUARD)
-
-  it.each(["recallable", "freezable", "unknown", undefined, "locked-deny"])(
+// Both builders make the same check on the listing's ASSET, so neither a
+// stale form nor a stale listing page can put a manifest in front of a wallet.
+describe.each([
+  ["list", (guard: unknown, asset = THROWAWAY_NFT) =>
+    listSwapManifest(SWAP, GUILD_ADMIN_2, asset, "#1#", [{ kind: "fungible", resource: XRD, amount: "1" }], 1790114665, guard as typeof LIST_GUARD)],
+  ["fill", (guard: unknown, asset = THROWAWAY_NFT) =>
+    fillSwapManifest(SWAP, POSTER_2, 1, 0, { kind: "fungible", resource: XRD, amount: "1" }, asset, "#1#", guard as typeof LIST_GUARD)],
+] as const)("%sSwapManifest — asset guard", (verb, build) => {
+  it.each(["recallable", "freezable", "restrictable", "unknown", undefined, "locked-deny"])(
     "refuses to build for issuer control %s",
     (control) => {
-      expect(() => build({ control, receiptResources: [RECEIPT] })).toThrow(/Cannot list: this collection's issuer/)
+      expect(() => build({ control, receiptResources: [RECEIPT] })).toThrow(new RegExp(`Cannot ${verb}: this collection's issuer`))
     },
   )
   it("refuses a missing guard", () => {
-    expect(() => build(undefined)).toThrow(/Cannot list/)
+    expect(() => build(undefined)).toThrow(new RegExp(`Cannot ${verb}`))
   })
   it("refuses the swap's own listing receipt, and any other receipt resource passed, as the asset", () => {
-    expect(() => build(LIST_GUARD, RECEIPT)).toThrow(/Cannot list: a Guild receipt/)
-    expect(() => build({ control: "locked", receiptResources: [RECEIPT, THROWAWAY_NFT] })).toThrow(/Cannot list: a Guild receipt/)
+    expect(() => build(LIST_GUARD, RECEIPT)).toThrow(new RegExp(`Cannot ${verb}: a Guild receipt`))
+    expect(() => build({ control: "locked", receiptResources: [RECEIPT, THROWAWAY_NFT] })).toThrow(/a Guild receipt/)
   })
   it("refuses when the receipt resources are not known (empty, missing or malformed)", () => {
-    expect(() => build({ control: "locked", receiptResources: [] })).toThrow(/Cannot list: a Guild receipt/)
-    expect(() => build({ control: "locked" })).toThrow(/Cannot list: a Guild receipt/)
-    expect(() => build({ control: "locked", receiptResources: [undefined] })).toThrow(/Cannot list: a Guild receipt/)
+    expect(() => build({ control: "locked", receiptResources: [] })).toThrow(/a Guild receipt/)
+    expect(() => build({ control: "locked" })).toThrow(/a Guild receipt/)
+    expect(() => build({ control: "locked", receiptResources: [undefined] })).toThrow(/a Guild receipt/)
   })
   it("builds for a locked asset that is not a receipt", () => {
-    expect(build(LIST_GUARD)).toContain('"list"')
+    expect(build(LIST_GUARD)).toContain(`"${verb}"`)
   })
 })

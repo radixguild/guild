@@ -311,22 +311,26 @@ describe("formatLocalId — the four Radix local-id forms, for people", () => {
 
 // ── 28 Nov 2026: freeze, ask-resource safety, receipts as assets ─────────────
 
-describe("issuerControl — recall and freeze as one state", () => {
-  it("is locked only when both are read and both locked-deny (the shape of live listing 9's two resources)", () => {
-    expect(issuerControl({ recall: "locked-deny", freeze: "locked-deny" })).toBe("locked")
+describe("issuerControl — recall, freeze and transfer rules as one state", () => {
+  const L = { recall: "locked-deny", freeze: "locked-deny", transfer: "locked-open" } as const
+  it("is locked only when all three are read and locked (the shape of live listing 9's two resources)", () => {
+    expect(issuerControl(L)).toBe("locked")
   })
   it("names the power the issuer holds", () => {
-    expect(issuerControl({ recall: "recallable", freeze: "locked-deny" })).toBe("recallable")
-    expect(issuerControl({ recall: "locked-deny", freeze: "freezable" })).toBe("freezable")
-    expect(issuerControl({ recall: "recallable", freeze: "freezable" })).toBe("recallable")
-    expect(issuerControl({ recall: "unknown", freeze: "freezable" })).toBe("freezable")
-    expect(issuerControl({ recall: "recallable", freeze: "unknown" })).toBe("recallable")
+    expect(issuerControl({ ...L, recall: "recallable" })).toBe("recallable")
+    expect(issuerControl({ ...L, freeze: "freezable" })).toBe("freezable")
+    expect(issuerControl({ ...L, transfer: "restrictable" })).toBe("restrictable")
+    expect(issuerControl({ recall: "recallable", freeze: "freezable", transfer: "restrictable" })).toBe("recallable")
+    expect(issuerControl({ recall: "unknown", freeze: "freezable", transfer: "unknown" })).toBe("freezable")
+    expect(issuerControl({ recall: "unknown", freeze: "unknown", transfer: "restrictable" })).toBe("restrictable")
   })
-  it("fails closed: either unread, a read with no freeze, or no resource at all is unknown", () => {
-    expect(issuerControl({ recall: "locked-deny", freeze: "unknown" })).toBe("unknown")
-    expect(issuerControl({ recall: "unknown", freeze: "locked-deny" })).toBe("unknown")
-    expect(issuerControl({ recall: "locked-deny" })).toBe("unknown")
-    expect(issuerControl({ freeze: "locked-deny" })).toBe("unknown")
+  it("fails closed: any one unread, a read missing a field, or no resource at all is unknown", () => {
+    expect(issuerControl({ ...L, recall: "unknown" })).toBe("unknown")
+    expect(issuerControl({ ...L, freeze: "unknown" })).toBe("unknown")
+    expect(issuerControl({ ...L, transfer: "unknown" })).toBe("unknown")
+    expect(issuerControl({ recall: "locked-deny", freeze: "locked-deny" })).toBe("unknown")
+    expect(issuerControl({ recall: "locked-deny", transfer: "locked-open" })).toBe("unknown")
+    expect(issuerControl({ freeze: "locked-deny", transfer: "locked-open" })).toBe("unknown")
     expect(issuerControl({})).toBe("unknown")
     expect(issuerControl(undefined)).toBe("unknown")
     expect(issuerControl(null)).toBe("unknown")
@@ -346,6 +350,7 @@ describe("askProblems — the ask resource's issuer and look-alikes", () => {
   it.each([
     ["recallable", "issuer_recall"],
     ["freezable", "issuer_freeze"],
+    ["restrictable", "issuer_transfer"],
     ["unknown", "issuer_unknown"],
   ] as const)("an ask resource that is %s is blocked as %s, token or NFT", (control, problem) => {
     expect(one({ kind: "fungible", divisibility: 18, control }, amount(CIGGIE))).toBe(problem)
@@ -357,11 +362,15 @@ describe("askProblems — the ask resource's issuer and look-alikes", () => {
   it("a token that imitates a common token is blocked as a look-alike, even with locked roles", () => {
     expect(one({ kind: "fungible", divisibility: 18, control: "locked", lookAlikeOf: "XRD" }, amount(CIGGIE))).toBe("look_alike")
   })
+  it("a Guild receipt is blocked as an ask, token-shaped or NFT, whatever its roles", () => {
+    expect(one({ kind: "nonFungible", control: "locked", receipt: true }, nft(NFT))).toBe("receipt_ask")
+    expect(one({ kind: "nonFungible", control: "locked", receipt: false }, nft(NFT))).toBeNull()
+  })
   it("the resource problems show before anything is typed beside them; the kind mismatch still comes first", () => {
     expect(one({ kind: "fungible", divisibility: 18, control: "freezable" }, amount(CIGGIE, ""))).toBe("issuer_freeze")
     expect(one({ kind: "fungible", divisibility: 18, control: "locked", lookAlikeOf: "XRD" }, amount(CIGGIE, ""))).toBe("look_alike")
     expect(one({ kind: "nonFungible", control: "recallable" }, amount(NFT))).toBe("not_fungible")
-    for (const p of ["look_alike", "issuer_recall", "issuer_freeze", "issuer_unknown"] as const) {
+    for (const p of ["look_alike", "issuer_recall", "issuer_freeze", "issuer_transfer", "issuer_unknown", "receipt_ask"] as const) {
       expect(ASK_RESOURCE_PROBLEMS.has(p)).toBe(true)
     }
     expect(ASK_RESOURCE_PROBLEMS.has("bad_amount")).toBe(false)

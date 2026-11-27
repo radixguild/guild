@@ -101,6 +101,24 @@ describe("lookAlikeOf — a token whose name or symbol imitates a common token",
     }
     expect(lookAlikeOf(OTHER, { symbol: "0CI", name: null })?.symbol).toBe("OCI")
   })
+  it("invisible characters do not hide it: zero-width ones and the blank 'letters'", () => {
+    // U+3164 / U+FFA0 / U+115F / U+1160 are Hangul fillers: letters by category, blank on screen.
+    for (const symbol of ["XRD\u3164", "\uFFA0XRD", "X\u115FR\u1160D", "XRD\u2060", "XRD\uFEFF", "X\u00ADRD", "XRD\u{E0020}"]) {
+      expect(lookAlikeOf(OTHER, { symbol, name: null })?.symbol, JSON.stringify(symbol)).toBe("XRD")
+    }
+  })
+  it("small capitals and stand-in letters this file has no mapping for are still caught", () => {
+    expect(lookAlikeOf(OTHER, { symbol: "xʀᴅ", name: null })?.symbol).toBe("XRD")
+    // Cherokee Ꭱ and Ꭰ draw like R and D; neither is in the map.
+    expect(lookAlikeOf(OTHER, { symbol: "XᎡD", name: null })?.symbol).toBe("XRD")
+    expect(lookAlikeOf(OTHER, { symbol: "XᎡᎠ", name: null })).toBeNull() // under half the letters match: not claimed
+    expect(lookAlikeOf(OTHER, { symbol: null, name: "RadᎥx" })?.symbol).toBe("XRD")
+  })
+  it("a symbol in another script is not a look-alike of every token of its length", () => {
+    expect(lookAlikeOf(OTHER, { symbol: "日本語", name: "日本語" })).toBeNull()
+    expect(lookAlikeOf(OTHER, { symbol: "コイン", name: null })).toBeNull()
+    expect(lookAlikeOf(OTHER, { symbol: "XRP", name: "Ripple" })).toBeNull()
+  })
   it("a token that matches none is not a look-alike (live listing 9's ask, CIGGIE)", () => {
     expect(lookAlikeOf(OTHER, { symbol: "CIGGIE", name: "Ciggie" })).toBeNull()
     expect(lookAlikeOf(OTHER, { symbol: "XRDX", name: "Radix Two" })).toBeNull()

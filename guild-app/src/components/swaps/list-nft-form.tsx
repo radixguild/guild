@@ -168,11 +168,14 @@ export function ListNftForm() {
       const d = askRes.get(r)
       if (!d) return null
       const control = issuerControl(d)
-      if (d.kind === "nonFungible") return { kind: "nonFungible", control }
+      // A known receipt list only: while it is unread nothing can be listed
+      // anyway (canList), and every ask would read as a receipt.
+      const receipt = receipts !== null && isReceiptAsset(r, receipts)
+      if (d.kind === "nonFungible") return { kind: "nonFungible", control, receipt }
       if (d.divisibility === null) return null
-      return { kind: "fungible", divisibility: d.divisibility, control, lookAlikeOf: lookAlikeOf(r, d)?.symbol ?? null }
+      return { kind: "fungible", divisibility: d.divisibility, control, receipt, lookAlikeOf: lookAlikeOf(r, d)?.symbol ?? null }
     },
-    [askRes],
+    [askRes, receipts],
   )
   const problems = askProblems(asks, kindOf, picked ?? undefined)
   // An unknown resource is only a problem once the Gateway has answered.
@@ -308,7 +311,9 @@ export function ListNftForm() {
                         ? LIST_COPY.recallable
                         : control === "freezable"
                           ? LIST_COPY.freezable
-                          : LIST_COPY.recallUnknown}
+                          : control === "restrictable"
+                            ? LIST_COPY.restrictable
+                            : LIST_COPY.recallUnknown}
                     </p>
                   )}
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
@@ -342,7 +347,6 @@ export function ListNftForm() {
           {holdings.state === "ok" && holdings.moreResources && (
             <p className="text-[11px] text-muted-foreground">The account holds more collections than are shown.</p>
           )}
-          {pickedRes?.withdraw === "restricted" && <p className="text-xs text-muted-foreground">{LIST_COPY.restricted}</p>}
         </CardContent>
       </Card>
 

@@ -41,24 +41,50 @@ export function commonTokenFor(address: string): CommonToken | null {
   return COMMON_TOKENS.find((t) => t.address === address) ?? null
 }
 
-// Letters from other scripts that draw like a Latin one, and the two digits
-// that do. A short list of the usual stand-ins, not the Unicode confusables
-// table: it catches the cheap imitation, and the full address beside every
-// token that is not on the list above is what covers the rest.
+// Letters from other scripts that draw like a Latin one, small capitals, and
+// the two digits that do. A short list of the usual stand-ins, not the Unicode
+// confusables table; `sameToTheEye` below treats every other non-ASCII letter
+// as a possible stand-in, and the address shown beside every token that is
+// not on the list above is what covers the rest.
 const DRAWS_LIKE: Record<string, string> = {
   а: "a", в: "b", с: "c", ԁ: "d", е: "e", һ: "h", н: "h", і: "i", ј: "j", к: "k", м: "m", о: "o", р: "p",
   ԛ: "q", ѕ: "s", т: "t", ѵ: "v", ԝ: "w", х: "x", у: "y",
   α: "a", β: "b", ε: "e", η: "h", ι: "i", κ: "k", μ: "m", ν: "v", ο: "o", ρ: "p", τ: "t", υ: "u", χ: "x",
+  ᴀ: "a", ʙ: "b", ᴄ: "c", ᴅ: "d", ᴇ: "e", ꜰ: "f", ɢ: "g", ʜ: "h", ɪ: "i", ᴊ: "j", ᴋ: "k", ʟ: "l", ᴍ: "m",
+  ɴ: "n", ᴏ: "o", ᴘ: "p", ʀ: "r", ꜱ: "s", ᴛ: "t", ᴜ: "u", ᴠ: "v", ᴡ: "w", ʏ: "y", ᴢ: "z",
   "0": "o", "1": "l",
 }
 
-/** A name or symbol reduced to what a reader sees: compatibility forms and
- *  accents folded, case dropped, spacing and punctuation removed, look-alike
- *  letters mapped to the Latin one. */
-function folded(s: string | null | undefined): string {
-  if (!s) return ""
-  const base = s.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")
-  return [...base].map((ch) => DRAWS_LIKE[ch] ?? ch).join("")
+/** A name or symbol reduced to what a reader sees: invisible characters
+ *  dropped (the zero-width ones and the blank "letters" such as the Hangul
+ *  fillers), compatibility forms and accents folded, case dropped, spacing and
+ *  punctuation removed, look-alike letters mapped to the Latin one. */
+function folded(s: string | null | undefined): string[] {
+  if (!s) return []
+  const base = s
+    .normalize("NFKD")
+    .replace(/[\p{M}\p{Default_Ignorable_Code_Point}]/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, "")
+  return [...base].map((ch) => DRAWS_LIKE[ch] ?? ch)
+}
+
+const ASCII = /^[a-z0-9]$/
+
+/**
+ * Does `mine` read as `theirs`? Equal after folding, or the same length with
+ * every position either equal or a non-ASCII letter this file has no mapping
+ * for (a stand-in it does not know), provided at least half the positions
+ * are equal — so an all-CJK symbol is not "the same" as every three-letter one.
+ */
+function sameToTheEye(mine: string[], theirs: string[]): boolean {
+  if (mine.length === 0 || mine.length !== theirs.length) return false
+  let equal = 0
+  for (let i = 0; i < mine.length; i++) {
+    if (mine[i] === theirs[i]) equal++
+    else if (ASCII.test(mine[i])) return false
+  }
+  return equal * 2 >= mine.length
 }
 
 /**
@@ -66,14 +92,19 @@ function folded(s: string | null | undefined): string {
  * the same as a common token's name or symbol, and its address is not that
  * token's. null for a common token itself and for anything that matches none.
  * Name and symbol are metadata the issuer writes; only the address says which
- * token it is.
+ * token it is. A heuristic: a miss here is why every token that is not on the
+ * list is shown with its address (swap-bits.tsx askText).
  */
 export function lookAlikeOf(
   address: string,
   meta: { name?: string | null; symbol?: string | null } | null | undefined,
 ): CommonToken | null {
   if (!meta || commonTokenFor(address)) return null
-  const mine = [folded(meta.symbol), folded(meta.name)].filter(Boolean)
+  const mine = [folded(meta.symbol), folded(meta.name)].filter((m) => m.length > 0)
   if (mine.length === 0) return null
-  return COMMON_TOKENS.find((t) => mine.includes(folded(t.symbol)) || mine.includes(folded(t.name))) ?? null
+  return (
+    COMMON_TOKENS.find((t) =>
+      [folded(t.symbol), folded(t.name)].some((theirs) => mine.some((m) => sameToTheEye(m, theirs))),
+    ) ?? null
+  )
 }

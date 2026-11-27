@@ -162,7 +162,8 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
   const own = tx.account === l.seller
   // Fill is offered only for an asset that is not a Guild receipt and whose
   // issuer is read as unable to recall or freeze it.
-  const receiptAsset = isReceiptAsset(l.assetResource, guildReceiptResources(view.receiptResource))
+  const receiptResources = guildReceiptResources(view.receiptResource)
+  const receiptAsset = isReceiptAsset(l.assetResource, receiptResources)
   const control = issuerControl(view.resources[l.assetResource])
   const noFill = receiptAsset || control !== "locked"
   const locked = tx.busy || behind || noFill
@@ -171,7 +172,10 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
     if (picked === null || behind || noFill) return
     const ask = l.asks[picked]
     const id = await tx.send((account) =>
-      fillSwapManifest(view.component, account, l.listingId, picked, ask, l.assetResource, l.assetId),
+      fillSwapManifest(view.component, account, l.listingId, picked, ask, l.assetResource, l.assetId, {
+        control,
+        receiptResources,
+      }),
     )
     if (id) {
       setPicked(null)
@@ -195,7 +199,9 @@ function FillPanel({ view, tx, behind, onDone }: PanelProps) {
                 ? DETAIL_COPY.recallNoFill
                 : control === "freezable"
                   ? DETAIL_COPY.freezeNoFill
-                  : DETAIL_COPY.recallNoFillUnknown}
+                  : control === "restrictable"
+                    ? DETAIL_COPY.transferNoFill
+                    : DETAIL_COPY.recallNoFillUnknown}
           </p>
         )}
         <ol className="space-y-2">

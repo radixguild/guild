@@ -1562,20 +1562,42 @@ function depositAllTo(account: string): string {
 }
 
 /**
+ * What the caller read about a listing's ASSET before building a `list` or a
+ * `fill`. Both builders refuse to build without it, so a stale or skipped page
+ * check cannot put a manifest in front of a wallet.
+ *  - `control`: the asset resource's IssuerControl (nft-swap.ts issuerControl
+ *    over readResourceDisplay). Anything but "locked" is refused: an NFT whose
+ *    issuer can recall it, freeze it or restrict its transfers, or whose roles
+ *    could not be read.
+ *  - `receiptResources`: the Guild's receipt resources (nft-swap.ts
+ *    guildReceiptResources, with the listing receipt read from the component).
+ *    A receipt is refused as the asset, and so is an empty or malformed list.
+ */
+export interface SwapAssetGuard {
+  control: IssuerControl
+  receiptResources: readonly string[]
+}
+
+function assertSwapAsset(verb: "list" | "fill", assetResource: string, guard: SwapAssetGuard): void {
+  if (guard?.control !== "locked") {
+    throw new Error(
+      `Cannot ${verb}: this collection's issuer can recall, freeze or restrict its NFTs, or that could not be confirmed`,
+    );
+  }
+  if (isReceiptAsset(assetResource, guard.receiptResources)) {
+    throw new Error(`Cannot ${verb}: a Guild receipt is not a swap asset here, or the receipt resources could not be confirmed`);
+  }
+}
+
+/**
  * List one NFT. `seller` is the account the NFT leaves AND the account the
  * blueprint pins as the only proceeds destination; the listing receipt (the
  * credential for cancel / extend / withdraw) is deposited back to it.
  * `expiresAt` is unix seconds, at most 30 days after the ledger clock when
  * the transaction executes (nft_swap.rs `list`) — use nft-swap.ts expiryForDays.
  *
- * `guard` is what the caller read about the asset before building:
- *  - `control`: the asset resource's IssuerControl (nft-swap.ts issuerControl
- *    over readResourceDisplay). Anything but "locked" is refused, so a stale or
- *    skipped form check cannot build a listing for an NFT whose issuer can
- *    recall or freeze it, or whose roles could not be read.
- *  - `receiptResources`: the Guild's receipt resources (nft-swap.ts
- *    guildReceiptResources, with the listing receipt read from the component).
- *    A receipt is refused as the asset, and so is an empty or malformed list.
+ * `guard`: see SwapAssetGuard — the builder refuses an asset the caller did
+ * not read as safe.
  */
 export function listSwapManifest(
   swapComponent: string,
@@ -1584,14 +1606,9 @@ export function listSwapManifest(
   assetId: string,
   asks: SwapAsk[],
   expiresAt: number,
-  guard: { control: IssuerControl; receiptResources: readonly string[] },
+  guard: SwapAssetGuard,
 ): string {
-  if (guard?.control !== "locked") {
-    throw new Error("Cannot list: this collection's issuer can recall or freeze its NFTs, or that could not be confirmed")
-  }
-  if (isReceiptAsset(assetResource, guard.receiptResources)) {
-    throw new Error("Cannot list: a Guild receipt cannot be listed, or the receipt resources could not be confirmed")
-  }
+  assertSwapAsset("list", assetResource, guard);
   const c = validateAddress(swapComponent, "component_rdx");
   const a = validateAddress(seller, "account_rdx");
   const r = validateAddress(assetResource, "resource_rdx");
@@ -1634,6 +1651,9 @@ ${depositAllTo(a)}`;
  * the NFT they are paying for arrives in it. The wallet shows the assertion
  * as a guaranteed deposit. The 2026-09-15 proving run predates it; the rest
  * of the manifest is that run's shape unchanged.
+ *
+ * `guard`: see SwapAssetGuard — the same asset check `listSwapManifest` makes,
+ * for a listing that was not made through this app.
  */
 export function fillSwapManifest(
   swapComponent: string,
@@ -1643,7 +1663,9 @@ export function fillSwapManifest(
   ask: SwapAsk,
   assetResource: string,
   assetId: string,
+  guard: SwapAssetGuard,
 ): string {
+  assertSwapAsset("fill", assetResource, guard);
   const c = validateAddress(swapComponent, "component_rdx");
   const a = validateAddress(buyer, "account_rdx");
   const lid = validatePositiveInt(listingId, "listingId");

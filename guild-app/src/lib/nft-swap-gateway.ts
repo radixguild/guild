@@ -14,6 +14,7 @@ import { GATEWAY_READ_TIMEOUT_MS, readNonFungibleHolder, readTxEventFields } fro
 import {
   type FreezeState,
   type RecallState,
+  type TransferState,
   SWAP_SCAN_CAP,
   canonicalLocalId,
   displayText,
@@ -284,6 +285,8 @@ export interface ResourceDisplay {
   recall: RecallState
   /** Whether the issuer can freeze vaults of this resource; see FreezeState. */
   freeze: FreezeState
+  /** Whether transfers are open and locked that way; see TransferState. */
+  transfer: TransferState
 }
 
 function metadataValue(items: any[], key: string): unknown {
@@ -341,6 +344,23 @@ export function freezeRule(details: any): FreezeState {
   return p === "open" ? "freezable" : p
 }
 
+/**
+ * Are transfers open, and can the issuer never close them? `withdrawer` and
+ * `depositor` must both be AllowAll and both their updaters DenyAll. Any other
+ * readable rule on any of the four = "restrictable"; an absent or unreadable
+ * one = "unknown". See TransferState.
+ */
+export function transferRule(details: any): TransferState {
+  const entries = details?.role_assignments?.entries
+  if (!Array.isArray(entries)) return "unknown"
+  const rules = ["withdrawer", "withdrawer_updater", "depositor", "depositor_updater"].map((n) => roleRuleType(entries, n))
+  if (rules.some((r) => r === "none" || r === "other")) return "unknown"
+  const [withdrawer, withdrawerUpdater, depositor, depositorUpdater] = rules
+  return withdrawer === "AllowAll" && depositor === "AllowAll" && withdrawerUpdater === "DenyAll" && depositorUpdater === "DenyAll"
+    ? "locked-open"
+    : "restrictable"
+}
+
 /** Name, symbol, icon, kind and divisibility for resources, batched. */
 export async function readResourceDisplay(addresses: string[]): Promise<Map<string, ResourceDisplay> | null> {
   const unique = [...new Set(addresses.filter(isResourceAddress))]
@@ -368,6 +388,7 @@ export async function readResourceDisplay(addresses: string[]): Promise<Map<stri
         withdraw: withdrawRule(details),
         recall: recallRule(details),
         freeze: freezeRule(details),
+        transfer: transferRule(details),
       })
     }
   }
