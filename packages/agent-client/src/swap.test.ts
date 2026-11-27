@@ -832,7 +832,30 @@ describe('a Guild receipt the address list does not know is caught by its name',
     for (const n of [...NAMES, 'Receipt of the Guild', 'Ｇｕｉｌｄ Receipt']) expect(kit.isGuildReceiptName(n)).toBe(true);
     for (const n of ['Guild Badge', 'Receipt', 'Ciggie Puffs', '', null]) expect(kit.isGuildReceiptName(n)).toBe(false);
   });
-  test('readResourceName reads the metadata name; none or unreadable is null', async () => {
+  test.each([
+    ['fill-swap', async (d: Partial<SwapDeps>, id: AgentIdentity) =>
+      runFillSwap({ listingId: 3, live: true, maxPrice: { resource: MAINNET_XRD, amount: '5000' }, identity: id, config: CONFIG, deps: d })],
+    ['list-swap', async (d: Partial<SwapDeps>, id: AgentIdentity) =>
+      runListSwap({ nft: { resource: NFT, id: '#2#' }, asks: [xrd], days: 7, live: true, identity: id, config: CONFIG, deps: d })],
+  ] as const)('%s refuses when the NFT\'s name could not be read, though its roles read locked — and signs nothing', async (_n, run) => {
+    const id = await identity();
+    const { d, signed } = deps({ holder: id.address, readResourceName: async (_c, r) => (r === NFT ? undefined : null) });
+    const r = await run(d, id);
+    expect(r.refused).toBe(true);
+    expect(r.message).toMatch(/could not read resource_rdx1\w+'s name to check it is not a Guild receipt/);
+    expect(r.manifest).toBeUndefined();
+    expect(signed).toEqual([]);
+  });
+  test('list-swap refuses when an ask\'s name could not be read', async () => {
+    const id = await identity();
+    const { d, signed } = deps({ holder: id.address, readResourceName: async (_c, r) => (r === MAINNET_XRD ? undefined : null) });
+    const r = await runListSwap({ nft: { resource: NFT, id: '#2#' }, asks: [xrd], days: 7, live: true, identity: id, config: CONFIG, deps: d });
+    expect(r.refused).toBe(true);
+    expect(r.message).toMatch(/ask 0: could not read .* name/);
+    expect(signed).toEqual([]);
+  });
+
+  test('readResourceName: a name, null for a resource with none, undefined when it could not be read', async () => {
     const real = globalThis.fetch;
     const answer = (body: unknown, status = 200) => (globalThis.fetch = (async () => new Response(JSON.stringify(body), { status })) as typeof fetch);
     try {
@@ -840,8 +863,14 @@ describe('a Guild receipt the address list does not know is caught by its name',
       expect(await readResourceName(CONFIG, NFT)).toBe('Guild Marketplace Task Receipt');
       answer({ items: [{ metadata: { items: [] } }] });
       expect(await readResourceName(CONFIG, NFT)).toBeNull();
-      answer({}, 500);
-      expect(await readResourceName(CONFIG, NFT)).toBeNull();
+      for (const [body, status] of [[{}, 500], [{}, 200], [{ items: [] }, 200], [{ items: [{}] }, 200]] as const) {
+        answer(body, status);
+        expect(await readResourceName(CONFIG, NFT), JSON.stringify([body, status])).toBeUndefined();
+      }
+      globalThis.fetch = (async () => {
+        throw new Error('network down');
+      }) as typeof fetch;
+      expect(await readResourceName(CONFIG, NFT)).toBeUndefined();
     } finally {
       globalThis.fetch = real;
     }

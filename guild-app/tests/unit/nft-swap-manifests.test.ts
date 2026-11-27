@@ -285,7 +285,7 @@ describe.each([
   })
   it("refuses the swap's own listing receipt, and any other receipt resource passed, as the asset", () => {
     expect(() => build(LIST_GUARD, RECEIPT)).toThrow(new RegExp(`Cannot ${verb}: a Guild receipt`))
-    expect(() => build({ control: "locked", receiptResources: [RECEIPT, THROWAWAY_NFT] })).toThrow(/a Guild receipt/)
+    expect(() => build({ control: "locked", receiptResources: [RECEIPT, THROWAWAY_NFT], assetName: null })).toThrow(/a Guild receipt/)
   })
   it.each(["Guild Marketplace Task Receipt", "Guild Marketplace Claim Receipt", "Guild NFT Swap Listing Receipt"])(
     "refuses an asset named %s, whatever its address (a receipt from another instance of the blueprints)",
@@ -297,9 +297,13 @@ describe.each([
     expect(build({ ...LIST_GUARD, assetName: "Ciggie Puffs" })).toContain(`"${verb}"`)
   })
   it("refuses when the receipt resources are not known (empty, missing or malformed)", () => {
-    expect(() => build({ control: "locked", receiptResources: [] })).toThrow(/a Guild receipt/)
-    expect(() => build({ control: "locked" })).toThrow(/a Guild receipt/)
-    expect(() => build({ control: "locked", receiptResources: [undefined] })).toThrow(/a Guild receipt/)
+    expect(() => build({ control: "locked", receiptResources: [], assetName: null })).toThrow(/a Guild receipt/)
+    expect(() => build({ control: "locked", assetName: null })).toThrow(/a Guild receipt/)
+    expect(() => build({ control: "locked", receiptResources: [undefined], assetName: null })).toThrow(/a Guild receipt/)
+  })
+  it("refuses a guard that leaves the asset's name out (a name must be given, or null)", () => {
+    expect(() => build({ control: "locked", receiptResources: [RECEIPT] })).toThrow(/a Guild receipt/)
+    expect(() => build({ control: "locked", receiptResources: [RECEIPT], assetName: undefined })).toThrow(/a Guild receipt/)
   })
   it("builds for a locked asset that is not a receipt", () => {
     expect(build(LIST_GUARD)).toContain(`"${verb}"`)

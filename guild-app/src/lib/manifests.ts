@@ -1588,7 +1588,10 @@ function assertSwapAsset(verb: "list" | "fill", assetResource: string, guard: Sw
       `Cannot ${verb}: recall, freezing or transfer restrictions are not permanently off for this collection, or that could not be confirmed`,
     );
   }
-  if (isReceiptAsset(assetResource, guard.receiptResources, guard.assetName)) {
+  // `assetName` must be given, as a name or as null: a guard that leaves it
+  // out has not said what the asset is called, and is refused like an
+  // unknown receipt list.
+  if (guard.assetName === undefined || isReceiptAsset(assetResource, guard.receiptResources, guard.assetName)) {
     throw new Error(`Cannot ${verb}: a Guild receipt is not a swap asset here, or the receipt resources could not be confirmed`);
   }
 }

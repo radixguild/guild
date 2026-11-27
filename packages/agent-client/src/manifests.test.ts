@@ -246,8 +246,11 @@ CALL_METHOD
       }
       expect(build({ ...GUARD, assetName: 'Ciggie Puffs' })).toContain(`"${verb}"`);
       for (const receiptResources of [[], undefined, [undefined], ['junk']]) {
-        expect(() => build({ control: 'locked', receiptResources })).toThrow(/a Guild receipt/);
+        expect(() => build({ control: 'locked', receiptResources, assetName: null })).toThrow(/a Guild receipt/);
       }
+      // A guard that leaves the name out (a plain-JavaScript caller) is refused too.
+      expect(() => build({ control: 'locked', receiptResources: [RECEIPT] })).toThrow(/a Guild receipt/);
+      expect(() => build({ control: 'locked', receiptResources: [RECEIPT], assetName: undefined })).toThrow(/a Guild receipt/);
       expect(build(GUARD)).toContain(`"${verb}"`);
     }
   });
