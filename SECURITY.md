@@ -68,3 +68,42 @@ General usage questions, feature requests, and non-security bugs in the app, the
 kit, the bot, the CI, or the docs are fine as a public issue — see `.github/ISSUE_TEMPLATE/`. A
 governance or business-model disagreement (see `GOVERNANCE.md`) is not a security
 finding either, however strongly held.
+
+## Accepted risks
+
+These are known risks the maintainer has accepted in writing instead of fixing them now. Each
+entry gives the acceptance and its reason word for word as signed, and the condition that
+reopens it. If you find one of them is worse than its entry says, report it privately as above.
+
+### F-008: whoever holds a listing receipt can cancel that listing to themselves (live `NftSwap`)
+
+- **Accepted:** "I accept that whoever holds a listing receipt can cancel that listing to themselves on the live swap, because the receipt is the seller's key."
+- **Reopens:** a receipt-theft report, or a v2 deploy.
+- **Signed:** bigdev · Fri 27 Nov 2026
+
+The v2 source change for F-008 is described in
+[`escrow/scrypto/guild-marketplace-escrow-v2/README.md`](./escrow/scrypto/guild-marketplace-escrow-v2/README.md).
+
+### A poster can collect the expiry bounty on their own task (live escrow)
+
+- **Accepted:** "I accept that a poster can take the expire bounty on their own expired task, because it is small and self-directed."
+- **Reopens:** the bounty size grows.
+- **Signed:** bigdev · Fri 27 Nov 2026
+
+### The reward-token whitelist checks divisibility only (live escrow)
+
+- **Accepted:** "I accept that the token whitelist checks divisibility only, because only reviewed tokens are whitelisted."
+- **Reopens:** a token is added to the whitelist.
+- **Signed:** bigdev · Fri 27 Nov 2026
+
+### The dashboard's Content-Security-Policy allows `unsafe-inline` and `unsafe-eval`
+
+- **Accepted:** "I accept `unsafe-inline`/`unsafe-eval` in the guild app CSP because no user-controlled HTML sink exists."
+- **Reopens:** a sink is added, or a scan finds one.
+- **Signed:** bigdev · Fri 27 Nov 2026
+
+### Low-severity `elliptic` alert in the dashboard's dependencies
+
+- **Accepted:** "I accept the low `elliptic` alert in guild-app because no fixed version exists and the app never signs with secp256k1."
+- **Reopens:** RET drops elliptic, or secp256k1 signing is added.
+- **Signed:** bigdev · Fri 27 Nov 2026
