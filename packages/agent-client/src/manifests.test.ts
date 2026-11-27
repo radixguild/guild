@@ -140,11 +140,14 @@ describe('NFT swap builders — parity with guild-app', () => {
   const BUYER = 'account_rdx12y5senkxfxg38swfv4tg88lx73jqnkdvcnzv8kwwdmg0efl40r2p7u';
   const FUNGIBLE = { kind: 'fungible' as const, resource: MAINNET_XRD, amount: '5000.25' };
   const NON_FUNGIBLE = { kind: 'nonFungible' as const, resource: NFT, id: '<rare_7>' };
+  // What a caller passes for an asset it may list or fill: issuer control read
+  // as locked, and the Guild's receipt resources.
+  const GUARD = { control: 'locked' as const, receiptResources: [RECEIPT] };
 
   test('listSwapManifest — an AnyOf of both kinds', () => {
     const asks = [FUNGIBLE, NON_FUNGIBLE];
-    expectServerParity('listSwapManifest', clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#', asks, 1790114665, 'locked-deny'), () =>
-      (server.listSwapManifest as unknown as typeof clientManifests.listSwapManifest)(SWAP, SELLER, NFT, '#2#', asks, 1790114665, 'locked-deny')
+    expectServerParity('listSwapManifest', clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#', asks, 1790114665, GUARD), () =>
+      (server.listSwapManifest as unknown as typeof clientManifests.listSwapManifest)(SWAP, SELLER, NFT, '#2#', asks, 1790114665, GUARD)
     );
   });
 
@@ -160,8 +163,8 @@ describe('NFT swap builders — parity with guild-app', () => {
 
   test('fillSwapManifest — fungible, non-fungible and same-collection payments', () => {
     for (const [alt, ask] of [[0, FUNGIBLE], [1, NON_FUNGIBLE], [2, OTHER_NFT], [3, SAME_COLLECTION]] as const) {
-      expectServerParity('fillSwapManifest', clientManifests.fillSwapManifest(SWAP, BUYER, 3, alt, ask, NFT, '#2#'), () =>
-        (server.fillSwapManifest as unknown as typeof clientManifests.fillSwapManifest)(SWAP, BUYER, 3, alt, ask, NFT, '#2#')
+      expectServerParity('fillSwapManifest', clientManifests.fillSwapManifest(SWAP, BUYER, 3, alt, ask, NFT, '#2#', GUARD), () =>
+        (server.fillSwapManifest as unknown as typeof clientManifests.fillSwapManifest)(SWAP, BUYER, 3, alt, ask, NFT, '#2#', GUARD)
       );
     }
   });
@@ -173,7 +176,7 @@ describe('NFT swap builders — parity with guild-app', () => {
     // resource-level check would not tell the two apart: the assertion names the
     // listed id, and the payment id has already left in Bucket("payment").
     for (const ask of [FUNGIBLE, OTHER_NFT, SAME_COLLECTION]) {
-      const m = clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, ask, NFT, '#2#');
+      const m = clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, ask, NFT, '#2#', GUARD);
       const fill = m.indexOf(`Address("${SWAP}")\n  "fill"`);
       const check = m.indexOf(assertion(NFT, '#2#'));
       const deposit = m.indexOf('"try_deposit_batch_or_abort"');
@@ -185,7 +188,7 @@ describe('NFT swap builders — parity with guild-app', () => {
   });
 
   test('fillSwapManifest — the exact non-fungible fill, byte for byte (inline golden)', () => {
-    expect(clientManifests.fillSwapManifest(SWAP, BUYER, 3, 1, SAME_COLLECTION, NFT, '#2#')).toBe(`CALL_METHOD
+    expect(clientManifests.fillSwapManifest(SWAP, BUYER, 3, 1, SAME_COLLECTION, NFT, '#2#', GUARD)).toBe(`CALL_METHOD
   Address("${BUYER}")
   "withdraw_non_fungibles"
   Address("${NFT}")
@@ -217,10 +220,31 @@ CALL_METHOD
 
   test('a fill cannot be built without the listed NFT, so the assertion cannot be left out', () => {
     const build = clientManifests.fillSwapManifest as unknown as (...a: unknown[]) => string;
-    expect(() => build(SWAP, BUYER, 3, 0, FUNGIBLE)).toThrow(/Invalid resource_rdx/);
-    expect(() => build(SWAP, BUYER, 3, 0, FUNGIBLE, NFT)).toThrow(/assetId/);
-    expect(() => build(SWAP, BUYER, 3, 0, FUNGIBLE, NFT, '')).toThrow(/assetId/);
-    expect(() => build(SWAP, BUYER, 3, 0, FUNGIBLE, MAINNET_XRD.replace('resource_', 'component_'), '#2#')).toThrow(/Invalid resource_rdx/);
+    expect(() => build(SWAP, BUYER, 3, 0, FUNGIBLE, undefined, undefined, GUARD)).toThrow(/Invalid resource_rdx/);
+    expect(() => build(SWAP, BUYER, 3, 0, FUNGIBLE, NFT, undefined, GUARD)).toThrow(/assetId/);
+    expect(() => build(SWAP, BUYER, 3, 0, FUNGIBLE, NFT, '', GUARD)).toThrow(/assetId/);
+    expect(() => build(SWAP, BUYER, 3, 0, FUNGIBLE, MAINNET_XRD.replace('resource_', 'component_'), '#2#', GUARD)).toThrow(/Invalid resource_rdx/);
+  });
+
+  // Both builders refuse an asset the caller did not read as safe (the same
+  // guard as guild-app's SwapAssetGuard): neither a listing nor a fill can be
+  // built for an NFT whose issuer holds a power over it, or for a Guild receipt.
+  test('list and fill refuse without a passing asset guard', () => {
+    const list = (guard: unknown, asset = NFT) =>
+      (clientManifests.listSwapManifest as unknown as (...a: unknown[]) => string)(SWAP, SELLER, asset, '#2#', [FUNGIBLE], 1790114665, guard);
+    const fill = (guard: unknown, asset = NFT) =>
+      (clientManifests.fillSwapManifest as unknown as (...a: unknown[]) => string)(SWAP, BUYER, 3, 0, FUNGIBLE, asset, '#2#', guard);
+    for (const [verb, build] of [['list', list], ['fill', fill]] as const) {
+      for (const control of ['recallable', 'freezable', 'restrictable', 'unknown', 'locked-deny', undefined]) {
+        expect(() => build({ control, receiptResources: [RECEIPT] })).toThrow(new RegExp(`Cannot ${verb}: this collection's issuer`));
+      }
+      expect(() => build(undefined)).toThrow(new RegExp(`Cannot ${verb}`));
+      expect(() => build(GUARD, RECEIPT)).toThrow(new RegExp(`Cannot ${verb}: a Guild receipt`));
+      for (const receiptResources of [[], undefined, [undefined], ['junk']]) {
+        expect(() => build({ control: 'locked', receiptResources })).toThrow(/a Guild receipt/);
+      }
+      expect(build(GUARD)).toContain(`"${verb}"`);
+    }
   });
 
   test('the four receipt-holder calls', () => {
@@ -238,21 +262,21 @@ CALL_METHOD
   });
 
   test('the client refuses the same inputs the app refuses', () => {
-    expect(() => clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#', [], 1790114665, 'locked-deny')).toThrow(/at least one/);
-    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 256, FUNGIBLE, NFT, '#2#')).toThrow(/alternative/);
-    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, { ...FUNGIBLE, amount: '0.0' }, NFT, '#2#')).toThrow(/ask\.amount/);
-    expect(() => clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#")', [FUNGIBLE], 1790114665, 'locked-deny')).toThrow(/assetId/);
+    expect(() => clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#', [], 1790114665, GUARD)).toThrow(/at least one/);
+    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 256, FUNGIBLE, NFT, '#2#', GUARD)).toThrow(/alternative/);
+    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, { ...FUNGIBLE, amount: '0.0' }, NFT, '#2#', GUARD)).toThrow(/ask\.amount/);
+    expect(() => clientManifests.listSwapManifest(SWAP, SELLER, NFT, '#2#")', [FUNGIBLE], 1790114665, GUARD)).toThrow(/assetId/);
     // Same refusal as the app's builder for an NFT whose issuer can recall it
     // (or whose recall roles could not be read).
     for (const state of ['recallable', 'unknown', undefined] as const) {
       const call = (build: unknown) =>
-        (build as typeof clientManifests.listSwapManifest)(SWAP, SELLER, NFT, '#2#', [FUNGIBLE], 1790114665, state as never);
+        (build as typeof clientManifests.listSwapManifest)(SWAP, SELLER, NFT, '#2#', [FUNGIBLE], 1790114665, state as never, GUARD);
       expect(() => call(clientManifests.listSwapManifest)).toThrow(/Cannot list/);
       if (!STANDALONE) expect(() => call(server.listSwapManifest)).toThrow(/Cannot list/);
     }
     // An injected listed-NFT address or id never reaches the manifest text.
-    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, FUNGIBLE, `${NFT}")`, '#2#')).toThrow(/Invalid resource_rdx/);
-    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, FUNGIBLE, NFT, '#2#")')).toThrow(/assetId/);
+    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, FUNGIBLE, `${NFT}")`, '#2#', GUARD)).toThrow(/Invalid resource_rdx/);
+    expect(() => clientManifests.fillSwapManifest(SWAP, BUYER, 3, 0, FUNGIBLE, NFT, '#2#")', GUARD)).toThrow(/assetId/);
   });
 });
 

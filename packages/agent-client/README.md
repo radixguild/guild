@@ -687,6 +687,12 @@ guild-worker fill-swap 3 --alternative 0 --max-price 5000 --live
   is in this account, each ask's resource kind and divisibility, and the fill royalty (below).
   **Not checked:** whether the buyer holds the payment. That reverts on chain, and a revert costs
   only the network fee.
+- **Some NFTs and asks are refused before anything is built.** `list-swap` and `fill-swap` refuse a
+  listing whose NFT is a Guild receipt (the swap's listing receipt, or the escrow's task or claim
+  receipt), or whose issuer can recall it, freeze it or restrict its transfers (the `recaller`,
+  `freezer`, `withdrawer` and `depositor` roles and their updaters, read from the Gateway; an
+  unreadable role refuses too). `list-swap` applies the same checks to each ask's resource. These
+  are the kit's and the site's checks, not the component's: a hand-built manifest is not checked.
 - **Proceeds go to the seller pinned at listing time** — the account that ran `list-swap` — whoever
   later presents the receipt. The receipt is a transferable NFT: keep it, it is the only credential
   that can cancel or collect.

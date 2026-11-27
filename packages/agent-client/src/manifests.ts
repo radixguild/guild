@@ -968,9 +968,55 @@ CALL_METHOD
 
 /** One alternative a seller accepts (blueprint `Ask`). Amounts are exact
  *  decimal STRINGS. */
-/** Whether a resource's issuer can recall its NFTs (swap.ts readResourceRecall;
- *  the same rule guild-app applies). Only "locked-deny" may be listed. */
+/** Whether a resource's issuer can recall its NFTs (swap.ts recallRule; the
+ *  same rule guild-app applies). */
 export type RecallState = 'locked-deny' | 'recallable' | 'unknown';
+
+/**
+ * Recall, freeze and transfer rules together (swap.ts issuerControlRule; the
+ * same rule as guild-app's issuerControl). "locked" = recall and freeze are
+ * both DenyAll with DenyAll updaters, and withdraw and deposit are both
+ * AllowAll with DenyAll updaters. Only "locked" may be listed, filled or
+ * asked for.
+ */
+export type IssuerControl = 'locked' | 'recallable' | 'freezable' | 'restrictable' | 'unknown';
+
+/**
+ * What the caller read about a listing's ASSET before building a `list` or a
+ * `fill` (the same guard as guild-app's SwapAssetGuard). Both builders refuse
+ * to build without it.
+ *  - `control`: the asset resource's IssuerControl. Anything but "locked" is
+ *    refused.
+ *  - `receiptResources`: the Guild's receipt resources — the swap component's
+ *    listing receipt (read from its state) and the escrow's task and claim
+ *    receipts. A receipt is refused as the asset, and so is an empty or
+ *    malformed list.
+ */
+export interface SwapAssetGuard {
+  control: IssuerControl;
+  receiptResources: readonly string[];
+}
+
+const SWAP_RESOURCE_RE = /^resource_rdx1[a-z0-9]{20,}$/;
+
+/** Fails closed on an empty or malformed list: "no receipt resources known"
+ *  is not "not a receipt". Same answer as guild-app's isReceiptAsset. */
+export function isReceiptAsset(assetResource: string, receiptResources: readonly string[] | null | undefined): boolean {
+  if (!receiptResources || receiptResources.length === 0) return true;
+  if (!receiptResources.every((r) => typeof r === 'string' && SWAP_RESOURCE_RE.test(r))) return true;
+  return receiptResources.includes(assetResource);
+}
+
+function assertSwapAsset(verb: 'list' | 'fill', assetResource: string, guard: SwapAssetGuard): void {
+  if (guard?.control !== 'locked') {
+    throw new Error(
+      `Cannot ${verb}: this collection's issuer can recall, freeze or restrict its NFTs, or that could not be confirmed`,
+    );
+  }
+  if (isReceiptAsset(assetResource, guard.receiptResources)) {
+    throw new Error(`Cannot ${verb}: a Guild receipt is not a swap asset here, or the receipt resources could not be confirmed`);
+  }
+}
 
 export type SwapAsk =
   | { kind: 'fungible'; resource: string; amount: string }
@@ -1028,11 +1074,9 @@ export function listSwapManifest(
   assetId: string,
   asks: SwapAsk[],
   expiresAt: number,
-  recall: RecallState,
+  guard: SwapAssetGuard,
 ): string {
-  if (recall !== 'locked-deny') {
-    throw new Error("Cannot list: this collection's issuer can recall its NFTs, or that could not be confirmed");
-  }
+  assertSwapAsset('list', assetResource, guard);
   const c = validateAddress(swapComponent, 'component_rdx');
   const a = validateAddress(seller, 'account_rdx');
   const r = validateAddress(assetResource, 'resource_rdx');
@@ -1078,7 +1122,9 @@ export function fillSwapManifest(
   ask: SwapAsk,
   assetResource: string,
   assetId: string,
+  guard: SwapAssetGuard,
 ): string {
+  assertSwapAsset('fill', assetResource, guard);
   const c = validateAddress(swapComponent, 'component_rdx');
   const a = validateAddress(buyer, 'account_rdx');
   const lid = validatePositiveInt(listingId, 'listingId');
