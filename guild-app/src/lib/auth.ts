@@ -6,12 +6,29 @@ import { fromError } from "./api-response"
 import { findUserById } from "@/db/queries/users"
 import { crossOriginRefusal } from "./same-origin"
 
+// Sessions are HS256 only. Pinned on verify too, so the accepted algorithm is
+// stated here rather than left to whatever the key type allows.
+const JWT_ALG = "HS256"
+
+// A short HMAC secret can be brute-forced offline from one captured session
+// token. Below this length we WARN rather than refuse to boot: refusing would
+// take a running deployment down on restart before an operator has checked
+// the configured value. tg-link.ts uses the same 32-character floor.
+export const JWT_SECRET_MIN_LENGTH = 32
+
 let _jwtSecret: Uint8Array | undefined
 function getJwtSecret(): Uint8Array {
   if (!_jwtSecret) {
     const secret = process.env.JWT_SECRET
     if (!secret) {
       throw new Error("JWT_SECRET environment variable is not set")
+    }
+    if (secret.length < JWT_SECRET_MIN_LENGTH) {
+      // Logs the floor only — never the secret or its length.
+      console.warn(
+        `[auth] JWT_SECRET is shorter than ${JWT_SECRET_MIN_LENGTH} characters; ` +
+          `set a longer random value (sessions signed with a short secret can be forged)`,
+      )
     }
     _jwtSecret = new TextEncoder().encode(secret)
   }
@@ -26,7 +43,7 @@ export interface SessionUser {
 
 export async function createSession(userId: string): Promise<string> {
   return new SignJWT({ userId })
-    .setProtectedHeader({ alg: "HS256" })
+    .setProtectedHeader({ alg: JWT_ALG })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_DURATION}s`)
     .sign(getJwtSecret())
@@ -35,7 +52,7 @@ export async function createSession(userId: string): Promise<string> {
 export async function verifySession(token: string): Promise<SessionUser | null> {
   const secret = getJwtSecret()
   try {
-    const { payload } = await jwtVerify(token, secret)
+    const { payload } = await jwtVerify(token, secret, { algorithms: [JWT_ALG] })
     return { userId: payload.userId as string }
   } catch (err) {
     if (err instanceof Error && err.name === "JWSSignatureVerificationFailed") {

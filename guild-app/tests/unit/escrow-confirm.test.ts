@@ -44,6 +44,7 @@ const {
   mockReadEscrowTaskCreated,
   mockReadDisputeRaised,
   mockReadDisputeAutoResolved,
+  mockReadDisputeResolved,
 } = vi.hoisted(() => ({
   mockVerifyEscrowEvent: vi.fn(),
   mockReadOnChainClaimInfo: vi.fn(),
@@ -51,6 +52,7 @@ const {
   mockReadEscrowTaskCreated: vi.fn(),
   mockReadDisputeRaised: vi.fn(),
   mockReadDisputeAutoResolved: vi.fn(),
+  mockReadDisputeResolved: vi.fn(),
 }))
 vi.mock("@/lib/gateway", () => ({
   verifyEscrowEvent: mockVerifyEscrowEvent,
@@ -59,6 +61,7 @@ vi.mock("@/lib/gateway", () => ({
   readEscrowTaskCreated: mockReadEscrowTaskCreated,
   readDisputeRaised: mockReadDisputeRaised,
   readDisputeAutoResolved: mockReadDisputeAutoResolved,
+  readDisputeResolved: mockReadDisputeResolved,
 }))
 
 const { mockRecordConfirmedEscrowTx, mockFindEscrowByTask } = vi.hoisted(() => ({
@@ -1415,5 +1418,89 @@ describe("arbiter ruling is bookkeepable", () => {
       const task = { status, assigneeId: "acct" }
       expect(classifyEscrowEvent("arbitrate", task)).toBe(classifyEscrowEvent("resolve", task))
     }
+  })
+})
+
+describe("applyEscrowConfirm — rows pinned to a retired escrow component", () => {
+  // The on-chain task id is only unique per component. A row still pinned to a
+  // retired component must have its events checked against THAT component, so
+  // a same-numbered task on the live component can never advance it.
+  const RETIRED = "component_rdx1retiredxx"
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockDbTransaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(TX))
+    // Events verify ONLY on the live component: models a live tx for live task
+    // 42 being replayed against a retired-component row that also has id 42.
+    mockVerifyEscrowEvent.mockImplementation(
+      async (_h: string, _e: string, component: string) => component === ESCROW_COMPONENT,
+    )
+    mockReadDisputeRaised.mockImplementation(async (_h: string, component: string) =>
+      component === ESCROW_COMPONENT ? { raisedBy: "Worker", confirmedAt: new Date() } : null,
+    )
+    mockReadDisputeAutoResolved.mockImplementation(async (_h: string, component: string) =>
+      component === ESCROW_COMPONENT ? { workerAmount: "10", posterAmount: "0" } : null,
+    )
+    mockReadDisputeResolved.mockImplementation(async (_h: string, component: string) =>
+      component === ESCROW_COMPONENT ? { workerAmount: "10", posterAmount: "0", arbiterFee: "0" } : null,
+    )
+    mockUpdateTaskIfStatus.mockImplementation((_id: number, patch: object) =>
+      Promise.resolve({ id: 1, ...patch }),
+    )
+    mockRecordConfirmedEscrowTx.mockResolvedValue({ row: { id: 99 }, inserted: true })
+    mockFindEscrowByTask.mockResolvedValue([
+      { id: 1, taskId: 1, txType: "fund", amountXrd: "10", status: "confirmed" },
+    ])
+    mockAwardTaskCompletion.mockResolvedValue({ id: "account_rdx1worker" })
+  })
+
+  const pinned = (overrides: Record<string, unknown> = {}) =>
+    task({ escrowComponent: RETIRED, assigneeId: "account_rdx1worker", ...overrides })
+
+  const cases: Array<[string, Record<string, unknown>, EscrowActor]> = [
+    ["approve", { status: "submitted" }, asUser("account_rdx1stranger")],
+    ["submit", { status: "assigned" }, RECONCILER],
+    ["cancel", { status: "open", assigneeId: null }, asUser("account_rdx1poster")],
+    ["dispute", { status: "submitted" }, asUser("account_rdx1poster")],
+    ["resolve", { status: "disputed" }, asUser("account_rdx1stranger")],
+    ["arbitrate", { status: "disputed" }, asUser("account_rdx1stranger")],
+    ["expire", { status: "assigned" }, RECONCILER],
+  ]
+
+  for (const [kind, overrides, actor] of cases) {
+    it(`${kind}: a live-component event does NOT advance a retired-component row (422, nothing written)`, async () => {
+      const result = await applyEscrowConfirm(pinned(overrides), kind as never, "txid_rdx1live", actor)
+
+      expect(result).toMatchObject({ ok: false, httpStatus: 422 })
+      expect(mockUpdateTaskIfStatus).not.toHaveBeenCalled()
+      expect(mockRecordConfirmedEscrowTx).not.toHaveBeenCalled()
+      expect(mockAwardTaskCompletion).not.toHaveBeenCalled()
+    })
+  }
+
+  it("approve: verifies against the row's own component and advances when the event is there", async () => {
+    mockVerifyEscrowEvent.mockImplementation(
+      async (_h: string, _e: string, component: string) => component === RETIRED,
+    )
+
+    const result = await applyEscrowConfirm(pinned({ status: "submitted" }), "approve", "txid_rdx1old", RECONCILER)
+
+    expect(result.ok).toBe(true)
+    expect(mockVerifyEscrowEvent).toHaveBeenCalledWith("txid_rdx1old", "TaskReleasedEvent", RETIRED, 42)
+    expect(mockVerifyEscrowEvent).not.toHaveBeenCalledWith(
+      expect.anything(), expect.anything(), ESCROW_COMPONENT, expect.anything(),
+    )
+  })
+
+  it("a row with no stored component falls back to the live component", async () => {
+    const result = await applyEscrowConfirm(
+      task({ status: "submitted", assigneeId: "account_rdx1worker", escrowComponent: null }),
+      "approve",
+      "txid_rdx1live",
+      RECONCILER,
+    )
+
+    expect(result.ok).toBe(true)
+    expect(mockVerifyEscrowEvent).toHaveBeenCalledWith("txid_rdx1live", "TaskReleasedEvent", ESCROW_COMPONENT, 42)
   })
 })

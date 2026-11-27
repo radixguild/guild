@@ -284,6 +284,19 @@ describe('Task Queries', () => {
     expect(decodeTaskCursor(result.cursor!)).toEqual({ k: t2.toISOString(), id: 2 })
   })
 
+  it('clamps a negative / NaN / oversized ?limit to a valid LIMIT (never negative)', async () => {
+    mockQuery.limit.mockResolvedValue([])
+
+    await listTasks({ limit: -5 })
+    expect(mockQuery.limit).toHaveBeenLastCalledWith(2) // 1 row + the hasMore probe
+
+    await listTasks({ limit: Number.NaN })
+    expect(mockQuery.limit).toHaveBeenLastCalledWith(21) // default 20
+
+    await listTasks({ limit: 5000 })
+    expect(mockQuery.limit).toHaveBeenLastCalledWith(101) // capped at 100
+  })
+
   it('orders newest by (createdAt DESC, id DESC) — id tiebreaker present (M6)', async () => {
     mockQuery.limit.mockResolvedValue([{ id: 2, createdAt: new Date('2026-07-01T00:00:00Z') }])
 

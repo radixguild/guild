@@ -4,7 +4,7 @@
  * Mocks next/headers cookies() and tests JWT creation/verification,
  * session cookie operations, and the withAuth middleware wrapper.
  */
-import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest"
+import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from "vitest"
 
 // Mock cookies store
 const mockCookieStore = {
@@ -72,6 +72,67 @@ describe("auth: createSession + verifySession", () => {
     const tampered = token.slice(0, -5) + "XXXXX"
     const user = await verifySession(tampered)
     expect(user).toBeNull()
+  })
+})
+
+describe("auth: algorithm pin", () => {
+  const key = () => new TextEncoder().encode(process.env.JWT_SECRET!)
+
+  it("rejects a token signed with the right secret but another HMAC algorithm (HS512)", async () => {
+    const { SignJWT } = await import("jose")
+    const token = await new SignJWT({ userId: TEST_ADDR })
+      .setProtectedHeader({ alg: "HS512" })
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .sign(key())
+    expect(await verifySession(token)).toBeNull()
+  })
+
+  it("rejects an unsigned (alg: none) token", async () => {
+    const { UnsecuredJWT } = await import("jose")
+    const token = new UnsecuredJWT({ userId: TEST_ADDR }).setIssuedAt().setExpirationTime("1h").encode()
+    expect(await verifySession(token)).toBeNull()
+  })
+
+  it("still accepts its own HS256 sessions", async () => {
+    const token = await createSession(TEST_ADDR)
+    expect(await verifySession(token)).toEqual({ userId: TEST_ADDR })
+  })
+})
+
+describe("auth: short JWT_SECRET warning", () => {
+  // getJwtSecret caches per module instance; load a fresh copy per case.
+  async function freshAuthWith(secret: string) {
+    vi.resetModules()
+    vi.stubEnv("JWT_SECRET", secret)
+    return import("@/lib/auth")
+  }
+
+  afterEach(() => {
+    vi.stubEnv("JWT_SECRET", "test-secret-do-not-use-in-prod")
+    vi.restoreAllMocks()
+  })
+
+  it("warns once (never printing the secret) when the secret is under 32 characters, and still works", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const secret = "short-secret-abc"
+    const auth = await freshAuthWith(secret)
+
+    const token = await auth.createSession(TEST_ADDR)
+    await auth.verifySession(token)
+
+    const lines = warn.mock.calls.map((c) => String(c[0]))
+    const secretWarnings = lines.filter((l) => l.includes("JWT_SECRET is shorter than 32"))
+    expect(secretWarnings).toHaveLength(1)
+    expect(lines.some((l) => l.includes(secret))).toBe(false)
+    expect(await auth.verifySession(token)).toEqual({ userId: TEST_ADDR })
+  })
+
+  it("does not warn for a secret of 32+ characters", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const auth = await freshAuthWith("x".repeat(32))
+    await auth.createSession(TEST_ADDR)
+    expect(warn.mock.calls.some((c) => String(c[0]).includes("JWT_SECRET"))).toBe(false)
   })
 })
 
