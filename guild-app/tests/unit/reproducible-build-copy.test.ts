@@ -13,7 +13,11 @@ const PAGES = [
   "src/app/check-badge/page.tsx",
   "src/app/disputes/page.tsx",
   "src/app/lifecycle/page.tsx",
+  "src/app/money/page.tsx",
 ]
+
+// The repo docs link the guide's §5 (which carries the runs) instead of quoting a run number.
+const DOCS = ["../docs/HOW-IT-WORKS.md", "../docs/TRUST-BACKING-PLAN.md"]
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8")
 
 describe("reproducible-build copy (C2)", () => {
@@ -35,6 +39,14 @@ describe("reproducible-build copy (C2)", () => {
         const near = src.slice(Math.max(0, m.index! - 200), m.index! + 200)
         expect(near, `"matched" at ${m.index} without the run link`).toContain("REPRO_BUILD_RUN_URL")
       }
+    })
+  }
+
+  for (const p of DOCS) {
+    it(`${p}: no "planned" for the reproducible build, and it links the guide's §5`, () => {
+      const src = read(p)
+      expect(src).not.toMatch(/reproducible[- ]build[^|\n]{0,120}planned/i)
+      expect(src).toContain("AUDITOR-GUIDE.md#reproducible-build-check-it-yourself")
     })
   }
 })
