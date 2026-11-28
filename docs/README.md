@@ -39,7 +39,7 @@ each header.
 
 | Doc | What it covers |
 |---|---|
-| [`CONFIG.md`](CONFIG.md) | Every environment name the code reads, per package, with where it is read, whether it is required, its default and whether it is secret |
+| [`CONFIG.md`](CONFIG.md) | The names the JavaScript and TypeScript code reads through `process.env`, per package, with where it is read, whether it is required, its default and whether it is secret |
 | [`DEPLOY.md`](DEPLOY.md) | Build order, start, checks and rollback for the dashboard, the kit tarballs and the bot. A draft, not yet run end to end; steps the repository does not contain are marked as operator steps |
 | [`ESCROW-METHOD-INVENTORY.md`](ESCROW-METHOD-INVENTORY.md) | Every escrow method, with its access class and return type. The signature table is generated from the source and checked in CI; it describes `main`, not a deployed package |
 | [`ESCROW-MIGRATION-S1-METHOD-MAP.md`](ESCROW-MIGRATION-S1-METHOD-MAP.md) | How methods mapped across one escrow migration (historical) |

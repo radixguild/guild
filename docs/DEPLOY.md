@@ -1,5 +1,5 @@
 <!-- status: live
-     verified: 2026-11-25 (written from the files in this tree only. No step was run. Each command
+     verified: 2026-11-28 (`file:line` references re-checked against `main` at `8e3105a`; first written 2026-11-25 from the files in this tree only. No step was run. Each command
      below exists in this repository at the `file:line` given; each step this repository does not
      contain is marked "operator step, not in this repo".) -->
 # Deploy and rollback
@@ -31,14 +31,14 @@ process manager gives the dashboard. Every name the services read is in [`CONFIG
 
 ## Prerequisites
 
-- Node 22 (`CONTRIBUTING.md:101-105`) and PostgreSQL 16 (`README.md:87-89`; CI uses the same major,
+- Node 22 (`CONTRIBUTING.md:101-105`) and PostgreSQL 16 (`README.md:86-87`; CI uses the same major,
   `.github/workflows/test.yml:368-369`).
 - A process manager. `scripts/deploy-swap.sh:48,209` calls `pm2 restart <pm2-app> --update-env`, and
   `PM2_BIN` overrides the command.
 - The dashboard's start script binds `127.0.0.1` (`guild-app/package.json`, `start`), so a reverse
   proxy is needed for any outside access (operator step, not in this repo).
 - The environment of [`CONFIG.md`](./CONFIG.md). `DATABASE_URL` and `JWT_SECRET` are required
-  (`guild-app/src/db/index.ts:6-8`, `guild-app/src/lib/auth.ts:12-14`).
+  (`guild-app/src/db/index.ts:6-8`, `guild-app/src/lib/auth.ts:22-25`).
   `NEXT_PUBLIC_*` names are fixed when the build runs, so set them before step 6.
 - Never set `GUILD_E2E_BUILD` or `GUILD_E2E_AUTH_BYPASS` for a real build
   (`guild-app/next.config.ts:127-144`, `guild-app/src/lib/rola.ts:167`).
@@ -55,7 +55,7 @@ Run from `<app-dir>` (the `guild-app/` directory) unless stated; the `scripts/` 
 3. **Install.** `npm ci` in `<app-dir>`.
 4. **Apply migrations.** `npm run db:migrate` (`guild-app/package.json`; it runs `drizzle-kit migrate`
    against `DATABASE_URL`, `guild-app/drizzle.config.ts:8`). Run it again after any pull that adds a
-   file under `guild-app/drizzle/` (`README.md:96`).
+   file under `guild-app/drizzle/` (`README.md:95`).
 5. **Pack the kits.** Optional unless the page should print the kit hash and `/kit/*` should serve a
    tarball; `scripts/deploy-swap.sh:53-56` stops when the kit candidate directory does not exist.
    Into a fresh `<kit-candidate>` directory:
@@ -183,6 +183,6 @@ the earlier revision does not open the newer file. Whether it does is unverified
 ## Not covered here
 
 The on-chain side: the escrow and NFT swap blueprints in `escrow/` are built and published with the
-Scrypto toolchain (`README.md:115-117`). Publishing or replacing a package is not a step of this
+Scrypto toolchain (`README.md:114-116`). Publishing or replacing a package is not a step of this
 page, and nothing here says that a package other than the one `docs/AUDITOR-GUIDE.md` and
 [`STATE.md`](../STATE.md) name as live is deployed.

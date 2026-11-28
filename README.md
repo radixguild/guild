@@ -107,7 +107,7 @@ served from radixguild.com.
 `npm start`. `TG_BOT_TOKEN` is the one required value (`bot/index.js:22-23`); `bot/README.md` covers
 the rest.
 
-Every environment name the code reads is listed in [`docs/CONFIG.md`](./docs/CONFIG.md). Building,
+The names the JavaScript and TypeScript code reads through `process.env` are listed in [`docs/CONFIG.md`](./docs/CONFIG.md). Building,
 starting, checking and rolling back a hosted instance is in [`docs/DEPLOY.md`](./docs/DEPLOY.md), a
 draft that has not been run end to end from a clean machine.
 

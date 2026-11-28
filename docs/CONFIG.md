@@ -1,13 +1,14 @@
 <!-- status: live
-     verified: 2026-11-25 (every name below was read from the non-test source in this tree at the
-     `file:line` given; names only, no values. The three `.env.example` files were not read for
+     verified: 2026-11-28 (every name below was read from the non-test source in this tree at the
+     `file:line` given, re-checked against `main` at `8e3105a`; names only, no values. The three `.env.example` files were not read for
      this page, so a name can be in the code and missing from an example, or the reverse.) -->
 # Configuration reference
 
 Draft from the repository contents; not yet run end to end from a clean machine.
 
-Every environment variable name that the non-test code in this repository reads, one table per
-package. Names only: no value, key or token is given here. Where the code has a built-in default
+Every environment variable name that the non-test JavaScript and TypeScript code in this repository
+reads through `process.env`, one table per package. Names set or read only by shell scripts (for
+example `PM2_BIN` in [`DEPLOY.md`](DEPLOY.md)) are not listed. Names only: no value, key or token is given here. Where the code has a built-in default
 the table says so; an on-chain address default is named as "built-in mainnet default" and lives at
 the cited line.
 
@@ -37,7 +38,7 @@ Server-side names are read at request time unless the `Where read` column says o
 | Name | Group | Where read | Required | Default | Class |
 |---|---|---|---|---|---|
 | `DATABASE_URL` | server | `guild-app/src/db/index.ts:6-8`, `guild-app/src/db/migrate.ts:6-9`, `guild-app/drizzle.config.ts:8`, `guild-app/src/lib/alert-store.ts:138` | required (the app throws on first use; `db:migrate` exits 1). In `alert-store.ts` it only picks the store | none (alert store: in-memory when unset) | secret |
-| `JWT_SECRET` | server | `guild-app/src/lib/auth.ts:12-14` | required (throws on first use) | none | secret |
+| `JWT_SECRET` | server | `guild-app/src/lib/auth.ts:22-25` | required (throws on first use) | none | secret |
 | `GUILD_ALLOWED_ORIGINS` | server | `guild-app/src/lib/same-origin.ts:48` | optional | empty list | public |
 | `ROLA_EXPECTED_ORIGIN` | server | `guild-app/src/lib/rola.ts:37`, `guild-app/src/lib/same-origin.ts:44` | optional | `https://radixguild.com` | public |
 | `GUILD_HALT` | server | `guild-app/src/lib/gateway.ts:1864` | optional | off; `1` or `true` turns the operator halt on, read per request (`gateway.ts:1859-1862`) | public |
@@ -46,8 +47,8 @@ Server-side names are read at request time unless the `Where read` column says o
 | `NFT_SWAP_HIDDEN` | server | `guild-app/src/lib/nft-swap-service.ts:158` | optional | empty | public |
 | `AGENT_LANE_LIVE` | server | `guild-app/src/lib/config.ts:62` | optional | on unless the value is `false` | public |
 | `GAME_DAILY_ROLLS` | server | `guild-app/src/db/queries/game.ts:11` | optional | 3 | public |
-| `PR_VERIFY_PRIVATE_REPOS` | server | `guild-app/src/lib/pr-verify.ts:137` | optional | empty | public (not a key, but its value lists private repository names; keep it out of public configuration) |
-| `GITHUB_TOKEN` | server | `guild-app/src/lib/pr-verify.ts:129` | optional | requests are unauthenticated when unset | secret |
+| `PR_VERIFY_PRIVATE_REPOS` | server | `guild-app/src/lib/pr-verify.ts:175` | optional | empty | public (not a key, but its value lists private repository names; keep it out of public configuration) |
+| `GITHUB_TOKEN` | server | `guild-app/src/lib/pr-verify.ts:156` | optional | requests are unauthenticated when unset | secret |
 | `ASTROLESCENT_PRICE_URL` | server | `guild-app/src/app/api/v1/quote/xrd-usd/route.ts:121` | optional | built-in price URL at that line | public |
 | `X402_ENABLED` | server | `guild-app/src/lib/x402/config.ts:17` | optional | off unless the value is `true` | public |
 | `X402_PAY_TO` | server | `guild-app/src/lib/x402/config.ts:33` | required when `X402_ENABLED` is `true` (refuses to advertise payment without it, `x402/config.ts:34-37`) | none | public |
@@ -55,7 +56,7 @@ Server-side names are read at request time unless the `Where read` column says o
 | `TG_LINK_SECRET` | server | `guild-app/src/lib/tg-link.ts:27` | optional; shorter than 32 characters counts as unset (`tg-link.ts:22,26-28`) | none | secret |
 | `KEEPER_ALERT_TG_TOKEN` | server | `guild-app/src/lib/tg-alert.ts:28,71` | optional; an alert is sent only when this and the chat name are both set (`tg-alert.ts:30`) | none | secret |
 | `KEEPER_ALERT_TG_CHAT` | server | `guild-app/src/lib/tg-alert.ts:29,72` | optional | none | public |
-| `NODE_ENV` | server | `guild-app/src/lib/auth.ts:54`, `guild-app/src/lib/hardening/logger.ts:27`, `guild-app/src/lib/use-xrd-usd.tsx:88` | set by Next.js, not by hand | `production` under `next start` | public |
+| `NODE_ENV` | server | `guild-app/src/lib/auth.ts:71`, `guild-app/src/lib/hardening/logger.ts:27`, `guild-app/src/lib/use-xrd-usd.tsx:88` | set by Next.js, not by hand | `production` under `next start` | public |
 | `NEXT_PUBLIC_SITE_URL` | build | `guild-app/src/lib/config.ts:87`, `guild-app/src/app/layout.tsx:18`, `guild-app/src/app/sitemap.ts:13`, `guild-app/src/app/about/page.tsx:206`, `guild-app/src/app/docs/page.tsx:348,351` | optional | `https://radixguild.com` | public |
 | `NEXT_PUBLIC_API_URL` | build | `guild-app/src/lib/config.ts:72` | optional | `https://radixguild.com/api` | public |
 | `NEXT_PUBLIC_DAPP_DEF` | build | `guild-app/src/lib/config.ts:6` | optional | built-in mainnet default | public |

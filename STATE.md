@@ -12,9 +12,9 @@ when the two drift, re-read the live page and fix this one.
 The limits of the project are stated once, in [Disclosures](#disclosures) below. Other documents
 link here instead of repeating them.
 
-_Last written: 2026-11-25. The "Now" list was refreshed that day from the merge history on `main`, and the kit and MCP versions were re-read against the package manifests on `main`. The deploy state, the open pull requests and everything else on this page were not re-read on 2026-11-25. The dashboard row was last refreshed on 2026-11-15 and the older notes below are kept as written._
+_Last written: 2026-11-28. That day the "Now" list was refreshed from the merge history on `main`, the kit and MCP versions were re-read against the package manifests on `main`, and the deploy state was re-read from the deploy record and the served kit manifests (`/kit/agent.json`, `/kit/mcp.json`). The open pull requests and everything else on this page were not re-read on 2026-11-28; the older notes below are kept as written._
 
-> Superseded 2026-11-25 by the line above for the "last written" date; the record below is kept for the dates it gives.
+> Superseded 2026-11-28 by the line above for the "last written" date (it replaced a 2026-11-25 note, which deferred the deploy state); the record below is kept for the dates it gives.
 
 _Earlier note: last written 2026-10-11; versions and the trust-page sentence re-read 2026-11-01. That day's changes were checked against the rollout verification of the
 same date: the deploy record, the served pages, the served kit bytes and their published hashes,
@@ -24,10 +24,10 @@ task list. Passages that draw on anything else were last checked between 2026-09
 bullet under Disputes were re-read against the escrow source and the badge holders on the Radix
 Gateway, and reworded to match. On 2026-11-01 the kit and MCP version rows were re-read against the package manifests on `main` and the served tarballs, and the live Trust page against the 7-day sentence below; nothing else was re-read._
 
-## Now *(as of 2026-11-25)*
+## Now *(as of 2026-11-28)*
 
-- **When this page was edited on 2026-11-25, `main` was at `ee7466a`.**
-- **Last recorded deploy: radixguild.com ran `main` as of PR #79 (`b083d2b1`), checked 2026-11-15.** Whether any change merged since then has been deployed is not recorded here.
+- **When this page was edited on 2026-11-28, `main` was at `8e3105a` (PR #107).**
+- **Last recorded deploy: radixguild.com runs `8e3105a` (PR #107), deployed 2026-11-27 at 23:41 UTC.** Everything merged up to #107, listed below, is in that deploy. The served kit manifests, `/kit/agent.json` and `/kit/mcp.json`, name the same commit (`"git": "8e3105ad0981…"`, packed 2026-11-27 23:39 UTC).
 - **Merged since 2026-11-01** (from the merge history on `main`):
   - #74 and #78: dependency update batches (2026-11-02).
   - #79: trust docs. The swap recipe now names the receipt resource and says what a listing, a fill and a payout look like on the ledger (2026-11-07).
@@ -35,14 +35,19 @@ Gateway, and reworded to match. On 2026-11-01 the kit and MCP version rows were 
   - #83, #84 and #85: this page, and corrections to the trust claims about the arbiter and the owner settings (2026-11-15 and 2026-11-16).
   - #81, #82, #86 and #89: dependency bumps, including `next` 16.4.5 (2026-11-21 to 2026-11-23).
   - #87: the XRD/USD frozen-price alert is debounced (2026-11-19).
-  - #91: the app's swap pages and the agent kit (0.8.5) refuse to list or fill an NFT whose issuer can recall it, or whose recall roles could not be read. The NftSwap contract is unchanged (2026-11-23; `guild-app/src/components/swaps/list-nft-form.tsx:176`).
+  - #91: the app's swap pages and the agent kit (0.8.5) refuse to list or fill an NFT whose issuer can recall it, or whose recall roles could not be read. The NftSwap contract is unchanged (2026-11-23; commit `db7c925`).
   - #88, #92, #93, #94, #95, #96 and #97: source and tests for a version 2 of the escrow and NFT swap blueprints, in a new package directory. Source only, not deployed (see "What is not built or released yet").
   - #98, #99, #100 and #101: CI and lockfile changes for the Scrypto jobs. #102: a code comment in the version 2 package (2026-11-24 and 2026-11-25).
   - #103: the task submissions list returns a non-creator only their own rows (2026-11-25).
-- **Open pull requests:** not re-read on 2026-11-25. #81 and #82 have merged.
-- **Kit and MCP versions:** the package manifests on `main` read `@radix-guild/agent-client` 0.8.5 and `@radix-guild/agent-mcp` 0.3.10 on 2026-11-25, the same as the table below. The served tarballs were not re-checked that day.
+  - #104: escrow confirms read events from the task's own escrow component; PR verification gets a 10-second timeout and accepts only github.com repository links; JWT verification is pinned to HS256; task and notification lists are capped at 100 rows (2026-11-27).
+  - #105: an "Accepted risks" section in [`SECURITY.md`](./SECURITY.md), with the maintainer's signed acceptances (2026-11-27).
+  - #106: more swap guards in the app's swap pages and in the agent kit. Listing and filling now also need the NFT's issuer to be unable to freeze it or change its withdraw and deposit rules; an ask token whose issuer holds those powers is refused; a token named like a common token at another address is blocked; and the Guild's own receipts cannot be listed or asked for (2026-11-27; `guild-app/src/lib/nft-swap.ts`, `packages/agent-client/src/swap.ts`).
+  - #107: the agent kit version moves to 0.8.6, because #106 changed the kit's code (2026-11-27).
+- **Swap guards and their limit:** the guards from #91 and #106 run in the site's swap pages and in the agent kit. The NftSwap blueprint and component are unchanged, so a manifest built by hand and sent to the component directly does not pass through them.
+- **Open pull requests:** not re-read on 2026-11-28.
+- **Kit and MCP versions:** the package manifests on `main` read `@radix-guild/agent-client` 0.8.6 and `@radix-guild/agent-mcp` 0.3.10 on 2026-11-28, and radixguild.com serves those versions (`/kit/agent.json`, `/kit/mcp.json`, read 2026-11-28).
 
-## Live today *(kit and MCP rows: versions from the package manifests on `main`, re-read 2026-11-25; whether radixguild.com serves those versions was last checked 2026-11-01, when it served 0.8.4 and 0.3.9; dashboard row as of 2026-11-15; other rows as of 2026-10-11)*
+## Live today *(kit, MCP and dashboard rows as of 2026-11-28: versions from the package manifests on `main` and the served kit manifests; other rows as of 2026-10-11)*
 
 | Part | State |
 |---|---|
@@ -51,7 +56,7 @@ Gateway, and reworded to match. On 2026-11-01 the kit and MCP version rows were 
 | Dispute window | 7 days: the owner's transaction `txid_rdx1093cs27djfw5prrj3pl6asgj5c5xmwaweutm6lz6tmg64xwcqals89g3jd` (state version 562385459, 2026-10-11) moved `dispute_auto_resolve_secs` from 259200 to 604800 and nothing else. Each dispute keeps the window in force when it was raised. The review window is unchanged at 72 hours |
 | Agent kit | `@radix-guild/agent-client` 0.8.6, served as a tarball (`/kit/agent.tgz`, versioned `/kit/agent-0.8.6.tgz`); its sha256 is printed on `/agents`. Not on npm |
 | MCP server | `@radix-guild/agent-mcp` 0.3.10, read-only, served as a tarball (`/kit/mcp.tgz`, versioned `/kit/mcp-0.3.10.tgz`) with its sha256 beside it. Not on npm |
-| Dashboard and bot | radixguild.com, running `main` as of PR #79 (`b083d2b1`), checked 2026-11-15. The deploy date is not recorded here. (Earlier: deployed 2026-10-11, then a later deploy carried the 2026-10-12 trust-page fix; superseded 2026-11-15 by the line before.) [@radix_guild_bot](https://t.me/radix_guild_bot), run from `bot/` since 2026-09-30 |
+| Dashboard and bot | radixguild.com, running `8e3105a` (PR #107), deployed 2026-11-27 23:41 UTC. (Earlier: deployed 2026-10-11, then a later deploy carried the 2026-10-12 trust-page fix; later deploys followed, and this row was last replaced 2026-11-28.) [@radix_guild_bot](https://t.me/radix_guild_bot), run from `bot/` since 2026-09-30 |
 
 The superseded twins (agent 0.8.2 and 0.8.1, MCP 0.3.6 and 0.3.5) stay served so pinned
 configurations keep resolving. They get no fixes, and 0.8.1 still describes the dispute window
@@ -128,8 +133,9 @@ This section is the one place the project's limits are stated in full. The READM
   (rows F-005 and F-008) records them: after an issuer recalled a listed NFT, a buyer could pay for
   an empty bucket (F-005), and `cancel` returned the NFT to whoever presented the listing receipt
   (F-008). The same README (lines 8-10) says the components running on mainnet were built from the
-  v1 source and "still carry these findings". Its fix is source only (see "What is not built or
-  released yet").
+  v1 source and "still carry these findings". Their fixes are source only (see "What is not built or
+  released yet"). The swap guards from #91 and #106 (see "Now") are in the site and the agent kit;
+  a transaction sent to the component directly does not pass through them.
 - **Independent.** Not backed by, endorsed by, or affiliated with the Radix Foundation, RDX Works
   or the Radix DAO.
 
