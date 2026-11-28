@@ -28,7 +28,7 @@
       "origin_commit": "b2a69bfc299aa37df3cc476eb96e874a2cfa5f63 in the pre-publication history (not part of this repository's history)",
       "status": "verified",
       "enforce": true,
-      "verified_in": "https://github.com/radixguild/guild/actions/runs/46105575492 (rebuild byte-identical, 2026-11-28)"
+      "verified_in": "https://github.com/radixguild/guild/actions/runs/46105575492 (rebuild byte-identical, 2026-11-28; re-run with enforce on in https://github.com/radixguild/guild/actions/runs/46106731434)"
     },
     {
       "id": "nft-swap",
@@ -50,7 +50,7 @@
       "origin_commit": "8bc4bfa02fd8c4f38c14e87d82f270bcb257d153 in the pre-publication history (not part of this repository's history)",
       "status": "verified",
       "enforce": true,
-      "verified_in": "https://github.com/radixguild/guild/actions/runs/46105575492 (rebuild byte-identical, 2026-11-28)"
+      "verified_in": "https://github.com/radixguild/guild/actions/runs/46105575492 (rebuild byte-identical, 2026-11-28; re-run with enforce on in https://github.com/radixguild/guild/actions/runs/46106731434)"
     }
   ]
 }

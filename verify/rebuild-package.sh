@@ -83,6 +83,18 @@ while IFS= read -r f; do
   node -e 'process.exit(Object.hasOwn(JSON.parse(process.argv[1]), process.argv[2]) ? 0 : 1)' "$BLOBS_JSON" "$rel" \
     || { echo "SOURCE MISMATCH  $rel is not in source_blobs" >&2; fail=1; }
 done < <(find "$WORK/src" -type f | sort)
+# Outside src/, only these unpinned entries may exist; they are not part of the wasm build. Anything
+# else (a build.rs, a .cargo/ config, a new top-level file) could change the bytes, so it must be
+# added to source_blobs first.
+for entry in "$WORK"/* "$WORK"/.[!.]*; do
+  [ -e "$entry" ] || continue
+  name="${entry#"$WORK/"}"
+  case "$name" in
+    src|examples|tests|Dockerfile|LICENSE) ;;
+    *) node -e 'process.exit(Object.hasOwn(JSON.parse(process.argv[1]), process.argv[2]) ? 0 : 1)' "$BLOBS_JSON" "$name" \
+         || { echo "SOURCE MISMATCH  $name is neither pinned in source_blobs nor a known non-build entry" >&2; fail=1; } ;;
+  esac
+done
 [ "$fail" -eq 0 ] || { echo "source does not match the recorded blobs for $ID; not building" >&2; exit 1; }
 
 if [ "$PREPARE_ONLY" -eq 1 ]; then echo "prepared $WORK (not built)"; exit 0; fi

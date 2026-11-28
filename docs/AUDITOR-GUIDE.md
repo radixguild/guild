@@ -264,7 +264,10 @@ node scripts/verify-package-parity.mjs --package package_rdx1p53j5yst59jhgc8ljap
 ```
 
 `rebuild-package.sh` copies `escrow/scrypto/guild-marketplace-escrow` into `out/`, checks the
-git blob id of every source file against the expected-hash file, runs `scrypto build` with
+git blob id of every file under `src/` and of `Cargo.toml`, `Cargo.lock` and
+`rust-toolchain.toml` against the expected-hash file (and refuses any other entry that could
+change the build, such as a `build.rs` or a `.cargo/` directory; `examples/`, `tests/`,
+`Dockerfile` and `LICENSE` are copied but not part of the wasm), runs `scrypto build` with
 `SCRYPTO_CARGO_LOCKED=true` against the committed `Cargo.lock`, and writes `out/SHA256SUMS`.
 Use the id `escrow-wave-b` and the Wave B address for the escrow package. Wave B predates the
 NftSwap blueprint, so for it the script first removes `src/nft_swap.rs` and the six lines in
@@ -280,8 +283,8 @@ new entry here, before it runs anywhere.
 
 | Package | What runs from it | Rebuild status |
 |---|---|---|
-| `package_rdx1pk5z8ktfwd9d3l9vqmngft626cv5tp0hxjyenkh78pzq5u7c38p8yv` (Wave B) | the live task escrow | **matches**: rebuilt byte for byte (401,449 bytes, sha256 `d2a3b3f8…`) in [run 46105575492](https://github.com/radixguild/guild/actions/runs/46105575492), 2026-11-28 |
-| `package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv` | the live NftSwap component | **matches**: rebuilt byte for byte (447,882 bytes, sha256 `81ec78e4…`) in [run 46105575492](https://github.com/radixguild/guild/actions/runs/46105575492), 2026-11-28 |
+| `package_rdx1pk5z8ktfwd9d3l9vqmngft626cv5tp0hxjyenkh78pzq5u7c38p8yv` (Wave B) | the live task escrow | **matches**: rebuilt byte for byte (401,449 bytes, sha256 `d2a3b3f8…`) in [run 46105575492](https://github.com/radixguild/guild/actions/runs/46105575492), 2026-11-28; matched again with enforcement on in [run 46106731434](https://github.com/radixguild/guild/actions/runs/46106731434) |
+| `package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv` | the live NftSwap component | **matches**: rebuilt byte for byte (447,882 bytes, sha256 `81ec78e4…`) in [run 46105575492](https://github.com/radixguild/guild/actions/runs/46105575492), 2026-11-28; matched again with enforcement on in [run 46106731434](https://github.com/radixguild/guild/actions/runs/46106731434) |
 
 A match proves the deployed package is that build of that source, byte for byte. It does not
 prove the source is correct; that is what §2's checks, the tests and audits are for. Earlier,
