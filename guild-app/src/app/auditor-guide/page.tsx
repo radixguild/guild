@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { REPRO_BUILD_GUIDE_URL, REPRO_BUILD_RUN_URL } from "@/lib/config";
 import { ESCROW_CLAIM_BOND_XRD } from "@/lib/constants";
 import { ESCROW_MIN_INSURANCE_FRACTION, INSURANCE_RATE } from "@/lib/marketplace";
 import { withPageOg } from "@/lib/page-metadata";
@@ -101,7 +102,7 @@ const HONEST_GAPS = [
 const KNOWN_LIMITS = [
   "Blueprint upgrades are migrations (a new component and an env swap), never in-place: the code behind a component address does not change. Its settings can — the owner badge can move the parameters listed under the owner's powers above. Most are pinned into a task at the step that uses them, so a change reaches only tasks that get there afterwards; the two expiry settings apply to claims already in flight. Read the live values per component address, not from this page.",
   "There is one arbiter badge today (supply 1; the operator can mint more) and the operator holds it. The deployed blueprint has no multi-arbiter rule to switch on: a panel with recall and assignment is a next-blueprint design, not a setting.",
-  "The app and the escrow's Scrypto source are public (github.com/radixguild/guild, Apache-2.0): the task-escrow and NftSwap blueprints, and a deprecated earlier escrow package kept for reference. Reproducible-build verification, which would tie that source to the deployed packages, is still planned.",
+  "The app and the escrow's Scrypto source are public (github.com/radixguild/guild, Apache-2.0): the task-escrow and NftSwap blueprints, and a deprecated earlier escrow package kept for reference. Reproducible-build verification ties that source to the two live packages built from it, the task escrow (Wave B) and NftSwap (section 5 below links the recipe and the CI run); earlier, superseded escrow packages and packages built from other directories are not covered.",
   "This is experimental software on mainnet. The honest-gaps register above is live, not historical.",
 ];
 
@@ -285,7 +286,10 @@ Refunded (terminal)`}</pre>
           <p className="text-sm leading-relaxed">
             The operator is pseudonymous (bigdev / @bigdevxrd) with a verifiable on-chain track
             record. In lieu of doxxing, two backing steps: publishing the escrow blueprint source
-            (done: it is public under Apache-2.0) with reproducible-build verification (planned), and
+            (done: it is public under Apache-2.0) with reproducible-build verification (done for the
+            two live packages built from it, the task escrow and NftSwap: both{" "}
+            <a href={REPRO_BUILD_RUN_URL} className="text-primary hover:underline">matched the deployed bytes in CI run 46105575492</a>, 2026-11-28; recipe in{" "}
+            <a href={REPRO_BUILD_GUIDE_URL} className="text-primary hover:underline">docs/AUDITOR-GUIDE.md §5, Reproducible build</a>), and
             a bug bounty paid through the Guild&rsquo;s own escrow (planned; on-chain, visible).
             Status of each:{" "}
             <Link href="/trust" className="text-primary hover:underline">trust &amp; verification</Link>.

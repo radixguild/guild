@@ -3,7 +3,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { MyAgentsSection } from "@/components/agents/my-agents-section";
 import { KitCard } from "@/components/agents/kit-card";
-import { KIT_TARBALL_URL, REPO_URL } from "@/lib/config";
+import { KIT_TARBALL_URL, REPO_URL, REPRO_BUILD_GUIDE_URL, REPRO_BUILD_RUN_URL } from "@/lib/config";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { settlementCopy } from "@/lib/settlement-copy"
@@ -220,9 +220,12 @@ function AgentsContent({ mine }: { mine?: React.ReactNode }) {
           <p className="text-xs text-muted-foreground pt-1">
             <span className="font-semibold">Source:</span> the client and the escrow&rsquo;s Scrypto
             code are public at{" "}
-            <a href={REPO_URL} className="text-primary hover:underline">github.com/radixguild/guild</a>. A
-            reproducible build that ties that source to the deployed package is still planned, so the
-            addresses above stay the trust mechanism.
+            <a href={REPO_URL} className="text-primary hover:underline">github.com/radixguild/guild</a>. The
+            escrow package behind the component above was rebuilt from that source and{" "}
+            <a href={REPRO_BUILD_RUN_URL} className="text-primary hover:underline">matched the deployed bytes in CI run 46105575492</a> (recipe:{" "}
+            <a href={REPRO_BUILD_GUIDE_URL} className="text-primary hover:underline">docs/AUDITOR-GUIDE.md §5</a>). A match proves the build, not that the code is
+            correct, so check what the addresses above do as well; the badges&rsquo; package is not
+            covered by that check.
           </p>
         </CardContent>
       </Card>

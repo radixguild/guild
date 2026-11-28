@@ -102,6 +102,15 @@ export const REPO_IS_PUBLIC = true;
  *  guild-escrow, deprecated, kept for reference), badge-manager/ and blueprints/. */
 export const REPO_URL = "https://github.com/radixguild/guild";
 
+/** Reproducible build (criterion C2, guild#110): the recipe and each package's status,
+ *  docs/AUDITOR-GUIDE.md §5 "Reproducible build: check it yourself". It covers the two live
+ *  packages listed in verify/deployed-packages.json (task escrow Wave B, NftSwap) and nothing
+ *  else. Copy says "matches" only next to REPRO_BUILD_RUN_URL. */
+export const REPRO_BUILD_GUIDE_URL = `${REPO_URL}/blob/main/docs/AUDITOR-GUIDE.md#reproducible-build-check-it-yourself`;
+/** The CI run in which both live packages rebuilt byte for byte (2026-11-28); the run the
+ *  guide's status table and verify/deployed-packages.json "verified_in" link first. */
+export const REPRO_BUILD_RUN_URL = "https://github.com/radixguild/guild/actions/runs/46105575492";
+
 // Bring Your Agent: where the kit tarball is served (design §2.4, ruling D1
 // 2026-09-24 — tarball on this domain now, npm later). The one-liner the app
 // shows an owner embeds it; the kit's CI proves the `npx -y -p <url>` shape.

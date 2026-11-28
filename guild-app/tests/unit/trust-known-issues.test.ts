@@ -110,11 +110,15 @@ describe("/trust Hard Questions", () => {
     }
   });
 
-  it("says the source is public but does not claim the deployed package is proven to be it", () => {
-    // Reading the source is possible since the flip; proving the package on the ledger was built
-    // from it is the reproducible build, which is still planned. The answer must say both.
+  it("says the source is public and that the live packages matched, with the run beside it", () => {
+    // Reading the source is possible since the flip; the reproducible build (C2, guild#110) ties
+    // it to the two live packages. "matched" is a claim only a linked CI run backs, so the
+    // answer ends on the run, and it still says a match does not prove the source correct.
     expect(block).toMatch(/source is public at github\.com\/radixguild\/guild/);
-    expect(block).toMatch(/reproducible build[^"`]{0,60}still planned/);
+    expect(block).toMatch(/section 5 of docs\/AUDITOR-GUIDE\.md/);
+    expect(block).toMatch(/matched the deployed bytes in",\s*link: \{ href: REPRO_BUILD_RUN_URL/);
+    expect(block).toMatch(/not that the source is correct/);
+    expect(block).not.toMatch(/still planned/);
     expect(block).not.toMatch(/code is closed|repositories are private/);
   });
 });
