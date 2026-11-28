@@ -1,7 +1,8 @@
 <!-- status: live
      verified: 2026-11-28, second pass ("Reproducible build" subsection ONLY: rebuilds now read the
      crate at each package's pinned source_commit, and the CI paragraph describes the
-     `package parity gate` check. The status table's runs are unchanged.)
+     `package parity gate` check. Both packages rebuilt byte-identical from source_commit
+     b9755c3 in CI run 46126843153.)
      verified: 2026-11-28 (§5's source bullet and its new "Reproducible build" subsection ONLY:
      both live packages rebuilt byte-identical from this repository in CI run 46105575492, and
      their deployed code re-read from the Radix Gateway. Nothing else re-checked this pass.)
@@ -297,8 +298,8 @@ blueprint definitions) is recorded in the expected-hash file for reference, not 
 
 | Package | What runs from it | Rebuild status |
 |---|---|---|
-| `package_rdx1pk5z8ktfwd9d3l9vqmngft626cv5tp0hxjyenkh78pzq5u7c38p8yv` (Wave B) | the live task escrow | **matches**: rebuilt byte for byte (401,449 bytes, sha256 `d2a3b3f8…`) in [run 46105575492](https://github.com/radixguild/guild/actions/runs/46105575492), 2026-11-28; matched again with enforcement on in [run 46106731434](https://github.com/radixguild/guild/actions/runs/46106731434) |
-| `package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv` | the live NftSwap component | **matches**: rebuilt byte for byte (447,882 bytes, sha256 `81ec78e4…`) in [run 46105575492](https://github.com/radixguild/guild/actions/runs/46105575492), 2026-11-28; matched again with enforcement on in [run 46106731434](https://github.com/radixguild/guild/actions/runs/46106731434) |
+| `package_rdx1pk5z8ktfwd9d3l9vqmngft626cv5tp0hxjyenkh78pzq5u7c38p8yv` (Wave B) | the live task escrow | **matches**: rebuilt byte for byte (401,449 bytes, sha256 `d2a3b3f8…`) in [run 46105575492](https://github.com/radixguild/guild/actions/runs/46105575492), 2026-11-28; matched again with enforcement on in [run 46106731434](https://github.com/radixguild/guild/actions/runs/46106731434), and from the pinned `source_commit` in [run 46126843153](https://github.com/radixguild/guild/actions/runs/46126843153) |
+| `package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv` | the live NftSwap component | **matches**: rebuilt byte for byte (447,882 bytes, sha256 `81ec78e4…`) in [run 46105575492](https://github.com/radixguild/guild/actions/runs/46105575492), 2026-11-28; matched again with enforcement on in [run 46106731434](https://github.com/radixguild/guild/actions/runs/46106731434), and from the pinned `source_commit` in [run 46126843153](https://github.com/radixguild/guild/actions/runs/46126843153) |
 
 A match proves the deployed package is that build of that source, byte for byte. It does not
 prove the source is correct; that is what §2's checks, the tests and audits are for. Earlier,
