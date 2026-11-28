@@ -38,7 +38,7 @@ Server-side names are read at request time unless the `Where read` column says o
 | Name | Group | Where read | Required | Default | Class |
 |---|---|---|---|---|---|
 | `DATABASE_URL` | server | `guild-app/src/db/index.ts:6-8`, `guild-app/src/db/migrate.ts:6-9`, `guild-app/drizzle.config.ts:8`, `guild-app/src/lib/alert-store.ts:138` | required (the app throws on first use; `db:migrate` exits 1). In `alert-store.ts` it only picks the store | none (alert store: in-memory when unset) | secret |
-| `JWT_SECRET` | server | `guild-app/src/lib/auth.ts:22-25` | required (throws on first use) | none | secret |
+| `JWT_SECRET` | server | `guild-app/src/lib/auth.ts:22-25` | required (throws on first use); a value under 32 characters logs a one-time warning and does not stop the app (`auth.ts:17,26-31`) | none | secret |
 | `GUILD_ALLOWED_ORIGINS` | server | `guild-app/src/lib/same-origin.ts:48` | optional | empty list | public |
 | `ROLA_EXPECTED_ORIGIN` | server | `guild-app/src/lib/rola.ts:37`, `guild-app/src/lib/same-origin.ts:44` | optional | `https://radixguild.com` | public |
 | `GUILD_HALT` | server | `guild-app/src/lib/gateway.ts:1864` | optional | off; `1` or `true` turns the operator halt on, read per request (`gateway.ts:1859-1862`) | public |

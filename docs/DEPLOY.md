@@ -94,9 +94,10 @@ Run from `<app-dir>` (the `guild-app/` directory) unless stated; the `scripts/` 
 
    Read this before the command. Pass absolute paths for the three kit directories: the script
    changes into `<app-dir>` first (`scripts/deploy-swap.sh:50`), so a relative path is read from
-   there. Before it moves anything, the script deletes whatever is at its third and sixth arguments
-   (`.next-previous` and `<kit-previous>`, `scripts/deploy-swap.sh:193,200`), so each deploy discards
-   the build and kit the deploy before it kept: only one step of rollback is on disk. The script's
+   there. The script deletes whatever is at its sixth argument (`<kit-previous>`) before it moves
+   anything (`scripts/deploy-swap.sh:193`), and whatever is at its third (`.next-previous`) just before
+   it moves the build (`scripts/deploy-swap.sh:200`), so each deploy discards the build and kit the
+   deploy before it kept: only one step of rollback is on disk. The script's
    header refers to a wrapper that is not in this repository; read the whole script before running it
    by hand.
 
@@ -154,12 +155,15 @@ Running it again with the roles swapped gives the same two moves and restart in 
 this is read from how the script treats its arguments, not run, and the script's header
 (`scripts/deploy-swap.sh:1-40`) describes only the deploy direction:
 
+As in step 8, pass absolute paths for the three kit directories (`scripts/deploy-swap.sh:50`).
+
 ```
 bash scripts/deploy-swap.sh <app-dir> .next-previous .next-rolled-back <kit-previous> <kit-dir> <kit-rolled-back> <pm2-app>
 ```
 
 - `.next-rolled-back` and `<kit-rolled-back>` must be names that hold nothing you need. The script runs
-  `rm -rf` on its third and sixth arguments before it moves anything (`scripts/deploy-swap.sh:193,200`).
+  `rm -rf` on its sixth argument before the kit move and on its third before the build move
+  (`scripts/deploy-swap.sh:193,200`).
 - It stops without moving anything if `.next-previous` or `<kit-previous>` does not exist
   (`scripts/deploy-swap.sh:52-60`). A first deploy has neither.
 - Check the result with the steps in "Dashboard: verify".

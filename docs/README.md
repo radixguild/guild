@@ -2,7 +2,7 @@
      verified: 2026-10-11 (index only: every date below was re-read from the document's own header
      that day, and every link resolves in this tree. The claims inside each document were not
      re-checked by this pass; each header says what its own `verified:` lines covered.)
-     verified: 2026-11-25 (the `CONFIG.md` and `DEPLOY.md` rows only) -->
+     verified: 2026-11-28 (the `CONFIG.md` and `DEPLOY.md` rows only) -->
 # Docs — design and reference documents
 
 These are the design and reference documents that ship with the code. The repository's own
@@ -58,8 +58,8 @@ each header.
 |---|---|---|
 | [`AUDITOR-GUIDE.md`](AUDITOR-GUIDE.md) | live | 2026-10-06 |
 | [`BADGE-SCHEMAS.md`](BADGE-SCHEMAS.md) | live | 2026-09-23 |
-| [`CONFIG.md`](CONFIG.md) | live | 2026-11-25 |
-| [`DEPLOY.md`](DEPLOY.md) | live | 2026-11-25 |
+| [`CONFIG.md`](CONFIG.md) | live | 2026-11-28 |
+| [`DEPLOY.md`](DEPLOY.md) | live | 2026-11-28 |
 | [`ESCROW-DESIGN.md`](ESCROW-DESIGN.md) | historical | 2026-09-30 |
 | [`ESCROW-METHOD-INVENTORY.md`](ESCROW-METHOD-INVENTORY.md) | live | 2026-09-21 |
 | [`ESCROW-MIGRATION-S1-METHOD-MAP.md`](ESCROW-MIGRATION-S1-METHOD-MAP.md) | historical | 2026-08-15 |

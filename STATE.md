@@ -14,7 +14,7 @@ link here instead of repeating them.
 
 _Last written: 2026-11-28. That day the "Now" list was refreshed from the merge history on `main`, the kit and MCP versions were re-read against the package manifests on `main`, and the deploy state was re-read from the deploy record and the served kit manifests (`/kit/agent.json`, `/kit/mcp.json`). The open pull requests and everything else on this page were not re-read on 2026-11-28; the older notes below are kept as written._
 
-> Superseded 2026-11-28 by the line above for the "last written" date (it replaced a 2026-11-25 note, which deferred the deploy state); the record below is kept for the dates it gives.
+> Superseded 2026-11-28 by the line above for the "last written" date (it replaced the 2026-11-15 line); the record below is kept for the dates it gives.
 
 _Earlier note: last written 2026-10-11; versions and the trust-page sentence re-read 2026-11-01. That day's changes were checked against the rollout verification of the
 same date: the deploy record, the served pages, the served kit bytes and their published hashes,
@@ -39,7 +39,7 @@ Gateway, and reworded to match. On 2026-11-01 the kit and MCP version rows were 
   - #88, #92, #93, #94, #95, #96 and #97: source and tests for a version 2 of the escrow and NFT swap blueprints, in a new package directory. Source only, not deployed (see "What is not built or released yet").
   - #98, #99, #100 and #101: CI and lockfile changes for the Scrypto jobs. #102: a code comment in the version 2 package (2026-11-24 and 2026-11-25).
   - #103: the task submissions list returns a non-creator only their own rows (2026-11-25).
-  - #104: escrow confirms read events from the task's own escrow component; PR verification gets a 10-second timeout and accepts only github.com repository links; JWT verification is pinned to HS256; task and notification lists are capped at 100 rows (2026-11-27).
+  - #104: escrow confirms read events from the escrow component recorded on the task (the configured one when the task has none); PR verification gets a 10-second timeout and accepts only github.com repository links; JWT verification is pinned to HS256; task and notification lists are capped at 100 rows (2026-11-27).
   - #105: an "Accepted risks" section in [`SECURITY.md`](./SECURITY.md), with the maintainer's signed acceptances (2026-11-27).
   - #106: more swap guards in the app's swap pages and in the agent kit. Listing and filling now also need the NFT's issuer to be unable to freeze it or change its withdraw and deposit rules; an ask token whose issuer holds those powers is refused; a token named like a common token at another address is blocked; and the Guild's own receipts cannot be listed or asked for (2026-11-27; `guild-app/src/lib/nft-swap.ts`, `packages/agent-client/src/swap.ts`).
   - #107: the agent kit version moves to 0.8.6, because #106 changed the kit's code (2026-11-27).
