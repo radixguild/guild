@@ -26,7 +26,7 @@ Gateway, and reworded to match. On 2026-11-01 the kit and MCP version rows were 
 
 ## Now *(as of 2026-11-28)*
 
-- **When this page was edited on 2026-11-28, `main` was at `8e3105a` (PR #107).**
+- **When this page was edited on 2026-11-28, `main` was at `940b339` (PR #108).**
 - **Last recorded deploy: radixguild.com runs `8e3105a` (PR #107), deployed 2026-11-27 at 23:41 UTC.** Everything merged up to #107, listed below, is in that deploy. The served kit manifests, `/kit/agent.json` and `/kit/mcp.json`, name the same commit (`"git": "8e3105ad0981…"`, packed 2026-11-27 23:39 UTC).
 - **Merged since 2026-11-01** (from the merge history on `main`):
   - #74 and #78: dependency update batches (2026-11-02).
@@ -43,6 +43,7 @@ Gateway, and reworded to match. On 2026-11-01 the kit and MCP version rows were 
   - #105: an "Accepted risks" section in [`SECURITY.md`](./SECURITY.md), with the maintainer's signed acceptances (2026-11-27).
   - #106: more swap guards in the app's swap pages and in the agent kit. Listing and filling now also need the NFT's issuer to be unable to freeze it or change its withdraw and deposit rules; an ask token whose issuer holds those powers is refused; a token named like a common token at another address is blocked; and the Guild's own receipts cannot be listed or asked for (2026-11-27; `guild-app/src/lib/nft-swap.ts`, `packages/agent-client/src/swap.ts`).
   - #107: the agent kit version moves to 0.8.6, because #106 changed the kit's code (2026-11-27).
+  - #108: `docs/ENVIRONMENT.md`, `docs/DEPLOY.md` and this page. Docs only, so the deploy above is unchanged (2026-11-28).
 - **Swap guards and their limit:** the guards from #91 and #106 run in the site's swap pages and in the agent kit. The NftSwap blueprint and component are unchanged, so a manifest built by hand and sent to the component directly does not pass through them.
 - **Open pull requests:** not re-read on 2026-11-28.
 - **Kit and MCP versions:** the package manifests on `main` read `@radix-guild/agent-client` 0.8.6 and `@radix-guild/agent-mcp` 0.3.10 on 2026-11-28, and radixguild.com serves those versions (`/kit/agent.json`, `/kit/mcp.json`, read 2026-11-28).
@@ -134,8 +135,20 @@ This section is the one place the project's limits are stated in full. The READM
   an empty bucket (F-005), and `cancel` returned the NFT to whoever presented the listing receipt
   (F-008). The same README (lines 8-10) says the components running on mainnet were built from the
   v1 source and "still carry these findings". Their fixes are source only (see "What is not built or
-  released yet"). The swap guards from #91 and #106 (see "Now") are in the site and the agent kit;
-  a transaction sent to the component directly does not pass through them.
+  released yet"); the NftSwap blueprint and component are unchanged. F-005 is guarded in the app only:
+  the swap guards from #91 and #106 (see "Now") are in the site and the agent kit, and a transaction
+  sent to the component directly does not pass through them. F-008 is an accepted risk in
+  [`SECURITY.md`](./SECURITY.md#accepted-risks): whoever holds a listing receipt can cancel that
+  listing to themselves on the live swap, because the receipt is the seller's key. It reopens on a
+  receipt-theft report or a v2 deploy.
+- **Risks accepted in writing (signed 2026-11-27).** [`SECURITY.md`](./SECURITY.md#accepted-risks)
+  lists the risks the maintainer has accepted instead of fixing them now, each with its reason and
+  the condition that reopens it: F-008 (above); a poster can collect the expiry bounty on their own
+  task (small and self-directed); the reward-token whitelist checks divisibility only (only reviewed
+  tokens are whitelisted); the dashboard's Content-Security-Policy allows `unsafe-inline` and
+  `unsafe-eval` (no user-controlled HTML sink exists); and a low-severity `elliptic` alert in the
+  dashboard's dependencies (no fixed version exists, and the app never signs with secp256k1). The
+  live contracts are unchanged; these risks are accepted as they stand.
 - **Independent.** Not backed by, endorsed by, or affiliated with the Radix Foundation, RDX Works
   or the Radix DAO.
 
@@ -148,7 +161,7 @@ on the site itself.
 | | |
 |---|---|
 | **Can** | Change twelve settings through ten owner-only calls (the claim bond percentage, floor and cap, the review window, the arbiter-fee cap, the minimum insurance fraction a poster must fund, both submit deadlines, the dispute-resolve window and default split, the expiry grace period, and the expired-claim bounty share) — most take effect only for steps taken after the change; two reach claims already in flight (the grace window after a claim deadline, and the share of a forfeited bond paid to whoever ends it). Add or freeze an accepted token (freezing stops new tasks; it touches nothing already in flight). Collect bonds that have already been forfeited. Every change is a public on-chain event. Separately, the operator holds the badge that mints arbiter badges, so it can issue more of them, each assigned to one account (see "Disputes," below). |
-| **Cannot** | Withdraw a task's live reward or claim bond directly, reverse a settlement, redirect a payment to a different account, pause the contract outright (freezing only stops *new* tasks), move a review or dispute deadline once it has started, or stop a specific account from calling the contract directly. Outside a dispute, nobody, the operator included, can reach into escrow and take a reward early, or take a live claim bond early apart from the expiry-grace setting named at the end of this cell; on a disputed task the arbiter's ruling decides the split, and the operator holds the only arbiter badge (see "Disputes," below). Both badges are trusted roles today. One owner setting does reach claims in flight: the expiry grace has no upper bound and can wrap negative, so a misused owner badge could end live claims early and collect their bonds (see "Disclosures," above). The two submit deadlines have the same flaw for claims taken after a change (see "Disclosures," above). |
+| **Cannot** | Limits first: both badges are trusted roles today. One owner setting does reach claims in flight: the expiry grace has no upper bound and can wrap negative, so a misused owner badge could end live claims early and collect their bonds. The two submit deadlines have the same flaw for claims taken after a change (see "Disclosures," above). On a disputed task the arbiter's ruling decides the split, and the operator holds the only arbiter badge (see "Disputes," below). Within those limits, the owner cannot withdraw a task's live reward or claim bond directly, reverse a settlement, redirect a payment to a different account, pause the contract outright (freezing only stops *new* tasks), move a review or dispute deadline once it has started, or stop a specific account from calling the contract directly. Outside a dispute, nobody, the operator included, can reach into escrow and take a reward early, or take a live claim bond early other than through the expiry-grace setting above. |
 
 Off-chain, the operator can take the site down or roll it back, suspend an account's access to
 the *site*, and stop new tasks from being funded through it — none of which reaches the chain: a
