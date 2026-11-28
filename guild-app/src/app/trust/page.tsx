@@ -1,6 +1,7 @@
 import { disputeCopy, settlementCopy } from "@/lib/settlement-copy";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { REPRO_BUILD_GUIDE_URL, REPRO_BUILD_RUN_URL } from "@/lib/config";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,10 +34,12 @@ export const metadata: Metadata = withPageOg("/trust", {
 // change that makes it untrue. None of these is a defence. They are what is so.
 //   - "cents": XRD/USD read from /api/v1/quote/xrd-usd AND CoinGecko, 2026-09-20.
 //   - "check the code": rewritten at the open-source flip (2026-10-02). The source is
-//     public (radixguild/guild); the package on-ledger is WASM, and no reproducible
-//     build ties the two yet (BACKING_PLAN's second row, Planned). The live package
-//     (Wave B, 2026-09-13) predates nft_swap in the crate, so a build of today's tree
-//     does not reproduce its hash; the answer says so (F21 review, 2026-10-03).
+//     public (radixguild/guild); the package on-ledger is WASM. Rewritten again at C2
+//     (guild#110, 2026-11-28): both live packages built from the escrow crate (Wave B
+//     escrow, NftSwap) rebuilt byte for byte in CI run 46105575492 and again with
+//     enforcement on in run 46106731434 (docs/AUDITOR-GUIDE.md §5, verify/
+//     deployed-packages.json). Wave B predates nft_swap; its recipe removes that module
+//     and checks the remaining files' blob ids. "matched" stays next to the run link.
 //   - "owner powers": lib.rs enable_method_auth — the OWNER list is token admin,
 //     freeze/unfreeze, withdraw_forfeited_bonds and ten setters. No owner method
 //     touches a task's reward vault or a live bond. freeze_token only trips
@@ -52,7 +55,8 @@ const HARD_QUESTIONS = [
   },
   {
     q: "You say \"verify, don't vouch\" — can I check the code?",
-    a: "Yes, you can read it: the source is public at github.com/radixguild/guild, under Apache-2.0, the escrow's Scrypto source included. What is not done yet is proving that the package on the ledger, which is compiled code, was built from that source: the reproducible build that would show it is still planned (the backing plan, below). Until it is done, verify behaviour as well as reading the code — every transaction, the component's state, and each public method and who may call it (the auditor's guide lists them). The live escrow package was built before the NftSwap blueprint joined this crate, so a build of today's tree will not reproduce its hash.",
+    a: "Yes. The source is public at github.com/radixguild/guild, under Apache-2.0, the escrow's Scrypto source included, and you can check that the compiled packages on the ledger were built from it: the reproducible build recipe is section 5 of docs/AUDITOR-GUIDE.md (Reproducible build), and the backing plan below links it. It covers the two live packages built from the escrow crate, the task escrow (Wave B) and the NftSwap component. Wave B was built before the NftSwap blueprint joined the crate, so its recipe removes that module first and checks every remaining source file against a recorded hash. A match proves the package is that build of that source, not that the source is correct, so verify behaviour as well — every transaction, the component's state, and each public method and who may call it (the auditor's guide lists them). Both packages matched the deployed bytes in",
+    link: { href: REPRO_BUILD_RUN_URL, label: "CI run 46105575492 (2026-11-28)" },
   },
   {
     q: "Can the operator take the money in escrow?",
@@ -193,7 +197,7 @@ const BACKING_PLAN: {
   status: string;
   detail: string;
   proves: string;
-  link?: { href: string; label: string };
+  links?: { href: string; label: string }[];
 }[] = [
   {
     item: "Escrow blueprint source published",
@@ -202,23 +206,29 @@ const BACKING_PLAN: {
     // 2026-08-15 (root LICENSE + NOTICE). What ships under escrow/: the
     // guild-marketplace-escrow crate (the task escrow and NftSwap blueprints) and
     // the deprecated guild-escrow package, kept for reference. "proves" stops at
-    // "anyone can read": the live escrow's package (Wave B, 2026-09-13) was built
-    // before nft_swap joined the crate, so no build of this tree reproduces its
-    // bytes as-is — tying source to package is the next row's job.
+    // "anyone can read": tying source to package is the next row's job (done at C2,
+    // guild#110, for the two live packages built from this crate).
     detail: "Published at the open-source flip, at github.com/radixguild/guild under Apache-2.0: the app, the bot, the agent kits and the escrow's Scrypto source (the task-escrow and NftSwap blueprints, and a deprecated earlier escrow package kept for reference).",
-    proves: "Anyone can read the auth roles and vault rules the auditor's guide describes. That they are exactly the code running on the ledger is what the next row, the reproducible build, will show.",
+    proves: "Anyone can read the auth roles and vault rules the auditor's guide describes. That they are exactly the code running on the ledger is what the next row, the reproducible build, shows for the two live packages built from this crate.",
   },
   {
     item: "Reproducible-build verification",
-    status: "Planned",
-    detail: "Follows source publication: build the blueprint yourself, compare the hash against the deployed package. The live escrow package was built before the NftSwap blueprint joined this crate, so a build of today's tree will not reproduce its hash.",
-    proves: "The published source compiles to exactly the deployed on-chain WASM.",
+    // Done at C2 (guild#110): both packages in verify/deployed-packages.json rebuilt
+    // byte for byte in run 46105575492 (2026-11-28) and again with enforce on in
+    // 46106731434. "matched" only beside the run link (claims rule).
+    status: "Done",
+    detail: "Build the blueprint yourself and compare it with the deployed package. Both live packages built from the escrow crate, the task escrow (Wave B) and the NftSwap component, were rebuilt from the published source and compared byte for byte with the deployed packages, and CI fails on any later mismatch. Wave B predates the NftSwap blueprint, so its recipe removes that module first and checks every remaining source file against a recorded hash. Earlier, superseded escrow packages, and packages built from other directories such as the badge manager, are not covered. The recipe and each package's status, then the CI run in which both matched the deployed bytes: ",
+    links: [
+      { href: REPRO_BUILD_GUIDE_URL, label: "docs/AUDITOR-GUIDE.md §5, Reproducible build" },
+      { href: REPRO_BUILD_RUN_URL, label: "CI run 46105575492 (2026-11-28)" },
+    ],
+    proves: "The two live packages are byte-for-byte builds of the published source. Not that the source is correct: that is what the tests, the audits and the auditor's guide checks are for.",
   },
   {
     item: "Bug bounty through our own escrow",
     status: "Planned",
     detail: "Next, now that the source is public: posted as real on-chain Guild tasks — the pot would be provably funded, and the payout path would be the product itself. Until then the beta bug bounty pays no cash — a report gets a reply and a straight answer (fixed, deferred or disagreed, with the reasoning), and credit by name or handle when the fix ships, if you want it — at ",
-    link: { href: "/bug-bounty", label: "/bug-bounty" },
+    links: [{ href: "/bug-bounty", label: "/bug-bounty" }],
     proves: "Security claims have skin in the game, visible on-ledger.",
   },
   {
@@ -380,7 +390,18 @@ function TrustContent() {
             {HARD_QUESTIONS.map((h) => (
               <div key={h.q} className="space-y-1">
                 <dt className="font-semibold">{h.q}</dt>
-                <dd className="text-muted-foreground leading-relaxed">{h.a}</dd>
+                <dd className="text-muted-foreground leading-relaxed">
+                  {h.a}
+                  {h.link && (
+                    <>
+                      {" "}
+                      <a href={h.link.href} className="text-primary hover:underline">
+                        {h.link.label}
+                      </a>
+                      .
+                    </>
+                  )}
+                </dd>
               </div>
             ))}
           </dl>
@@ -443,11 +464,22 @@ function TrustContent() {
                 </div>
                 <div className="text-xs text-muted-foreground leading-relaxed">
                   {b.detail}
-                  {b.link && (
+                  {b.links && (
                     <>
-                      <Link href={b.link.href} className="text-primary hover:underline">
-                        {b.link.label}
-                      </Link>
+                      {b.links.map((l, i) => (
+                        <span key={l.href}>
+                          {i > 0 && "; "}
+                          {l.href.startsWith("/") ? (
+                            <Link href={l.href} className="text-primary hover:underline">
+                              {l.label}
+                            </Link>
+                          ) : (
+                            <a href={l.href} className="text-primary hover:underline">
+                              {l.label}
+                            </a>
+                          )}
+                        </span>
+                      ))}
                       .
                     </>
                   )}

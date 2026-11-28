@@ -56,13 +56,15 @@ test.describe("Trust page", () => {
     await expect(page.getByText("Checkable Today")).toBeVisible();
     // The live escrow component is linked to the public dashboard.
     await expect(page.locator("a[href*='dashboard.radixdlt.com/component/']")).toBeVisible();
-    // Since the open-source flip, source publication is Done — and the step that would prove
-    // the deployed package was built from that source, the reproducible build, is still
-    // Planned (P9: deployed-vs-planned markers, no claim ahead of reality). Until the flip this
+    // Since the open-source flip, source publication is Done; since C2 (guild#110) so is the
+    // reproducible build, for the two live packages, and its row links the CI run that matched
+    // (P9: deployed-vs-planned markers, no claim ahead of reality). Until the flip this
     // pinned "opens at launch" / "no date is set", which the flip change removed.
     const backingRow = (item: string) => page.locator("div.bg-muted").filter({ hasText: item });
     await expect(backingRow("Escrow blueprint source published").getByText("Done", { exact: true })).toBeVisible();
-    await expect(backingRow("Reproducible-build verification").getByText("Planned", { exact: true })).toBeVisible();
+    const reproRow = backingRow("Reproducible-build verification");
+    await expect(reproRow.getByText("Done", { exact: true })).toBeVisible();
+    await expect(reproRow.locator("a[href='https://github.com/radixguild/guild/actions/runs/46105575492']")).toBeVisible();
     // The page names the public repository...
     await expect(page.getByText("github.com/radixguild/guild", { exact: false }).first()).toBeVisible();
     // ...and links no other GitHub repository (the earlier one is not public). Whether /trust

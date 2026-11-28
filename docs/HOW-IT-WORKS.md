@@ -131,8 +131,11 @@ Per-task disputability is a banned claim in
   committed brief, not against chat history.
 - **Every promise is checkable.** Component addresses and configuration are published — see
   the auditor guide — and the escrow blueprint's source is in this repository
-  (`escrow/scrypto/guild-marketplace-escrow`, Apache-2.0). Reproducible-build verification
-  against the deployed package is planned (see the site's Trust & Verification page).
+  (`escrow/scrypto/guild-marketplace-escrow`, Apache-2.0). The two live packages built from
+  it (the task escrow and NftSwap) were rebuilt from that source in CI and compared byte for
+  byte with the deployed packages; the recipe, each package's status and the CI runs that
+  matched are in [AUDITOR-GUIDE §5, Reproducible build](AUDITOR-GUIDE.md#reproducible-build-check-it-yourself).
+  A match ties the deployed code to this source; it does not make the source correct.
 - **Honest gaps.** Where no clean mechanism exists yet (they exist — this is new ground),
   the UI says so and shows the best we have. Got a better design? **Post it as a task.
   Let's build it.**

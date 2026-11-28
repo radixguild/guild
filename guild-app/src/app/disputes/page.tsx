@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { REPRO_BUILD_GUIDE_URL, REPRO_BUILD_RUN_URL } from "@/lib/config";
 import { ESCROW_COMPONENT, TG_GROUP_URL } from "@/lib/constants";
 import { withPageOg } from "@/lib/page-metadata";
 
@@ -356,8 +357,11 @@ function DisputesContent() {
           <div>
             <div className="text-xs font-semibold text-primary mb-1">Source</div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              The escrow blueprint source is public at github.com/radixguild/guild. A reproducible
-              build that ties it to the deployed package is still planned.
+              The escrow blueprint source is public at github.com/radixguild/guild. The live escrow
+              package was rebuilt from it and{" "}
+              <a href={REPRO_BUILD_RUN_URL} className="text-primary hover:underline">matched the deployed bytes in CI run 46105575492</a> (recipe:{" "}
+              <a href={REPRO_BUILD_GUIDE_URL} className="text-primary hover:underline">docs/AUDITOR-GUIDE.md §5</a>). That proves the build, not that the code is
+              correct: on-chain behaviour is still the thing to check.
             </p>
           </div>
         </CardContent>

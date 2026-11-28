@@ -13,6 +13,7 @@ import {
   ESCROW_MIN_INSURANCE_FRACTION,
 } from "@/lib/constants";
 import { withPageOg } from "@/lib/page-metadata";
+import { REPRO_BUILD_GUIDE_URL, REPRO_BUILD_RUN_URL } from "@/lib/config";
 
 // The highest-stakes trust doc (D5, COMMUNITY-DOCS-PLAN §5 template + fact
 // ledger §8). Written wrong it creates liability; written right it is the trust
@@ -315,8 +316,12 @@ function MoneyContent() {
           </p>
           <p className="text-muted-foreground">
             <span className="font-semibold text-foreground">Source:</span> the escrow blueprint
-            source is public at github.com/radixguild/guild; a reproducible build that ties it to the
-            deployed package is still planned.
+            source is public at github.com/radixguild/guild. The live escrow package was rebuilt
+            from it and{" "}
+            <a href={REPRO_BUILD_RUN_URL} className="text-primary hover:underline">matched the deployed bytes in CI run 46105575492</a>{" "}
+            (recipe:{" "}
+            <a href={REPRO_BUILD_GUIDE_URL} className="text-primary hover:underline">docs/AUDITOR-GUIDE.md §5</a>).
+            That ties the deployed code to the source; it does not make the source correct.
           </p>
         </CardContent>
       </Card>

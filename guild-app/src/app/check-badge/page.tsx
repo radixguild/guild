@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { REPRO_BUILD_GUIDE_URL, REPRO_BUILD_RUN_URL } from "@/lib/config";
 import { BADGE_NFT, ESCROW_CLAIM_BOND_XRD, TG_BOT_URL } from "@/lib/constants";
 import { withPageOg } from "@/lib/page-metadata";
 
@@ -200,8 +201,11 @@ function CheckBadgeContent() {
             and XP fields that are not your score. Your trust record is not on it at all.
           </p>
           <p className="leading-relaxed">
-            <span className="font-semibold">Source:</span> public at github.com/radixguild/guild; a
-            reproducible build that ties that source to the deployed package is still planned.
+            <span className="font-semibold">Source:</span> public at github.com/radixguild/guild. The
+            reproducible-build check (<a href={REPRO_BUILD_GUIDE_URL} className="text-primary hover:underline">docs/AUDITOR-GUIDE.md §5</a>) covers the task escrow
+            and NftSwap packages, which{" "}
+            <a href={REPRO_BUILD_RUN_URL} className="text-primary hover:underline">matched the deployed bytes in CI run 46105575492</a>; the package behind this badge
+            is not covered by it.
           </p>
         </CardContent>
       </Card>
