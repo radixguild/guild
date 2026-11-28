@@ -47,10 +47,12 @@ These are the parts you do not have to take on trust:
 - **The escrow blueprint is Apache-2.0**, patent grant included. Its source is in this repository
   (`escrow/scrypto/guild-marketplace-escrow`), so you can read the rules that move your money,
   and you can build and deploy your own component from it if you would rather not use ours.
-  Reproducible-build verification — rebuilding the blueprint yourself and matching the bytes of
-  the package deployed on-chain — is planned, not done; see
-  [Trust & Verification](https://radixguild.com/trust). Until then, check what the deployed
-  component does: its methods, its state and every transaction are on the ledger.
+  You can also rebuild the two live packages yourself and match the bytes deployed on-chain: the
+  recipe, and the CI run where both matched, are in
+  [the auditor's guide, §5](docs/AUDITOR-GUIDE.md#reproducible-build-check-it-yourself). A match
+  ties the deployed code to this source; it does not make the source correct, so still check
+  what the deployed component does: its methods, its state and every transaction are on the
+  ledger.
 - **The revenue instrument is a poster-side component royalty on `create_task`, enforced by
   the ledger, and it is set to 0 XRD.** The live component has its royalty module switched on:
   `create_task` carries a royalty of 0 XRD, and every other method is free, the worker's legs
