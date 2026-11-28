@@ -1,4 +1,7 @@
 <!-- status: live
+     verified: 2026-11-28 (§5's source bullet and its new "Reproducible build" subsection ONLY:
+     both live packages rebuilt byte-identical from this repository in CI run 46105575492, and
+     their deployed code re-read from the Radix Gateway. Nothing else re-checked this pass.)
      verified: 2026-10-14 (§2 claim 1's heading and its new arbiter bullet, and §6's dispute bullet
      ONLY: re-derived from lib.rs (resolve_dispute, auto_resolve_dispute, credit_split_for_parties)
      and read from the Radix Gateway at state version 563024795, where the owner badge and the
@@ -210,8 +213,9 @@ The operator is pseudonymous (bigdev / @bigdevxrd) with a verifiable on-chain tr
 In lieu of doxxing, these are the backing steps; their status is kept current on the site's
 [Trust & Verification](https://radixguild.com/trust) page, and the plan is
 `TRUST-BACKING-PLAN.md`:
-- the escrow blueprint's source is in this repository under Apache-2.0; reproducible-build
-  verification of it against the deployed package is planned;
+- the escrow blueprint's source is in this repository under Apache-2.0, and the two live
+  packages built from it can be rebuilt and compared with the deployed bytes: the recipe and
+  each package's status are under "Reproducible build" below;
 - a bug bounty paid through the Guild's own escrow (on-chain, visible) is planned; until then
   the site's beta [bug-bounty page](https://radixguild.com/bug-bounty) pays no cash;
 - a timelocked commitment bond is in the plan, not started.
@@ -219,6 +223,72 @@ In lieu of doxxing, these are the backing steps; their status is kept current on
 For tasks/projects **over $50k USD**, trustee-verified identity is planned, not available
 yet: a named third party would attest the operator's identity and standing without public
 disclosure. No trustee is retained.
+
+### Reproducible build: check it yourself
+
+Two questions, two checks. Both are keyless and read-only; neither needs anything from the
+operator.
+
+**1. Does the chain run the bytes this repository records?** Needs Node 20+ and a network
+connection, on any OS:
+
+```bash
+node scripts/verify-package-parity.mjs
+```
+
+It reads each package's deployed code from the public Radix Gateway
+(`POST /state/package/page/codes`, which returns the code bytes themselves), recomputes the
+Gateway's `code_hash_hex` (BLAKE2b-256) from those bytes and stops if they disagree, then
+compares the SHA-256 of the bytes with [`verify/deployed-packages.json`](../verify/deployed-packages.json).
+Exit 0 = match, 1 = mismatch (both hashes printed), 2 = usage or network error, 3 = a package
+with no entry. `--gateway-response <file>` checks a reply you saved yourself (for example with
+`curl`) instead of fetching.
+
+**2. Do those bytes come from this source?** Rebuild and compare. Linux x86_64 only: the wasm
+does not build correctly on macOS.
+
+- Rust **1.92.0** through rustup, with `rust-src`, `rustfmt` and the `wasm32-unknown-unknown`
+  target (the package's `rust-toolchain.toml` names the same version);
+- the `scrypto` CLI from **radix-clis 1.3.1**: `cargo install radix-clis --version 1.3.1 --locked`;
+- `CARGO_HOME=/root/.cargo` and `RUSTUP_HOME=/root/.rustup`. The deployed wasm carries source
+  paths under those two directories (panic location strings), so a build under any other home
+  gives different bytes. A throwaway container or VM where you are root is the simple way;
+- then, from a checkout of this repository:
+
+```bash
+verify/rebuild-package.sh nft-swap out
+```
+
+```bash
+node scripts/verify-package-parity.mjs --package package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv --wasm out/nft-swap.wasm
+```
+
+`rebuild-package.sh` copies `escrow/scrypto/guild-marketplace-escrow` into `out/`, checks the
+git blob id of every file under `src/` and of `Cargo.toml`, `Cargo.lock` and
+`rust-toolchain.toml` against the expected-hash file (and refuses any other entry that could
+change the build, such as a `build.rs` or a `.cargo/` directory; `examples/`, `tests/`,
+`Dockerfile` and `LICENSE` are copied but not part of the wasm), runs `scrypto build` with
+`SCRYPTO_CARGO_LOCKED=true` against the committed `Cargo.lock`, and writes `out/SHA256SUMS`.
+Use the id `escrow-wave-b` and the Wave B address for the escrow package. Wave B predates the
+NftSwap blueprint, so for it the script first removes `src/nft_swap.rs` and the six lines in
+`src/lib.rs` that declare that module; the blob check confirms the result is the file Wave B was
+built from.
+
+CI repeats both checks in [`package-parity.yml`](../.github/workflows/package-parity.yml) on
+every change to the crate, the expected-hash file or the script, and keeps the built `.wasm`,
+`.rpd` and `SHA256SUMS` as run artifacts for 30 days. A package marked `"enforce": true` in the
+expected-hash file (both, since the run below) fails CI on any mismatch. A change to the crate's
+source makes a rebuild differ from these packages by design: it would need a new package, and a
+new entry here, before it runs anywhere.
+
+| Package | What runs from it | Rebuild status |
+|---|---|---|
+| `package_rdx1pk5z8ktfwd9d3l9vqmngft626cv5tp0hxjyenkh78pzq5u7c38p8yv` (Wave B) | the live task escrow | **matches**: rebuilt byte for byte (401,449 bytes, sha256 `d2a3b3f8…`) in [run 46105575492](https://github.com/radixguild/guild/actions/runs/46105575492), 2026-11-28; matched again with enforcement on in [run 46106731434](https://github.com/radixguild/guild/actions/runs/46106731434) |
+| `package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv` | the live NftSwap component | **matches**: rebuilt byte for byte (447,882 bytes, sha256 `81ec78e4…`) in [run 46105575492](https://github.com/radixguild/guild/actions/runs/46105575492), 2026-11-28; matched again with enforcement on in [run 46106731434](https://github.com/radixguild/guild/actions/runs/46106731434) |
+
+A match proves the deployed package is that build of that source, byte for byte. It does not
+prove the source is correct; that is what §2's checks, the tests and audits are for. Earlier,
+superseded escrow packages are not covered.
 
 ## 6. Known limits — read before relying
 
