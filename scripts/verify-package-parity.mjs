@@ -182,6 +182,9 @@ export function codeFromGatewayResponse(body, address) {
 /**
  * Compare the chain's code with the expectation (and a local build, if given).
  * MATCH only when every hash present agrees; anything else is MISMATCH with the reasons listed.
+ * @param {{ wasm_sha256: string, code_hash_blake2b256: string, bytes: number }} chain
+ * @param {{ wasm_sha256: string, code_hash_blake2b256: string | null } | null} expected
+ * @param {{ wasm_sha256: string, bytes: number, file?: string } | null} [built]
  */
 export function compare(chain, expected, built = null) {
   if (!expected) return { verdict: 'NO_EXPECTATION', reasons: ['no entry in the expected-hash file'] }
