@@ -15,7 +15,7 @@ command. Those steps read "operator step, not in this repo".
 
 Placeholders: `<host>` the machine, `<app-dir>` the checkout of `guild-app/`, `<kit-dir>` the
 directory the web server serves as `/kit/`, `<domain>` the public domain, `<pm2-app>` the name the
-process manager gives the dashboard. Every name the services read is in [`CONFIG.md`](./CONFIG.md).
+process manager gives the dashboard. Every name the services read is in [`ENVIRONMENT.md`](./ENVIRONMENT.md).
 
 ## What this repository gives you
 
@@ -38,7 +38,7 @@ process manager gives the dashboard. Every name the services read is in [`CONFIG
   `PM2_BIN` overrides the command.
 - The dashboard's start script binds `127.0.0.1` (`guild-app/package.json`, `start`), so a reverse
   proxy is needed for any outside access (operator step, not in this repo).
-- The environment of [`CONFIG.md`](./CONFIG.md). `DATABASE_URL` and `JWT_SECRET` are required
+- The environment of [`ENVIRONMENT.md`](./ENVIRONMENT.md). `DATABASE_URL` and `JWT_SECRET` are required
   (`guild-app/src/db/index.ts:6-8`, `guild-app/src/lib/auth.ts:22-25`).
   `NEXT_PUBLIC_*` names are fixed when the build runs, so set them before step 6.
 - Never set `GUILD_E2E_BUILD` or `GUILD_E2E_AUTH_BYPASS` for a real build
@@ -131,7 +131,7 @@ Run from `<app-dir>` (the `guild-app/` directory) unless stated; the `scripts/` 
 
 1. **Install.** `npm ci` in `bot/`, on Node 22 (`CONTRIBUTING.md:101-102`).
 2. **Environment.** `TG_BOT_TOKEN` is required (`bot/index.js:22-23`). The bot loads a `.env` file from
-   its working directory (`bot/index.js:1`). The rest is in [`CONFIG.md`](./CONFIG.md#bot).
+   its working directory (`bot/index.js:1`). The rest is in [`ENVIRONMENT.md`](./ENVIRONMENT.md#bot).
 3. **Database.** SQLite, created on first start at `BOT_DB_PATH`, or `guild.db` beside `bot/db.js`
    (`bot/db.js:5`). `db.js` creates tables and adds columns itself at startup
    (`bot/db.js:15,58`); there is no separate migration command. Copy it only with
@@ -176,7 +176,7 @@ the newer schema, or the database is restored from the copy taken in step 2 (ope
 this repo: the restore).
 
 **Settings.** `NEXT_PUBLIC_*` names are baked in at build, so reverting one means a rebuild and a
-swap. The other names in [`CONFIG.md`](./CONFIG.md) are read at runtime and need a process restart
+swap. The other names in [`ENVIRONMENT.md`](./ENVIRONMENT.md) are read at runtime and need a process restart
 (`pm2 restart <pm2-app> --update-env`, `scripts/deploy-swap.sh:209`), except `GUILD_HALT`, which is read
 on every request (`guild-app/src/lib/gateway.ts:1859-1862`).
 
