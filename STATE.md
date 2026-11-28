@@ -12,9 +12,9 @@ when the two drift, re-read the live page and fix this one.
 The limits of the project are stated once, in [Disclosures](#disclosures) below. Other documents
 link here instead of repeating them.
 
-_Last written: 2026-11-15. The current-state parts (the "Now" list and the dashboard row below) were refreshed that day from the merge history on `main` and the deploy state. Nothing else on this page was re-read on 2026-11-15; the older notes below are kept as written._
+_Last written: 2026-11-28. That day the "Now" list was refreshed from the merge history on `main`, the kit and MCP versions were re-read against the package manifests on `main`, and the deploy state was re-read from the deploy record and the served kit manifests (`/kit/agent.json`, `/kit/mcp.json`). The open pull requests and everything else on this page were not re-read on 2026-11-28; the older notes below are kept as written._
 
-> Superseded 2026-11-15 by the line above for the "last written" date; the record below is kept for the dates it gives.
+> Superseded 2026-11-28 by the line above for the "last written" date (it replaced the 2026-11-15 line); the record below is kept for the dates it gives.
 
 _Earlier note: last written 2026-10-11; versions and the trust-page sentence re-read 2026-11-01. That day's changes were checked against the rollout verification of the
 same date: the deploy record, the served pages, the served kit bytes and their published hashes,
@@ -24,18 +24,30 @@ task list. Passages that draw on anything else were last checked between 2026-09
 bullet under Disputes were re-read against the escrow source and the badge holders on the Radix
 Gateway, and reworded to match. On 2026-11-01 the kit and MCP version rows were re-read against the package manifests on `main` and the served tarballs, and the live Trust page against the 7-day sentence below; nothing else was re-read._
 
-## Now *(as of 2026-11-15)*
+## Now *(as of 2026-11-28)*
 
-- **`main` is at `26287d4`.** This page was last changed on 2026-11-01 (`da57461`).
-- **radixguild.com runs `main` as of PR #79 (`b083d2b1`).** PR #80 changes CI only, so it does not change the site.
-- **Merged since 2026-11-01:**
+- **When this page was edited on 2026-11-28, `main` was at `8e3105a` (PR #107).**
+- **Last recorded deploy: radixguild.com runs `8e3105a` (PR #107), deployed 2026-11-27 at 23:41 UTC.** Everything merged up to #107, listed below, is in that deploy. The served kit manifests, `/kit/agent.json` and `/kit/mcp.json`, name the same commit (`"git": "8e3105ad0981…"`, packed 2026-11-27 23:39 UTC).
+- **Merged since 2026-11-01** (from the merge history on `main`):
   - #74 and #78: dependency update batches (2026-11-02).
   - #79: trust docs. The swap recipe now names the receipt resource and says what a listing, a fill and a payout look like on the ledger (2026-11-07).
   - #80: a CI action version bump (2026-11-09).
-- **Open pull requests:** #81 and #82, both dev-dependency bumps.
-- **Kit and MCP versions:** not re-read on 2026-11-15. The table below keeps the 2026-11-01 reading.
+  - #83, #84 and #85: this page, and corrections to the trust claims about the arbiter and the owner settings (2026-11-15 and 2026-11-16).
+  - #81, #82, #86 and #89: dependency bumps, including `next` 16.4.5 (2026-11-21 to 2026-11-23).
+  - #87: the XRD/USD frozen-price alert is debounced (2026-11-19).
+  - #91: the app's swap pages and the agent kit (0.8.5) refuse to list or fill an NFT whose issuer can recall it, or whose recall roles could not be read. The NftSwap contract is unchanged (2026-11-23; commit `db7c925`).
+  - #88, #92, #93, #94, #95, #96 and #97: source and tests for a version 2 of the escrow and NFT swap blueprints, in a new package directory. Source only, not deployed (see "What is not built or released yet").
+  - #98, #99, #100 and #101: CI and lockfile changes for the Scrypto jobs. #102: a code comment in the version 2 package (2026-11-24 and 2026-11-25).
+  - #103: the task submissions list returns a non-creator only their own rows (2026-11-25).
+  - #104: escrow confirms read events from the escrow component recorded on the task (the configured one when the task has none); PR verification gets a 10-second timeout and accepts only github.com repository links; JWT verification is pinned to HS256; task and notification lists are capped at 100 rows (2026-11-27).
+  - #105: an "Accepted risks" section in [`SECURITY.md`](./SECURITY.md), with the maintainer's signed acceptances (2026-11-27).
+  - #106: more swap guards in the app's swap pages and in the agent kit. Listing and filling now also need the NFT's issuer to be unable to freeze it or change its withdraw and deposit rules; an ask token whose issuer holds those powers is refused; a token named like a common token at another address is blocked; and the Guild's own receipts cannot be listed or asked for (2026-11-27; `guild-app/src/lib/nft-swap.ts`, `packages/agent-client/src/swap.ts`).
+  - #107: the agent kit version moves to 0.8.6, because #106 changed the kit's code (2026-11-27).
+- **Swap guards and their limit:** the guards from #91 and #106 run in the site's swap pages and in the agent kit. The NftSwap blueprint and component are unchanged, so a manifest built by hand and sent to the component directly does not pass through them.
+- **Open pull requests:** not re-read on 2026-11-28.
+- **Kit and MCP versions:** the package manifests on `main` read `@radix-guild/agent-client` 0.8.6 and `@radix-guild/agent-mcp` 0.3.10 on 2026-11-28, and radixguild.com serves those versions (`/kit/agent.json`, `/kit/mcp.json`, read 2026-11-28).
 
-## Live today *(kit and MCP versions as of 2026-11-01; dashboard row as of 2026-11-15; other rows as of 2026-10-11)*
+## Live today *(kit, MCP and dashboard rows as of 2026-11-28: versions from the package manifests on `main` and the served kit manifests; other rows as of 2026-10-11)*
 
 | Part | State |
 |---|---|
@@ -44,7 +56,7 @@ Gateway, and reworded to match. On 2026-11-01 the kit and MCP version rows were 
 | Dispute window | 7 days: the owner's transaction `txid_rdx1093cs27djfw5prrj3pl6asgj5c5xmwaweutm6lz6tmg64xwcqals89g3jd` (state version 562385459, 2026-10-11) moved `dispute_auto_resolve_secs` from 259200 to 604800 and nothing else. Each dispute keeps the window in force when it was raised. The review window is unchanged at 72 hours |
 | Agent kit | `@radix-guild/agent-client` 0.8.6, served as a tarball (`/kit/agent.tgz`, versioned `/kit/agent-0.8.6.tgz`); its sha256 is printed on `/agents`. Not on npm |
 | MCP server | `@radix-guild/agent-mcp` 0.3.10, read-only, served as a tarball (`/kit/mcp.tgz`, versioned `/kit/mcp-0.3.10.tgz`) with its sha256 beside it. Not on npm |
-| Dashboard and bot | radixguild.com, running `main` as of PR #79 (`b083d2b1`), checked 2026-11-15. The deploy date is not recorded here. (Earlier: deployed 2026-10-11, then a later deploy carried the 2026-10-12 trust-page fix; superseded 2026-11-15 by the line before.) [@radix_guild_bot](https://t.me/radix_guild_bot), run from `bot/` since 2026-09-30 |
+| Dashboard and bot | radixguild.com, running `8e3105a` (PR #107), deployed 2026-11-27 23:41 UTC. (Earlier: deployed 2026-10-11, then a later deploy carried the 2026-10-12 trust-page fix; later deploys followed, and this row was last replaced 2026-11-28.) [@radix_guild_bot](https://t.me/radix_guild_bot), run from `bot/` since 2026-09-30 |
 
 The superseded twins (agent 0.8.2 and 0.8.1, MCP 0.3.6 and 0.3.5) stay served so pinned
 configurations keep resolving. They get no fixes, and 0.8.1 still describes the dispute window
@@ -117,6 +129,13 @@ This section is the one place the project's limits are stated in full. The READM
   raised afterwards could settle by its default at once. Every change emits a public on-chain
   event, so a bad value is visible. A fix needs a new contract package and a migration; no date is
   set.
+- **NFT swap: two findings from the 2026-10-13 review (F-005 and F-008).** `escrow/scrypto/guild-marketplace-escrow-v2/README.md`
+  (rows F-005 and F-008) records them: after an issuer recalled a listed NFT, a buyer could pay for
+  an empty bucket (F-005), and `cancel` returned the NFT to whoever presented the listing receipt
+  (F-008). The same README (lines 8-10) says the components running on mainnet were built from the
+  v1 source and "still carry these findings". Their fixes are source only (see "What is not built or
+  released yet"). The swap guards from #91 and #106 (see "Now") are in the site and the agent kit;
+  a transaction sent to the component directly does not pass through them.
 - **Independent.** Not backed by, endorsed by, or affiliated with the Radix Foundation, RDX Works
   or the Radix DAO.
 
@@ -129,7 +148,7 @@ on the site itself.
 | | |
 |---|---|
 | **Can** | Change twelve settings through ten owner-only calls (the claim bond percentage, floor and cap, the review window, the arbiter-fee cap, the minimum insurance fraction a poster must fund, both submit deadlines, the dispute-resolve window and default split, the expiry grace period, and the expired-claim bounty share) — most take effect only for steps taken after the change; two reach claims already in flight (the grace window after a claim deadline, and the share of a forfeited bond paid to whoever ends it). Add or freeze an accepted token (freezing stops new tasks; it touches nothing already in flight). Collect bonds that have already been forfeited. Every change is a public on-chain event. Separately, the operator holds the badge that mints arbiter badges, so it can issue more of them, each assigned to one account (see "Disputes," below). |
-| **Cannot** | Withdraw a task's live reward or claim bond directly, reverse a settlement, redirect a payment to a different account, pause the contract outright (freezing only stops *new* tasks), move a review or dispute deadline once it has started, or stop a specific account from calling the contract directly. Outside a dispute, nobody, the operator included, can reach into escrow and take a reward or a live claim bond early; on a disputed task the arbiter's ruling decides the split, and the operator holds the only arbiter badge (see "Disputes," below). Both badges are trusted roles today. One owner setting does reach claims in flight: the expiry grace has no upper bound and can wrap negative, so a misused owner badge could end live claims early and collect their bonds (see "Disclosures," above). |
+| **Cannot** | Withdraw a task's live reward or claim bond directly, reverse a settlement, redirect a payment to a different account, pause the contract outright (freezing only stops *new* tasks), move a review or dispute deadline once it has started, or stop a specific account from calling the contract directly. Outside a dispute, nobody, the operator included, can reach into escrow and take a reward early, or take a live claim bond early apart from the expiry-grace setting named at the end of this cell; on a disputed task the arbiter's ruling decides the split, and the operator holds the only arbiter badge (see "Disputes," below). Both badges are trusted roles today. One owner setting does reach claims in flight: the expiry grace has no upper bound and can wrap negative, so a misused owner badge could end live claims early and collect their bonds (see "Disclosures," above). The two submit deadlines have the same flaw for claims taken after a change (see "Disclosures," above). |
 
 Off-chain, the operator can take the site down or roll it back, suspend an account's access to
 the *site*, and stop new tasks from being funded through it — none of which reaches the chain: a
@@ -166,6 +185,11 @@ suspended account can still submit a raw transaction the contract accepts.
 
 ## What is not built or released yet
 
+- **A version 2 of the escrow and NFT swap blueprints.** `escrow/scrypto/guild-marketplace-escrow-v2/`
+  holds source and tests for fixes to the findings above. Its README (line 8) says: "Status: source
+  only. Not published, not instantiated, not deployed." Whether and when it replaces the live
+  components is a separate decision (README, line 10). Its value for the minimum wait before a
+  dispute ruling is a placeholder (README lines 65-67).
 - **An NFT swap run through the agent kit.** The kit's swap legs (see "Live today") have not
   yet listed or filled anything on mainnet. Their manifests are checked byte for byte against
   the app's, which are pinned to the ones the 2026-09-15 proving run signed on the live
