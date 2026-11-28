@@ -12,8 +12,11 @@
 # /root/.cargo and /root/.rustup, so the build refuses to run under any other CARGO_HOME or
 # RUSTUP_HOME (set ALLOW_OTHER_HOMES=1 to build anyway; the hashes will then differ).
 #
-# It builds in a copy under <outdir>; the checkout is not modified. It reads nothing private, uses no
-# keys and talks to no ledger. The build itself downloads the crates named in the committed Cargo.lock.
+# The source is source_path as it is at the package's source_commit (git archive), not the working
+# tree, so a later edit to the crate does not change what is rebuilt. That needs the full history
+# (a shallow clone fails with a message). It builds in a copy under <outdir>; the checkout is not
+# modified. It reads nothing private, uses no keys and talks to no ledger. The build itself downloads
+# the crates named in the committed Cargo.lock.
 
 set -euo pipefail
 
@@ -39,15 +42,24 @@ field() { # field <json path expression on the package entry>
 }
 
 SRC_PATH="$(field source_path)"
+SRC_COMMIT="$(field source_commit)" || { echo "no source_commit for $ID in $MANIFEST" >&2; exit 2; }
 BLOBS_JSON="$(field source_blobs)"
+
+[[ "$SRC_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "source_commit for $ID must be a full 40-hex commit id, got: $SRC_COMMIT" >&2; exit 2; }
+git -C "$ROOT" cat-file -e "$SRC_COMMIT^{commit}" 2>/dev/null || {
+  echo "commit $SRC_COMMIT is not in this clone. Fetch the full history first (git fetch --unshallow," >&2
+  echo "or actions/checkout with fetch-depth: 0)." >&2
+  exit 2
+}
 
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 WORK="$OUT/src-$ID"
 rm -rf "$WORK"
 mkdir -p "$WORK"
-# Copy the package directory as it is in the checkout, without any earlier build output.
-tar -C "$ROOT/$SRC_PATH" --exclude=./target -cf - . | tar -C "$WORK" -xf -
+# The package directory exactly as committed at source_commit (tracked files only).
+git -C "$ROOT" archive --format=tar "$SRC_COMMIT:$SRC_PATH" | tar -C "$WORK" -xf -
+echo "source     $SRC_PATH at $SRC_COMMIT"
 
 # Per-package source reconstruction. Only packages whose source is not the directory as committed
 # need a case here; the blob check below catches any change that does not land exactly.
@@ -106,6 +118,20 @@ if [ "${ALLOW_OTHER_HOMES:-0}" != "1" ]; then
     exit 2
   }
 fi
+
+# Cargo also reads .cargo/config(.toml) in every directory above the package and in CARGO_HOME. Any
+# of those could change the bytes without touching the pinned source, so none may exist.
+d="$WORK"
+while :; do
+  d="$(dirname "$d")"
+  for c in "$d/.cargo/config" "$d/.cargo/config.toml"; do
+    [ ! -e "$c" ] || { echo "found $c: cargo would apply it to this build; remove it or build under another <outdir>" >&2; exit 2; }
+  done
+  [ "$d" != "/" ] || break
+done
+for c in "${CARGO_HOME:-$HOME/.cargo}/config" "${CARGO_HOME:-$HOME/.cargo}/config.toml"; do
+  [ ! -e "$c" ] || { echo "found $c: cargo would apply it to this build; remove it first" >&2; exit 2; }
+done
 
 cd "$WORK"
 echo "rustc:   $(rustc --version)"

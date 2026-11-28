@@ -135,6 +135,23 @@ describe("parseExpected and parseArgs", () => {
         expect(p.verified_in).toMatch(/^https:\/\/github\.com\/radixguild\/guild\/actions\/runs\/\d+/)
       }
       expect(Object.keys(p.source_blobs)).toContain("src/lib.rs")
+      // rebuilt from a pinned commit, never the working tree, so a later crate edit cannot move it
+      expect(p.source_commit).toMatch(/^[0-9a-f]{40}$/)
+    }
+  })
+
+  // The CI `chain` job runs this for every package with full history. Here it runs only when the
+  // pinned commits are in the clone (test.yml checks out shallow), so a skip is not a pass.
+  const REBUILD = join(ROOT, "verify", "rebuild-package.sh")
+  const commits = [...new Set(parity.parseExpected(JSON.parse(readFileSync(MANIFEST, "utf8"))).map((p: { source_commit?: unknown }) => String(p.source_commit)))]
+  const haveHistory = commits.every((c) => spawnSync("git", ["-C", ROOT, "cat-file", "-e", `${c}^{commit}`]).status === 0)
+  it.skipIf(!haveHistory)("each package's source_commit holds exactly its recorded source blobs (prepare-only, no build)", () => {
+    const out = dir()
+    for (const p of parity.parseExpected(JSON.parse(readFileSync(MANIFEST, "utf8")))) {
+      const r = spawnSync("bash", [REBUILD, "--prepare-only", p.id, out], { encoding: "utf8" })
+      expect(r.stderr).not.toMatch(/MISMATCH/)
+      expect(r.status, `${p.id}: ${r.stderr}`).toBe(0)
+      expect(r.stdout).toContain(`at ${p.source_commit}`)
     }
   })
 })

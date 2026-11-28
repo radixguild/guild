@@ -640,7 +640,7 @@ describe("no required-check count in the workflow prose", () => {
 /**
  * A gated workflow must watch its OWN file.
  *
- * scrypto.yml, formal.yml and npm-lockfile.yml run their heavy jobs only when a PR
+ * scrypto.yml, formal.yml, npm-lockfile.yml and package-parity.yml run their heavy jobs only when a PR
  * touches the paths their `changes` job lists, and their `... gate` job passes on
  * `skipped`. Before 2026-10-06 only npm-lockfile.yml listed itself, so the weekly
  * Dependabot github-actions group (or a hand edit to a cargo step or the Apalache
@@ -722,8 +722,8 @@ describe("change detection watches its own workflow file", () => {
     return readFileSync(out, "utf8").match(/run=(\w+)/)?.[1] ?? "MISSING";
   }
 
-  it("self-check: the three gated workflows are found", () => {
-    expect([...gatedWorkflows].sort()).toEqual(["formal.yml", "npm-lockfile.yml", "scrypto.yml"]);
+  it("self-check: the four gated workflows are found", () => {
+    expect([...gatedWorkflows].sort()).toEqual(["formal.yml", "npm-lockfile.yml", "package-parity.yml", "scrypto.yml"]);
   });
 
   it("EXECUTED: a PR that changes only the workflow file runs its jobs", () => {
