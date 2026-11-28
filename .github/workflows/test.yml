@@ -35,8 +35,8 @@ concurrency:
 # PRIVATE repo needs `pull-requests: read` — without it the call 403s, the step
 # fails OPEN, and the saving is silently zero. Found by an adversarial screen
 # 2026-08-17, which noted the step was built so a working detector and a dead
-# one print the same line. Declared explicitly here (pii-scan.yml and
-# secret-scan.yml already declare their own).
+# one print the same line. Declared explicitly here (secret-scan.yml
+# already declares its own).
 permissions:
   contents: read
   pull-requests: read

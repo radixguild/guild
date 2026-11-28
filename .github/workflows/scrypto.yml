@@ -32,8 +32,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Least-privilege, matching the rest of the fleet (test.yml, formal.yml,
-# npm-lockfile.yml, pii-scan.yml, secret-scan.yml all declare this). Neither
+# Least-privilege, matching the other workflows here (test.yml, formal.yml,
+# npm-lockfile.yml and secret-scan.yml all declare this). Neither
 # job needs more than a read checkout: no PR comments, no releases, no
 # packages. `gh api repos/{owner}/{repo}/actions/permissions/workflow`
 # reports the org/repo default as read-only today, so this does not change
