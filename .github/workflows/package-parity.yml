@@ -92,6 +92,19 @@ jobs:
           for id in $(node -e 'for (const p of require("./verify/deployed-packages.json").packages) console.log(p.id)'); do
             verify/rebuild-package.sh --prepare-only "$id" "$RUNNER_TEMP/prepare"
           done
+      # Not a failure: the rebuild reads the pinned commit, so the crate on this branch may move on.
+      # The notice keeps that visible, so nobody reads the crate here as the live source.
+      - name: notice when the crate here differs from a package's source_commit
+        run: |
+          set -euo pipefail
+          node -e 'for (const p of require("./verify/deployed-packages.json").packages) console.log(`${p.id}\t${p.source_commit}\t${p.source_path}`)' |
+            while IFS=$'\t' read -r id commit path; do
+              if git diff --quiet "$commit" HEAD -- "$path"; then
+                echo "$id: $path is unchanged since source_commit $commit"
+              else
+                echo "::notice title=$id source::$path on this commit differs from source_commit $commit; the live package was built from $commit"
+              fi
+            done
       - id: plan
         name: one rebuild per package in the expected-hash file
         run: |

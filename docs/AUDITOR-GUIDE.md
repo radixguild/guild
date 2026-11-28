@@ -275,7 +275,9 @@ id of every file under `src/` and of `Cargo.toml`, `Cargo.lock` and `rust-toolch
 against the expected-hash file. It refuses any other entry that could change the build, such as
 a `build.rs` or a `.cargo/` directory in the package, and any `.cargo/config` in a directory
 above the build or in `CARGO_HOME` (`examples/`, `tests/`, `Dockerfile` and `LICENSE` are
-extracted but not part of the wasm). Then it runs `scrypto build` with
+extracted but not part of the wasm). It unsets, by name, any environment variable that cargo or
+rustc would read as a build setting (`RUSTFLAGS`, a compiler wrapper, `CARGO_PROFILE_*` and
+similar). Then it runs `scrypto build` with
 `SCRYPTO_CARGO_LOCKED=true` against the committed `Cargo.lock`, and writes `out/SHA256SUMS`.
 Use the id `escrow-wave-b` and the Wave B address for the escrow package. Wave B predates the
 NftSwap blueprint, so for it the script first removes `src/nft_swap.rs` and the six lines in
@@ -292,6 +294,8 @@ recorded blobs, or when a package marked `"enforce": true` in the expected-hash 
 since the run below) rebuilds to different bytes. A package not yet enforced only warns. Because
 each package is rebuilt from its own `source_commit`, an edit to the crate does not change these
 checks; changed source would need a new package, and a new entry here, before it runs anywhere.
+So the source of a live package is the crate **at its `source_commit`**, which can differ from
+the crate on `main`. When it does, the CI run says so in a notice naming the package.
 
 The parity check compares the package's code, the `.wasm`. The `.rpd` from the same build (the
 blueprint definitions) is recorded in the expected-hash file for reference, not compared.
@@ -301,7 +305,7 @@ blueprint definitions) is recorded in the expected-hash file for reference, not 
 | `package_rdx1pk5z8ktfwd9d3l9vqmngft626cv5tp0hxjyenkh78pzq5u7c38p8yv` (Wave B) | the live task escrow | **matches**: rebuilt byte for byte (401,449 bytes, sha256 `d2a3b3f8…`) in [run 46105575492](https://github.com/radixguild/guild/actions/runs/46105575492), 2026-11-28; matched again with enforcement on in [run 46106731434](https://github.com/radixguild/guild/actions/runs/46106731434), and from the pinned `source_commit` in [run 46126843153](https://github.com/radixguild/guild/actions/runs/46126843153) |
 | `package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv` | the live NftSwap component | **matches**: rebuilt byte for byte (447,882 bytes, sha256 `81ec78e4…`) in [run 46105575492](https://github.com/radixguild/guild/actions/runs/46105575492), 2026-11-28; matched again with enforcement on in [run 46106731434](https://github.com/radixguild/guild/actions/runs/46106731434), and from the pinned `source_commit` in [run 46126843153](https://github.com/radixguild/guild/actions/runs/46126843153) |
 
-A match proves the deployed package is that build of that source, byte for byte. It does not
+A match proves the deployed code is that build of that source, byte for byte. It does not
 prove the source is correct; that is what §2's checks, the tests and audits are for. Earlier,
 superseded escrow packages are not covered.
 

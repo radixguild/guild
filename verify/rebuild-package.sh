@@ -133,6 +133,14 @@ for c in "${CARGO_HOME:-$HOME/.cargo}/config" "${CARGO_HOME:-$HOME/.cargo}/confi
   [ ! -e "$c" ] || { echo "found $c: cargo would apply it to this build; remove it first" >&2; exit 2; }
 done
 
+# The same goes for environment variables that cargo or rustc read as build settings (extra compiler
+# flags, a compiler wrapper, profile or target overrides). Each one set here is unset, by name.
+while IFS= read -r v; do
+  [ -n "$v" ] || continue
+  echo "unset $v (it would change the build)"
+  unset "$v"
+done < <(compgen -e | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|CARGO_ENCODED_RUSTFLAGS|CARGO_ENCODED_RUSTDOCFLAGS|RUSTC|RUSTC_WRAPPER|RUSTC_WORKSPACE_WRAPPER|RUSTC_BOOTSTRAP|RUSTUP_TOOLCHAIN|CARGO_TARGET_DIR|CARGO_INCREMENTAL|CARGO_BUILD_.*|CARGO_PROFILE_.*|CARGO_TARGET_.*|CARGO_UNSTABLE_.*)$' || true)
+
 cd "$WORK"
 echo "rustc:   $(rustc --version)"
 echo "cargo:   $(cargo --version)"
