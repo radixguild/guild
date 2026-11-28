@@ -1,7 +1,8 @@
 <!-- status: live
      verified: 2026-11-28 (every name below was read from the non-test source in this tree at the
      `file:line` given, re-checked against `main` at `8e3105a`; names only, no values. The three `.env.example` files were not read for
-     this page, so a name can be in the code and missing from an example, or the reverse.) -->
+     this page, so a name can be in the code and missing from an example, or the reverse.)
+     supersedes: none (new page; no earlier doc in this repository listed the environment names) -->
 # Configuration reference
 
 Draft from the repository contents; not yet run end to end from a clean machine.

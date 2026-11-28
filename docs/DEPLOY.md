@@ -1,7 +1,8 @@
 <!-- status: live
      verified: 2026-11-28 (`file:line` references re-checked against `main` at `8e3105a`; first written 2026-11-25 from the files in this tree only. No step was run. Each command
      below exists in this repository at the `file:line` given; each step this repository does not
-     contain is marked "operator step, not in this repo".) -->
+     contain is marked "operator step, not in this repo".)
+     supersedes: none (new page; no earlier doc in this repository covered deploy or rollback) -->
 # Deploy and rollback
 
 Draft from the repository contents; not yet run end to end from a clean machine.
