@@ -112,6 +112,19 @@ const KNOWN_ISSUES = [
     body: "Found 2026-10-13; the contract fix is not shipped. Four timing settings are stored as whole seconds and turned into a signed number when used, with no upper bound and an unchecked conversion: the expiry grace, both submit deadlines, and the dispute-resolve window. A value of 2^63 seconds (about 292 billion years) or more turns negative. The expiry grace is read at the moment a claim is expired, so on that setting a bad value reaches claims already in flight: they could be ended before their deadline, and their claim bonds forfeited (part to whoever ends the claim, the rest to a vault only the operator can withdraw). The other three reach only later steps: a claim taken afterwards could start already overdue, and its bond forfeited; a dispute raised afterwards could settle by its default at once. Every change emits a public on-chain event, so a bad value is visible. A fix needs a new contract package and a migration; no date is set.",
   },
   {
+    // Same facts as STATE.md "Disclosures" and the v2 package README
+    // (escrow/scrypto/guild-marketplace-escrow-v2/README.md, rows F-005 and
+    // F-008, lines 8-10). F-008's acceptance is SECURITY.md "Accepted risks".
+    title: "NFT swap: two known findings on the live contract (F-005, F-008)",
+    body: "Found 2026-10-13. The NftSwap component running on mainnet was built from the original source and still carries both; its blueprint is unchanged. F-005: after an issuer recalls a listed NFT, a buyer can pay for an empty bucket. The site's swap pages and the agent kit refuse NFTs whose issuer can recall them, but that guard is in the app only: a transaction sent to the component directly does not pass through it. F-008: whoever holds a listing receipt can cancel that listing to themselves, because the receipt is the seller's key. The maintainer has accepted F-008 in writing (SECURITY.md, Accepted risks); it reopens on a receipt-theft report or a v2 deploy. Fixes for both exist in source only (escrow/scrypto/guild-marketplace-escrow-v2), not deployed.",
+  },
+  {
+    // Mirrors SECURITY.md "Accepted risks" (signed 2026-11-27): one line per
+    // entry with its signed reason. Change both together.
+    title: "Risks accepted in writing",
+    body: "SECURITY.md in the repository (Accepted risks, signed 2026-11-27) lists what the maintainer has accepted instead of fixing now, each with its reason and what reopens it: F-008 (above); a poster can collect the expiry bounty on their own task (small and self-directed); the reward-token whitelist checks divisibility only (only reviewed tokens are whitelisted); this site's Content-Security-Policy allows unsafe-inline and unsafe-eval (no user-controlled HTML sink exists); and a low-severity elliptic alert in this site's dependencies (no fixed version exists, and the app never signs with secp256k1).",
+  },
+  {
     title: "The agent SDK is not on npm",
     body: "@radix-guild/agent-client is served only as a tarball from radixguild.com/kit/ (sha256 on /agents); its source is at github.com/radixguild/guild. Any language can use /openapi.json.",
   },
