@@ -43,7 +43,7 @@ Gateway, and reworded to match. On 2026-11-01 the kit and MCP version rows were 
   - #105: an "Accepted risks" section in [`SECURITY.md`](./SECURITY.md), with the maintainer's signed acceptances (2026-11-27).
   - #106: more swap guards in the app's swap pages and in the agent kit. Listing and filling now also need the NFT's issuer to be unable to freeze it or change its withdraw and deposit rules; an ask token whose issuer holds those powers is refused; a token named like a common token at another address is blocked; and the Guild's own receipts cannot be listed or asked for (2026-11-27; `guild-app/src/lib/nft-swap.ts`, `packages/agent-client/src/swap.ts`).
   - #107: the agent kit version moves to 0.8.6, because #106 changed the kit's code (2026-11-27).
-  - #108: `docs/ENVIRONMENT.md`, `docs/DEPLOY.md` and this page. Docs only, so the deploy above is unchanged (2026-11-28).
+  - #108: `docs/ENVIRONMENT.md`, `docs/DEPLOY.md`, `README.md`, `docs/README.md` and this page. Docs only, so the deploy above is unchanged (2026-11-28).
 - **Swap guards and their limit:** the guards from #91 and #106 run in the site's swap pages and in the agent kit. The NftSwap blueprint and component are unchanged, so a manifest built by hand and sent to the component directly does not pass through them.
 - **Open pull requests:** not re-read on 2026-11-28.
 - **Kit and MCP versions:** the package manifests on `main` read `@radix-guild/agent-client` 0.8.6 and `@radix-guild/agent-mcp` 0.3.10 on 2026-11-28, and radixguild.com serves those versions (`/kit/agent.json`, `/kit/mcp.json`, read 2026-11-28).
@@ -135,9 +135,9 @@ This section is the one place the project's limits are stated in full. The READM
   an empty bucket (F-005), and `cancel` returned the NFT to whoever presented the listing receipt
   (F-008). The same README (lines 8-10) says the components running on mainnet were built from the
   v1 source and "still carry these findings". Their fixes are source only (see "What is not built or
-  released yet"); the NftSwap blueprint and component are unchanged. F-005 is guarded in the app only:
-  the swap guards from #91 and #106 (see "Now") are in the site and the agent kit, and a transaction
-  sent to the component directly does not pass through them. F-008 is an accepted risk in
+  released yet"); the NftSwap blueprint and component are unchanged. F-005 has an app-side guard
+  only: the site's swap pages and the agent kit refuse NFTs whose issuer can recall them (#91 and
+  #106, see "Now"), and a transaction sent to the component directly does not pass through them. F-008 is an accepted risk in
   [`SECURITY.md`](./SECURITY.md#accepted-risks): whoever holds a listing receipt can cancel that
   listing to themselves on the live swap, because the receipt is the seller's key. It reopens on a
   receipt-theft report or a v2 deploy.
