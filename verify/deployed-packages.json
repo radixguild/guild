@@ -1,12 +1,12 @@
 {
-  "about": "Expected code hashes of the live Radix packages built from this repository, and the recipe that rebuilds each one. Read by scripts/verify-package-parity.mjs and .github/workflows/package-parity.yml; explained in docs/AUDITOR-GUIDE.md section 5. wasm_sha256 is sha256sum of the package's .wasm; code_hash_blake2b256 is the Gateway's code_hash_hex. rpd_sha256 is the same build's .rpd, for reference only: the parity check compares the .wasm. status 'verified' is written only after a CI rebuild matched the chain byte for byte (verified_in links that run); enforce=true makes a later mismatch fail CI.",
+  "about": "Expected code hashes of the live Radix packages built from this repository, and the recipe that rebuilds each one. Read by scripts/verify-package-parity.mjs, verify/rebuild-package.sh and .github/workflows/package-parity.yml; explained in docs/AUDITOR-GUIDE.md section 5. wasm_sha256 is sha256sum of the package's .wasm; code_hash_blake2b256 is the Gateway's code_hash_hex. rpd_sha256 is the same build's .rpd, for reference only: the parity check compares the .wasm. status 'verified' is written only after a CI rebuild matched the chain byte for byte (verified_in links that run); enforce=true makes a later mismatch fail CI. source_commit pins the commit each package is rebuilt from, so a later edit to the crate does not change what these entries check; source_blobs are the git blob ids the rebuilt files must have.",
   "recipe": {
     "os": "Linux x86_64 (the wasm cannot be built correctly on macOS)",
     "rust": "1.92.0 via rustup, components rust-src and rustfmt, target wasm32-unknown-unknown",
     "scrypto_cli": "radix-clis 1.3.1, installed with: cargo install radix-clis --version 1.3.1 --locked",
     "command": "scrypto build, run in the package directory with SCRYPTO_CARGO_LOCKED=true and the committed Cargo.lock",
     "homes": "CARGO_HOME=/root/.cargo and RUSTUP_HOME=/root/.rustup. The deployed wasm embeds source paths under both directories (panic location strings), so a build under any other home produces different bytes",
-    "script": "verify/rebuild-package.sh <id> <outdir>"
+    "script": "verify/rebuild-package.sh <id> <outdir> (needs the full git history: it reads source_path at source_commit with git archive)"
   },
   "packages": [
     {
@@ -18,7 +18,8 @@
       "wasm_bytes": 401449,
       "rpd_sha256": "cf491a9488073ce08bcb0f8ee8c75bb4d04357937ca4005cfbabad78ba6a6b33",
       "source_path": "escrow/scrypto/guild-marketplace-escrow",
-      "source": "This package predates the NftSwap blueprint. Its source is this directory with src/nft_swap.rs removed and six lines removed from src/lib.rs: the four comment lines, the `pub mod nft_swap;` line and the blank line after it. rebuild-package.sh makes that change in a copy and checks the git blob ids below before building.",
+      "source_commit": "b9755c30feb68daa248dc704deaf90c7b3886d0e",
+      "source": "This package predates the NftSwap blueprint. Its source is source_path at source_commit with src/nft_swap.rs removed and six lines removed from src/lib.rs: the four comment lines, the `pub mod nft_swap;` line and the blank line after it. rebuild-package.sh makes that change in a copy and checks the git blob ids below before building.",
       "source_blobs": {
         "src/lib.rs": "c0976a49f10f7dbb507fb96df51833688d5d910d",
         "Cargo.toml": "d9c2e7c08f09477a077ad2c776adc06ef5baf99b",
@@ -39,7 +40,8 @@
       "wasm_bytes": 447882,
       "rpd_sha256": "a6c3d9477d6fb758ffe3dcfaf507c70765ead560eaf72eff90a224fb003b2844",
       "source_path": "escrow/scrypto/guild-marketplace-escrow",
-      "source": "This directory as committed (unchanged since this repository's first commit). rebuild-package.sh checks the git blob ids below before building.",
+      "source_commit": "b9755c30feb68daa248dc704deaf90c7b3886d0e",
+      "source": "source_path at source_commit, unchanged (the directory has not changed since this repository's first commit). rebuild-package.sh checks the git blob ids below before building.",
       "source_blobs": {
         "src/lib.rs": "3b3edf976a3498eedfd8d38133df5365c7fe016f",
         "src/nft_swap.rs": "bc0683f0c9a86391136754fe5c340034c66ef485",

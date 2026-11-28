@@ -1,4 +1,7 @@
 <!-- status: live
+     verified: 2026-11-28, second pass ("Reproducible build" subsection ONLY: rebuilds now read the
+     crate at each package's pinned source_commit, and the CI paragraph describes the
+     `package parity gate` check. The status table's runs are unchanged.)
      verified: 2026-11-28 (§5's source bullet and its new "Reproducible build" subsection ONLY:
      both live packages rebuilt byte-identical from this repository in CI run 46105575492, and
      their deployed code re-read from the Radix Gateway. Nothing else re-checked this pass.)
@@ -253,7 +256,8 @@ does not build correctly on macOS.
 - `CARGO_HOME=/root/.cargo` and `RUSTUP_HOME=/root/.rustup`. The deployed wasm carries source
   paths under those two directories (panic location strings), so a build under any other home
   gives different bytes. A throwaway container or VM where you are root is the simple way;
-- then, from a checkout of this repository:
+- then, from a full clone of this repository (the script reads the crate at a pinned commit,
+  so a shallow clone will not do):
 
 ```bash
 verify/rebuild-package.sh nft-swap out
@@ -263,23 +267,33 @@ verify/rebuild-package.sh nft-swap out
 node scripts/verify-package-parity.mjs --package package_rdx1p53j5yst59jhgc8ljap7266sd0nxgm2lndp2z6a4ddsprkn7e9ssmv --wasm out/nft-swap.wasm
 ```
 
-`rebuild-package.sh` copies `escrow/scrypto/guild-marketplace-escrow` into `out/`, checks the
-git blob id of every file under `src/` and of `Cargo.toml`, `Cargo.lock` and
-`rust-toolchain.toml` against the expected-hash file (and refuses any other entry that could
-change the build, such as a `build.rs` or a `.cargo/` directory; `examples/`, `tests/`,
-`Dockerfile` and `LICENSE` are copied but not part of the wasm), runs `scrypto build` with
+`rebuild-package.sh` extracts `escrow/scrypto/guild-marketplace-escrow` as it is at the
+package's `source_commit` in the expected-hash file (with `git archive`, so neither the working
+tree nor a later edit to the crate changes what is rebuilt) into `out/`, and checks the git blob
+id of every file under `src/` and of `Cargo.toml`, `Cargo.lock` and `rust-toolchain.toml`
+against the expected-hash file. It refuses any other entry that could change the build, such as
+a `build.rs` or a `.cargo/` directory in the package, and any `.cargo/config` in a directory
+above the build or in `CARGO_HOME` (`examples/`, `tests/`, `Dockerfile` and `LICENSE` are
+extracted but not part of the wasm). Then it runs `scrypto build` with
 `SCRYPTO_CARGO_LOCKED=true` against the committed `Cargo.lock`, and writes `out/SHA256SUMS`.
 Use the id `escrow-wave-b` and the Wave B address for the escrow package. Wave B predates the
 NftSwap blueprint, so for it the script first removes `src/nft_swap.rs` and the six lines in
 `src/lib.rs` that declare that module; the blob check confirms the result is the file Wave B was
 built from.
 
-CI repeats both checks in [`package-parity.yml`](../.github/workflows/package-parity.yml) on
-every change to the crate, the expected-hash file or the script, and keeps the built `.wasm`,
-`.rpd` and `SHA256SUMS` as run artifacts for 30 days. A package marked `"enforce": true` in the
-expected-hash file (both, since the run below) fails CI on any mismatch. A change to the crate's
-source makes a rebuild differ from these packages by design: it would need a new package, and a
-new entry here, before it runs anywhere.
+CI repeats both checks in [`package-parity.yml`](../.github/workflows/package-parity.yml) when
+a pull request or a push to `main` changes the crate, the expected-hash file, the two verify
+scripts, a root `.cargo/` directory or the workflow itself, and keeps the built `.wasm`, `.rpd`
+and `SHA256SUMS` as run artifacts for 30 days. Its `package parity gate` check reports on every
+pull request (on one that touches none of those paths it passes with the other jobs skipped). On
+a run that checks, it fails when the chain check fails, when a pinned source does not hold its
+recorded blobs, or when a package marked `"enforce": true` in the expected-hash file (both,
+since the run below) rebuilds to different bytes. A package not yet enforced only warns. Because
+each package is rebuilt from its own `source_commit`, an edit to the crate does not change these
+checks; changed source would need a new package, and a new entry here, before it runs anywhere.
+
+The parity check compares the package's code, the `.wasm`. The `.rpd` from the same build (the
+blueprint definitions) is recorded in the expected-hash file for reference, not compared.
 
 | Package | What runs from it | Rebuild status |
 |---|---|---|

@@ -8,22 +8,20 @@ name: Package parity
 # transaction and touches no server.
 #
 # Its own workflow, not a job in scrypto.yml, so that file's jobs and their check names stay as
-# they are. Not a required check: it is path-filtered on pull requests, so a PR that touches none
-# of its paths never reports it.
+# they are. The check to require on main is `package parity gate` (the last job): it reports on
+# every pull request, as formal.yml's and scrypto.yml's gates do.
 
 on:
+  pull_request:
+    # No paths filter: a path-filtered workflow never reports on a PR that misses its paths, so it
+    # could not be required. The `changes` job below decides whether the real jobs run.
   push:
     branches: [main]
     paths:
       - 'escrow/scrypto/guild-marketplace-escrow/**'
       - 'verify/**'
       - 'scripts/verify-package-parity.mjs'
-      - .github/workflows/package-parity.yml
-  pull_request:
-    paths:
-      - 'escrow/scrypto/guild-marketplace-escrow/**'
-      - 'verify/**'
-      - 'scripts/verify-package-parity.mjs'
+      - '.cargo/**'
       - .github/workflows/package-parity.yml
   workflow_dispatch:
 
@@ -40,18 +38,60 @@ env:
   RADIX_CLIS_VERSION: 1.3.1
 
 jobs:
+  # Change detection for `package parity gate` below. Every PR runs this cheap job; the chain and
+  # rebuild jobs skip when nothing they check changed, and the gate still reports.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: diff
+        name: did this change touch the paths this workflow checks?
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The crate stays watched although the rebuild reads it at the pinned source_commit, so a
+          # crate edit still shows this workflow run. A root .cargo/ config would apply to the
+          # build (it runs inside the checkout), so it is watched too.
+          changed="$(git diff --name-only "$BASE_SHA"...HEAD -- \
+            ':(glob)escrow/scrypto/guild-marketplace-escrow/**' ':(glob)verify/**' \
+            scripts/verify-package-parity.mjs ':(glob).cargo/**' .github/workflows/package-parity.yml)"
+          if [ -n "$changed" ]; then echo "run=true"; else echo "run=false"; fi >> "$GITHUB_OUTPUT"
+          printf 'relevant files changed:\n%s\n' "${changed:-(none)}"
+
   # The chain still runs the recorded bytes: Gateway code -> blake2b self-check -> sha256 vs the file.
+  # Then each package's pinned source is checked (no build): source_commit holds the recorded blobs.
   chain:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - name: deployed code matches the recorded hashes
         run: |
           node --version
           node scripts/verify-package-parity.mjs
+      - name: every package's source_commit holds its recorded source
+        run: |
+          set -euo pipefail
+          for id in $(node -e 'for (const p of require("./verify/deployed-packages.json").packages) console.log(p.id)'); do
+            verify/rebuild-package.sh --prepare-only "$id" "$RUNNER_TEMP/prepare"
+          done
       - id: plan
         name: one rebuild per package in the expected-hash file
         run: |
@@ -62,7 +102,8 @@ jobs:
           ' >> "$GITHUB_OUTPUT"
 
   rebuild:
-    needs: chain
+    needs: [changes, chain]
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     # A cold radix-clis compile has taken 17-37 minutes elsewhere in this fleet; the package build
     # adds a few. 75 minutes caps a hang without cutting off a cold run.
@@ -74,7 +115,10 @@ jobs:
       PKG_ID: ${{ matrix.id }}
       PKG_ADDRESS: ${{ matrix.address }}
     steps:
+      # Full history: rebuild-package.sh reads the crate at the package's pinned source_commit.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       # The deployed wasm embeds source paths under /root/.cargo and /root/.rustup (panic location
       # strings), so the build must use those two homes. The runner's own user owns them here; no
@@ -148,3 +192,30 @@ jobs:
             out/SHA256SUMS
           if-no-files-found: warn
           retention-days: 30
+
+  # The one check to require on main. It runs for every PR (`if: always()`) and fails unless change
+  # detection succeeded and every job above either passed or was skipped because this PR touched
+  # none of the watched paths. Requiring a rebuild job by name instead would let a broken `changes`
+  # job skip it silently, and a skipped matrix job reports under a name a required check never
+  # matches. A report-only package (enforce false) passes its rebuild job with a warning.
+  gate:
+    name: package parity gate
+    if: always()
+    needs: [changes, chain, rebuild]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: every job passed, or was skipped for an unrelated change
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          [ "$CHANGES" = "success" ] || { echo "::error::change detection ended: $CHANGES"; exit 1; }
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::a job in this workflow ended: $r"; exit 1 ;;
+            esac
+          done
+          echo "ok: $RESULTS"
