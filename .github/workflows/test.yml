@@ -31,12 +31,14 @@ concurrency:
   cancel-in-progress: true
 
 # The e2e scope step calls `gh api .../pulls/N/files`. The repo default workflow
-# token grants only contents/metadata/packages: read, and that endpoint on a
-# PRIVATE repo needs `pull-requests: read` — without it the call 403s, the step
-# fails OPEN, and the saving is silently zero. Found by an adversarial screen
-# 2026-08-17, which noted the step was built so a working detector and a dead
-# one print the same line. Declared explicitly here (secret-scan.yml
-# already declares its own).
+# token grants only contents/metadata/packages: read, and while the repository was
+# private that endpoint needed `pull-requests: read` — without it the call 403'd,
+# the step failed OPEN, and the saving was silently zero. Found by an adversarial
+# screen 2026-08-17, which noted the step was built so a working detector and a
+# dead one print the same line. The repository is public now; the permission is
+# still declared explicitly so the step does not depend on the repository's
+# visibility or on the default token permissions (secret-scan.yml already
+# declares its own).
 permissions:
   contents: read
   pull-requests: read
